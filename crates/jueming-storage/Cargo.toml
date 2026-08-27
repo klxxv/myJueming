@@ -8,4 +8,6 @@ authors.workspace = true
 [dependencies]
 jueming-core = { path = "../jueming-core" }
 serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true

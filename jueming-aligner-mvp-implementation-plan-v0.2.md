@@ -1,9 +1,9 @@
 # 决明对齐器（Jueming Aligner）MVP 实施计划
 
 > 计划版本：v0.2  
-> 计划状态：Phase 0 Baseline / Implementation In Progress  
+> 计划状态：Phase 1 Vertical Slice Implemented / Validation In Progress
 > 适用阶段：本地优先、单机、人工对齐 MVP  
-> 当前阶段：Phase 0 合同、视觉规范、测试语料与脚手架前置已冻结，按阶段进入实现  
+> 当前阶段：Phase 1 的导入、分段、`.jm` 持久化、稳定 ID 与统一工作区已接通；进入人工 Alignment 与桌面验收
 > 固定技术主线：Tauri 2 + Rust Kernel + Vue 3 + TypeScript  
 > 参考资料：`jueming_global_architecture_handoff_v0.2.md`、`jueming-aligner-mvp-functional-spec-v0.1.md`、`MVP效果图/` 下七张效果图、2026-08-27 前端路线与 SISU 减法实现历史对话
 
@@ -736,6 +736,8 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 12. View Find 与 Kernel Project Search 分离。
 
 ### Phase 1：Project、Import、Segmentation、Persistence
+
+实现状态（2026-08-28）：核心垂直链路已实现。Tauri 文件选择器可分别选择原文/译文，Rust Kernel 支持 UTF-8、UTF-8 BOM、Windows 严格 GB18030、非空行/规则分句/SISU 标记行 profile；创建工程会生成稳定 UUIDv7 ID、暂定 1:1 布局与原子写入的 `.jm/project.json`，打开、显式保存、编辑自动保存、顺序变更自动保存均经过 Tauri `KernelClient` 边界并追加 Revision。政府报告 fixture 的 create/open、编辑重开、重排稳定 ID 与多余目标段未链接均已有单元测试。大列表虚拟化与实际桌面 Computer Use 归入 Phase 2/最终验收，不以本条状态替代整体验收。
 
 实现：Tauri 2 + Vue 3 应用壳、KernelClient、工程创建/打开、TXT/Paste、UTF-8/BOM/GB18030 解码预览、普通行/规则分句/旧版标注行三种导入 profile、稳定 ID、初始布局、工程目录、保存与重开、TanStack Virtual 最小列表。
 

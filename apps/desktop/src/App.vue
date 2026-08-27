@@ -1,80 +1,165 @@
 <script setup lang="ts">
+import { computed, onMounted, ref } from "vue";
+import { open } from "@tauri-apps/plugin-dialog";
+import { Check, ChevronDown, Download, Eye, FilePlus2, Folder, FolderOpen, History, Link2, Maximize2, MessageSquareText, Minimize2, Monitor, PanelLeft, Pencil, Redo2, Save, Search, Settings2, Star, Undo2, X } from "@lucide/vue";
+import ParallelWorkspace from "./components/ParallelWorkspace.vue";
+import { alignments as fixtureAlignments, sourceSegments, targetSegments } from "./data/governmentFixture";
+import { createKernelClient, makeImportProfile, snapshotToWorkspace, type AlignmentDto, type Encoding, type ImportPreviewResponse, type ProjectSnapshot, type ProjectSummaryDto, type SegmentationMode, type SegmentDto, type WorkspaceMode } from "./domain/kernel-client";
 import brandIcon from "../../../assets/brand/jueming-aligner-icon-source.png";
+import "./styles.css";
+
+type NavId = "project" | "parallel" | "search" | "bookmarks" | "annotations" | "settings";
+const kernelClient = createKernelClient();
+const activeMode = ref<WorkspaceMode>("review");
+const activeNav = ref<NavId>("parallel");
+const selectedAlignmentId = ref("alignment-000004");
+const dirty = ref(false);
+const busy = ref(false);
+const statusMessage = ref("本地存储 · 已保存");
+const importOpen = ref(false);
+const exportOpen = ref(false);
+const annotationOpen = ref(false);
+const searchQuery = ref("疫情");
+const searchSide = ref<"both" | "source" | "target">("both");
+const searchRegex = ref(false);
+const searchCaseSensitive = ref(false);
+const previewTab = ref<"source" | "target">("source");
+const projectName = ref("阿古顿巴_中英对齐");
+const projectDirectory = ref("");
+const sourcePath = ref("");
+const targetPath = ref("");
+const sourceEncoding = ref<Encoding>("utf-8");
+const targetEncoding = ref<Encoding>("utf-8");
+const sourceSegmentation = ref<SegmentationMode>("non_empty_line");
+const targetSegmentation = ref<SegmentationMode>("non_empty_line");
+const sourcePreview = ref<ImportPreviewResponse | null>(null);
+const targetPreview = ref<ImportPreviewResponse | null>(null);
+const sourceRows = ref<SegmentDto[]>(sourceSegments.map((segment) => ({ ...segment })));
+const targetRows = ref<SegmentDto[]>(targetSegments.map((segment) => ({ ...segment })));
+const alignmentRows = ref<AlignmentDto[]>(fixtureAlignments.map((alignment) => ({ ...alignment })));
+const projectSnapshot = ref<ProjectSnapshot | null>(null);
+const projectSummary = ref<ProjectSummaryDto>({ project_id: "fixture-project", name: "2024政府工作报告_中英对齐", source_label: "report_zh.txt", target_label: "report_en.txt", source_count: 8, target_count: 8, alignment_count: 8, source_unlinked_count: 0, target_unlinked_count: 0, revision_id: "0" });
+
+const modeItems: Array<{ id: WorkspaceMode; label: string; hint: string; icon: typeof Eye }> = [
+  { id: "review", label: "审阅模式", hint: "Review", icon: Eye }, { id: "edit", label: "编辑模式", hint: "Edit", icon: Pencil },
+  { id: "order", label: "顺序模式", hint: "Order", icon: PanelLeft }, { id: "history", label: "历史模式", hint: "History", icon: History },
+];
+const navItems: Array<{ id: NavId; label: string; hint?: string; icon: typeof Folder }> = [
+  { id: "project", label: "项目", icon: Folder }, { id: "parallel", label: "平行视图", icon: PanelLeft },
+  { id: "search", label: "搜索", icon: Search }, { id: "bookmarks", label: "书签", icon: Star },
+  { id: "annotations", label: "批注", hint: "Annotation", icon: MessageSquareText }, { id: "settings", label: "设置", icon: Settings2 },
+];
+const currentMode = computed(() => modeItems.find((item) => item.id === activeMode.value) ?? modeItems[0]);
+const activePreview = computed(() => previewTab.value === "source" ? sourcePreview.value : targetPreview.value);
+const visibleRows = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase();
+  const rows = sourceRows.value.map((source, index) => ({ source, target: targetRows.value[index] }));
+  if (!query || activeNav.value !== "search") return rows;
+  return rows.filter(({ source, target }) => {
+    const sourceText = searchCaseSensitive.value ? source.text : source.text.toLowerCase();
+    const targetText = searchCaseSensitive.value ? (target?.text ?? "") : (target?.text ?? "").toLowerCase();
+    const needle = searchCaseSensitive.value ? searchQuery.value.trim() : query;
+    if (searchSide.value === "source") return sourceText.includes(needle);
+    if (searchSide.value === "target") return targetText.includes(needle);
+    return sourceText.includes(needle) || targetText.includes(needle);
+  });
+});
+
+const notify = (message: string) => { statusMessage.value = message; };
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+const applySnapshot = async (snapshot: ProjectSnapshot) => {
+  const workspace = snapshotToWorkspace(snapshot);
+  projectSnapshot.value = snapshot;
+  sourceRows.value = workspace.sourceSegments;
+  targetRows.value = workspace.targetSegments;
+  alignmentRows.value = workspace.alignments;
+  selectedAlignmentId.value = workspace.alignments[0]?.id ?? "";
+  projectSummary.value = await kernelClient.getProjectSummary();
+  dirty.value = false;
+  activeNav.value = "parallel";
+  activeMode.value = "review";
+};
+onMounted(async () => {
+  try { await applySnapshot(await kernelClient.getCurrentProject()); } catch { /* Browser preview and first launch use the deterministic fixture. */ }
+});
+const setMode = (mode: WorkspaceMode) => { activeMode.value = mode; activeNav.value = "parallel"; exportOpen.value = false; };
+const setNav = (nav: NavId) => { activeNav.value = nav; if (nav === "annotations") annotationOpen.value = true; if (nav === "parallel" && activeMode.value === "history") activeMode.value = "review"; };
+const resetImport = () => { sourcePath.value = ""; targetPath.value = ""; projectDirectory.value = ""; sourcePreview.value = null; targetPreview.value = null; previewTab.value = "source"; };
+const openImport = async (kind: "new" | "open") => {
+  if (kind === "new") { resetImport(); importOpen.value = true; return; }
+  const selected = await open({ directory: true, multiple: false, title: "打开决明工程（.jm 文件夹）" });
+  if (!selected) return;
+  busy.value = true;
+  try { await applySnapshot(await kernelClient.openProject(selected)); notify(`已打开 ${projectSummary.value.name}`); }
+  catch (error) { notify(`打开失败：${errorMessage(error)}`); }
+  finally { busy.value = false; }
+};
+const chooseProjectDirectory = async () => { const selected = await open({ directory: true, multiple: false, title: "选择工程保存位置" }); if (selected) projectDirectory.value = selected; };
+const chooseTextFile = async (side: "source" | "target") => {
+  const selected = await open({ directory: false, multiple: false, title: side === "source" ? "选择中文原文" : "选择英文译文", filters: [{ name: "Text", extensions: ["txt"] }] });
+  if (!selected) return;
+  if (side === "source") sourcePath.value = selected; else targetPath.value = selected;
+  if (/阿古顿巴/i.test(selected)) { sourceEncoding.value = "gb18030"; sourceSegmentation.value = "legacy_tagged_line"; targetSegmentation.value = "legacy_tagged_line"; }
+  if (/Akhu Tenpa/i.test(selected)) targetSegmentation.value = "legacy_tagged_line";
+  await previewFile(side);
+};
+const previewFile = async (side: "source" | "target") => {
+  const path = side === "source" ? sourcePath.value : targetPath.value;
+  if (!path) return;
+  const encoding = side === "source" ? sourceEncoding.value : targetEncoding.value;
+  const segmentation = side === "source" ? sourceSegmentation.value : targetSegmentation.value;
+  busy.value = true;
+  try {
+    const preview = await kernelClient.previewImport({ input: { kind: "file", path }, profile: makeImportProfile(encoding, segmentation) });
+    if (side === "source") sourcePreview.value = preview; else targetPreview.value = preview;
+    previewTab.value = side;
+    notify(`${side === "source" ? "原文" : "译文"}预览完成：${preview.preview.segments.length} 段`);
+  } catch (error) { notify(`预览失败：${errorMessage(error)}`); }
+  finally { busy.value = false; }
+};
+const projectPath = () => `${projectDirectory.value.replace(/[\\/]+$/, "")}\\${projectName.value.trim().replace(/[<>:\"/\\|?*]/g, "_")}.jm`;
+const createProjectFromPreview = async () => {
+  if (!sourcePath.value || !targetPath.value || !projectDirectory.value || !projectName.value.trim()) { notify("请完整选择原文、译文、保存位置并填写项目名"); return; }
+  busy.value = true;
+  try {
+    const snapshot = await kernelClient.createProject({
+      project_path: projectPath(), name: projectName.value.trim(),
+      source: { language_id: "zh-CN", title: "中文（原文）", input: { kind: "file", path: sourcePath.value }, profile: makeImportProfile(sourceEncoding.value, sourceSegmentation.value) },
+      target: { language_id: "en", title: "English（译文）", input: { kind: "file", path: targetPath.value }, profile: makeImportProfile(targetEncoding.value, targetSegmentation.value) },
+    });
+    await applySnapshot(snapshot); importOpen.value = false; notify(`已创建并保存 ${projectSummary.value.name}`);
+  } catch (error) { notify(`创建失败：${errorMessage(error)}`); }
+  finally { busy.value = false; }
+};
+const saveProject = async () => { try { await kernelClient.flushProject(); dirty.value = false; notify("本地存储 · 已保存"); } catch (error) { notify(`保存失败：${errorMessage(error)}`); } };
+const saveSegment = async (id: string, text: string) => { const segment = [...sourceRows.value, ...targetRows.value].find((item) => item.id === id); if (!segment) return; const previous = segment.text; segment.text = text; try { await kernelClient.updateSegment(id, text); dirty.value = false; projectSummary.value = await kernelClient.getProjectSummary(); notify("句段已自动保存并写入本地历史"); } catch (error) { segment.text = previous; notify(`编辑失败：${errorMessage(error)}`); } };
+const moveSegment = async (alignmentId: string, direction: "up" | "down") => {
+  const alignment = alignmentRows.value.find((item) => item.id === alignmentId); const movedId = alignment?.sourceIds[0]; const index = sourceRows.value.findIndex((item) => item.id === movedId); const targetIndex = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || targetIndex < 0 || targetIndex >= sourceRows.value.length) { notify(direction === "up" ? "已经是第一句" : "已经是最后一句"); return; }
+  const previous = sourceRows.value.map((segment) => ({ ...segment })); const next = [...sourceRows.value]; [next[index], next[targetIndex]] = [next[targetIndex], next[index]]; sourceRows.value = next.map((segment, order) => ({ ...segment, order }));
+  try { const before = next[targetIndex - 1]?.id; const after = next[targetIndex + 1]?.id; await kernelClient.moveSegment(movedId!, before, after); dirty.value = false; projectSummary.value = await kernelClient.getProjectSummary(); notify(`已${direction === "up" ? "上移" : "下移"}并自动保存，关系锚点保持稳定`); }
+  catch (error) { sourceRows.value = previous; notify(`排序失败：${errorMessage(error)}`); }
+};
+const modeSelect = (event: Event) => setMode((event.target as HTMLSelectElement).value as WorkspaceMode);
 </script>
 
 <template>
-  <main class="scaffold-shell">
-    <img class="brand-icon" :src="brandIcon" alt="" />
-    <div>
-      <h1>决明对齐器</h1>
-      <p>Jueming Aligner · 本地平行文本工作台</p>
-      <span>Phase 1 workspace scaffold</span>
-    </div>
-  </main>
+  <div class="app-shell">
+    <header class="window-chrome"><div class="brand-lockup"><img :src="brandIcon" alt="" /><span class="brand-title">决明对齐器 <em>Jueming Aligner</em></span></div><div class="window-actions"><button type="button" title="最小化"><Minimize2 :size="16" /></button><button type="button" title="最大化"><Maximize2 :size="15" /></button><button type="button" title="关闭"><X :size="18" /></button></div></header>
+    <header class="app-toolbar"><div class="toolbar-left"><button class="toolbar-button" type="button" title="新建工程" @click="openImport('new')"><FilePlus2 :size="19" />新建</button><button class="toolbar-button" type="button" title="打开本地工程" @click="openImport('open')"><FolderOpen :size="19" />打开</button><button class="toolbar-button" type="button" title="保存工程" @click="saveProject"><Save :size="19" />保存</button><div class="toolbar-divider"></div><div class="toolbar-actions"><div class="toolbar-button--export-wrap"><button class="toolbar-button toolbar-button--export" type="button" title="导出工程" @click="exportOpen = !exportOpen"><Download :size="19" />导出<ChevronDown :size="15" /></button><div v-if="exportOpen" class="export-menu"><button type="button" @click="exportOpen = false; notify('TXT 导出接口已就绪')">TXT 文本</button><button type="button" @click="exportOpen = false; notify('JSON 导出接口已就绪')">JSON 工程</button><button type="button" @click="exportOpen = false; notify('XML 对齐接口已就绪')">XML 对齐</button></div></div><div class="toolbar-divider"></div><button class="toolbar-button" type="button" :disabled="!dirty" title="撤销"><Undo2 :size="19" />撤销</button><button class="toolbar-button" type="button" disabled title="重做"><Redo2 :size="19" />重做</button><div class="toolbar-divider"></div><button class="toolbar-button" type="button" @click="setNav('settings')"><Settings2 :size="19" />设置</button></div></div><div class="mode-control" :class="`mode-control--${activeMode}`"><component :is="currentMode.icon" :size="17" /><span>{{ currentMode.label }} <small>{{ currentMode.hint }}</small></span><ChevronDown :size="15" /><select :value="activeMode" aria-label="切换工作模式" @change="modeSelect"><option v-for="item in modeItems" :key="item.id" :value="item.id">{{ item.label }} {{ item.hint }}</option></select></div></header>
+    <div class="content-grid"><nav class="side-nav"><button v-for="item in navItems" :key="item.id" class="nav-item" :class="{ 'nav-item--active': activeNav === item.id }" type="button" @click="setNav(item.id)"><component :is="item.icon" :size="22" :stroke-width="activeNav === item.id ? 2.2 : 1.8" /><span class="nav-label">{{ item.label }}<small v-if="item.hint">{{ item.hint }}</small></span></button><div class="nav-collapse"><button class="nav-item" type="button" title="收起侧栏" @click="notify('侧栏收起将在 Tauri 窗口状态中保存')"><ChevronDown :size="21" style="transform: rotate(90deg)" /><span class="nav-label">收起</span></button></div></nav>
+      <main class="main-stage"><template v-if="activeNav === 'parallel'"><ParallelWorkspace :mode="activeMode" :source-segments="sourceRows" :target-segments="targetRows" :alignments="alignmentRows" :selected-alignment-id="selectedAlignmentId" @select="selectedAlignmentId = $event" @save-segment="saveSegment" @cancel-edit="notify('已取消编辑')" @move="moveSegment" @reset-order="notify('已恢复当前会话顺序')" @status="notify" /></template><template v-else-if="activeNav === 'search'"><section class="search-view"><div class="search-bar"><label for="project-search">查询</label><div class="search-input-wrap"><Search :size="18" /><input id="project-search" v-model="searchQuery" type="search" placeholder="搜索当前工程" /><button v-if="searchQuery" type="button" title="清除查询" @click="searchQuery = ''"><X :size="16" /></button></div><button class="primary-search" type="button" @click="notify(`找到 ${visibleRows.length} 条结果`)">搜索</button><button class="filter-button" type="button" title="切换搜索侧" @click="searchSide = searchSide === 'both' ? 'source' : searchSide === 'source' ? 'target' : 'both'"><ChevronDown :size="15" /></button><label class="check-label"><input v-model="searchRegex" type="checkbox" />正则</label><label class="check-label"><input v-model="searchCaseSensitive" type="checkbox" />区分大小写</label><span class="current-project"><Check :size="14" />当前工程</span></div><div class="search-summary">找到 <strong>{{ visibleRows.length }}</strong> 条结果 <span>（实时预览）</span></div><div class="search-table"><div class="search-table-head"><span>ID</span><span>中文（上下文）</span><span>匹配词</span><span>English（上下文）</span><span>对齐 ID</span></div><button v-for="row in visibleRows" :key="row.source.id" class="search-row" type="button" @click="activeNav = 'parallel'; activeMode = 'review'; selectedAlignmentId = alignmentRows.find(item => item.sourceIds.includes(row.source.id))?.id ?? selectedAlignmentId"><span>{{ row.source.id.slice(0, 8) }}</span><span>{{ row.source.text }}</span><mark>{{ searchQuery || '—' }}</mark><span>{{ row.target?.text ?? '—' }}</span><span>{{ alignmentRows.find(item => item.sourceIds.includes(row.source.id))?.id.slice(0, 8) ?? '—' }}</span></button></div></section></template><template v-else-if="activeNav === 'settings'"><section class="aux-view"><Settings2 :size="28" /><h2>设置</h2><p>当前工程采用离线本地存储；导入编码和分段策略随工程保存。</p><button type="button" class="secondary-button" @click="notify('本地能力可用，未连接任何云端服务')">检查本地能力</button></section></template><template v-else-if="activeNav === 'bookmarks'"><section class="aux-view"><Star :size="28" /><h2>书签</h2><p>书签锚定稳定的 Alignment ID，不受语句重排影响。</p><button type="button" class="secondary-button" @click="activeNav = 'parallel'">返回平行视图</button></section></template><template v-else-if="activeNav === 'project'"><section class="aux-view"><Folder :size="28" /><h2>项目</h2><p>{{ projectSummary.name }}</p><div class="project-summary-card"><span>{{ projectSummary.source_count }}</span><small>中文句段</small><span>{{ projectSummary.target_count }}</span><small>English segments</small></div><button type="button" class="primary-button" @click="openImport('open')">打开工程</button></section></template><template v-else><section class="aux-view"><MessageSquareText :size="28" /><h2>批注</h2><p>批注锚定当前 Alignment，将在批注阶段接入持久化。</p><button type="button" class="primary-button" @click="annotationOpen = true">打开批注面板</button></section></template></main></div>
+    <footer class="bottom-status"><div class="footer-left"><div class="footer-project"><strong>项目：</strong>{{ projectSummary.name }}</div><div class="footer-separator"></div><div class="footer-project">文件：<span>{{ projectSummary.source_label }}</span><Link2 :size="14" /><span>{{ projectSummary.target_label }}</span></div><div class="footer-separator"></div><div>对齐状态：<span class="footer-status-pill">{{ projectSummary.source_unlinked_count + projectSummary.target_unlinked_count === 0 ? '1:1' : '待校对' }}</span></div></div><div class="footer-right"><span class="save-state" :class="{ 'save-state--dirty': dirty }"><Monitor :size="14" />{{ busy ? '处理中…' : dirty ? '有未保存更改' : statusMessage }}</span><span>已处理：{{ projectSummary.alignment_count }} / {{ Math.max(projectSummary.source_count, projectSummary.target_count) }}</span><span>进度：</span><div class="progress-track"><span :style="{ width: `${Math.round(100 * projectSummary.alignment_count / Math.max(1, projectSummary.source_count, projectSummary.target_count))}%` }"></span></div><span>{{ Math.round(100 * projectSummary.alignment_count / Math.max(1, projectSummary.source_count, projectSummary.target_count)) }}%</span></div></footer>
+    <div v-if="importOpen" class="modal-backdrop" @click.self="importOpen = false"><section class="import-modal" role="dialog" aria-modal="true" aria-labelledby="import-title"><header><div><span class="eyebrow">NEW PROJECT</span><h2 id="import-title">新建平行工程</h2></div><button type="button" title="关闭导入向导" @click="importOpen = false"><X :size="19" /></button></header><div class="import-project-grid"><label>项目名称<input v-model="projectName" placeholder="例如：阿古顿巴_中英对齐" /></label><label>保存位置<div class="compact-picker"><input v-model="projectDirectory" readonly placeholder="选择父文件夹" /><button type="button" @click="chooseProjectDirectory">浏览…</button></div></label></div><div class="import-source-grid"><section><div class="import-path"><label for="source-path">中文（原文）</label><div><FolderOpen :size="17" /><input id="source-path" v-model="sourcePath" readonly placeholder="选择 TXT 原文" /><button type="button" @click="chooseTextFile('source')">浏览…</button></div></div><div class="import-settings"><label>分段方式 <select v-model="sourceSegmentation" @change="previewFile('source')"><option value="non_empty_line">非空行</option><option value="sentence_rules">规则分句</option><option value="legacy_tagged_line">SISU 标记行</option></select></label><label>编码 <select v-model="sourceEncoding" @change="previewFile('source')"><option value="utf-8">UTF-8</option><option value="utf-8-bom">UTF-8 BOM</option><option value="gb18030">GB18030</option></select></label></div></section><section><div class="import-path"><label for="target-path">English（译文）</label><div><FolderOpen :size="17" /><input id="target-path" v-model="targetPath" readonly placeholder="选择 TXT 译文" /><button type="button" @click="chooseTextFile('target')">浏览…</button></div></div><div class="import-settings"><label>分段方式 <select v-model="targetSegmentation" @change="previewFile('target')"><option value="non_empty_line">非空行</option><option value="sentence_rules">规则分句</option><option value="legacy_tagged_line">SISU 标记行</option></select></label><label>编码 <select v-model="targetEncoding" @change="previewFile('target')"><option value="utf-8">UTF-8</option><option value="utf-8-bom">UTF-8 BOM</option><option value="gb18030">GB18030</option></select></label></div></section></div><div class="preview-tabs"><button :class="{ active: previewTab === 'source' }" type="button" @click="previewTab = 'source'">中文（原文） · {{ sourcePreview?.preview.segments.length ?? 0 }} 段</button><button :class="{ active: previewTab === 'target' }" type="button" @click="previewTab = 'target'">English（译文） · {{ targetPreview?.preview.segments.length ?? 0 }} 段</button></div><div class="segment-preview"><div v-if="!activePreview" class="preview-empty">选择文本后会以指定编码和规则生成真实预览。</div><div v-for="text in activePreview?.preview.segments ?? []" :key="text.ordinal" class="preview-line"><span>{{ String(text.ordinal + 1).padStart(2, '0') }}</span><p>{{ text.content }}</p></div></div><footer><span class="import-contract">源文件只读；工程写入 <b>.jm</b> 文件夹并保留稳定 ID。</span><button class="secondary-button" type="button" @click="importOpen = false">取消</button><button class="primary-button" type="button" :disabled="busy" @click="createProjectFromPreview"><Check :size="15" />创建并打开工程</button></footer></section></div>
+    <aside v-if="annotationOpen" class="annotation-panel"><header><div><span class="eyebrow">ANNOTATIONS</span><h2>批注 / Annotations <small>4</small></h2></div><button type="button" title="关闭批注面板" @click="annotationOpen = false"><X :size="18" /></button></header><div class="annotation-filter"><button class="active" type="button">全部 <span>4</span></button><button type="button">草稿 <span>1</span></button><button type="button">进行中 <span>1</span></button><button type="button">已解决 <span>2</span></button></div><article class="annotation-card annotation-card--draft"><div class="annotation-number">1</div><div><div class="annotation-state">草稿 <span>Draft</span><time>本地 · 15:42</time></div><h3>用词确认 / Terminology check</h3><p>“总体平稳”与 “generally stable” 是否精确对齐？是否应考虑“保持总体平稳”。</p><div class="annotation-links"><span>中文（原文） <b>000103</b></span><span>English（译文） <b>000103</b></span></div><footer><button type="button" @click="notify('批注编辑入口已准备')">编辑</button><button type="button" @click="notify('删除批注需要确认')">删除</button></footer></div></article><article class="annotation-card"><div class="annotation-number annotation-number--green">2</div><div><div class="annotation-state">进行中 <span>In Progress</span><time>本地 · 15:41</time></div><h3>术语一致性 / Term consistency</h3><p>“居民收入”在全文中多次出现，需确认统一译法。</p><button class="resolve-button" type="button" @click="notify('批注已标记为解决')"><Check :size="15" />标记已解决</button></div></article><button class="new-annotation" type="button" @click="notify('新建批注将锚定当前 Alignment')"><MessageSquareText :size="16" />新建批注</button></aside>
+  </div>
 </template>
 
-<style>
-:root {
-  font-family:
-    "Segoe UI Variable", "Microsoft YaHei UI", "Segoe UI", sans-serif;
-  color: #202521;
-  background: #f7faf6;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#app {
-  width: 100%;
-  min-width: 1180px;
-  height: 100%;
-  min-height: 760px;
-  margin: 0;
-}
-
-body {
-  overflow: hidden;
-}
-
-.scaffold-shell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  gap: 24px;
-  color: #226f36;
-  background:
-    radial-gradient(circle at 50% 42%, #ffffff 0, #f7faf6 58%, #eef5eb 100%);
-}
-
-.brand-icon {
-  width: 88px;
-  height: 88px;
-  border-radius: 22px;
-  box-shadow: 0 10px 30px rgb(34 111 54 / 12%);
-}
-
-h1 {
-  margin: 0 0 6px;
-  font-size: 30px;
-  letter-spacing: 0.02em;
-}
-
-p {
-  margin: 0 0 10px;
-  color: #4e5b50;
-  font-size: 16px;
-}
-
-span {
-  color: #7b877d;
-  font-size: 13px;
-}
+<style scoped>
+.toolbar-button--export-wrap { position: relative; }.export-menu { position: absolute; z-index: 8; top: 41px; left: 0; width: 142px; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: #fff; box-shadow: 0 10px 25px rgb(35 55 38 / 14%); }.export-menu button { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; }.export-menu button:hover { color: var(--green-900); background: var(--green-050); }.mode-control small { margin-left: 2px; color: var(--green-700); font-size: 12px; font-weight: 500; }.mode-control--edit { border-color: #e6d19d; color: #916714; background: #fffaf0; }.mode-control--edit small { color: #af8321; }.mode-control--history { border-color: #c7d4df; color: #536b7a; background: #f8fbfd; }
+.search-view { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 25px 28px; }.search-bar { display: flex; align-items: center; gap: 10px; }.search-bar > label { width: 42px; font-size: 14px; }.search-input-wrap { display: flex; align-items: center; width: min(570px, 48vw); height: 42px; padding: 0 12px; border: 1px solid #c9d1ca; border-radius: 7px 0 0 7px; color: var(--ink-500); }.search-input-wrap input { flex: 1; min-width: 0; padding: 0 9px; border: 0; outline: none; }.search-input-wrap button { padding: 3px; border: 0; background: transparent; color: var(--ink-500); cursor: pointer; }.primary-search, .primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 42px; padding: 0 22px; border: 1px solid var(--green-900); border-radius: 0 6px 6px 0; color: #fff; background: var(--green-900); cursor: pointer; }.filter-button { height: 42px; margin-left: -10px; padding: 0 12px; border: 1px solid #c9d1ca; border-radius: 0 7px 7px 0; background: #fff; cursor: pointer; }.check-label { display: inline-flex; align-items: center; gap: 6px; margin-left: 22px; color: var(--ink-700); font-size: 13px; }.current-project { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--green-900); font-size: 13px; }.search-summary { padding: 15px 5px 12px; color: var(--ink-700); font-size: 13px; }.search-summary strong { color: var(--green-900); }.search-summary span { color: var(--ink-500); }.search-table { min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 7px; }.search-table-head, .search-row { display: grid; grid-template-columns: 85px 1.2fr 95px 1.45fr 90px; align-items: center; gap: 14px; padding: 0 17px; }.search-table-head { height: 43px; color: var(--ink-700); background: #f8faf8; font-size: 12px; }.search-row { width: 100%; min-height: 57px; border: 0; border-top: 1px solid var(--line); background: #fff; color: var(--ink-900); font-size: 13px; text-align: left; cursor: pointer; }.search-row:hover { background: #f5fbf3; }.search-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.search-row mark { width: max-content; padding: 2px 7px; color: #72591b; background: #fff1c9; font-weight: 660; }
+.aux-view { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 13px; max-width: 540px; height: 100%; margin: auto; padding: 32px; color: var(--green-900); }.aux-view h2 { margin: 0; color: var(--ink-900); font-size: 22px; }.aux-view p { margin: 0; color: var(--ink-700); line-height: 1.6; }.secondary-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 17px; border: 1px solid #bdcabf; border-radius: 6px; color: var(--ink-700); background: #fff; cursor: pointer; }.aux-view .primary-button { border-radius: 6px; }.project-summary-card { display: grid; grid-template-columns: auto auto; gap: 3px 14px; margin: 4px 0; padding: 14px 18px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink-900); }.project-summary-card span { font-size: 23px; color: var(--green-900); }.project-summary-card small { color: var(--ink-500); font-size: 11px; }
+.modal-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; background: rgb(31 42 34 / 22%); }.import-modal { display: flex; flex-direction: column; width: min(750px, calc(100vw - 80px)); max-height: calc(100vh - 90px); overflow: hidden; border: 1px solid #cbd6cc; border-radius: 10px; background: #fff; box-shadow: 0 22px 70px rgb(29 48 32 / 23%); }.import-modal > header, .import-modal > footer { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--line); }.import-modal > header button { padding: 5px; border: 0; background: transparent; color: var(--ink-500); cursor: pointer; }.import-modal > header h2 { margin: 3px 0 0; color: var(--ink-900); font-size: 21px; }.eyebrow { color: var(--green-700); font-size: 10px; font-weight: 700; letter-spacing: .1em; }.import-path { padding: 18px 24px 13px; }.import-path label { display: block; margin-bottom: 8px; color: var(--ink-700); font-size: 13px; }.import-path > div { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 11px; border: 1px solid #c8d3c9; border-radius: 6px; color: var(--ink-500); }.import-path input { flex: 1; min-width: 0; border: 0; outline: none; }.import-path button { height: 29px; padding: 0 10px; border: 1px solid #c4d0c5; border-radius: 4px; color: var(--green-900); background: #fff; cursor: pointer; }.import-path small { display: block; margin-top: 7px; color: var(--ink-500); font-size: 11px; }.preview-tabs { display: flex; gap: 4px; padding: 0 24px; border-bottom: 1px solid var(--line); }.preview-tabs button { padding: 11px 13px; border: 0; border-bottom: 2px solid transparent; color: var(--ink-500); background: transparent; font-size: 13px; cursor: pointer; }.preview-tabs button.active { border-bottom-color: var(--green-700); color: var(--green-900); font-weight: 600; }.segment-preview { min-height: 170px; max-height: 255px; overflow: auto; padding: 5px 24px; }.preview-line { display: grid; grid-template-columns: 30px 1fr; gap: 11px; padding: 8px 0; border-bottom: 1px solid #edf1ed; }.preview-line span { color: var(--ink-500); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; }.preview-line p { margin: 0; color: var(--ink-900); font-size: 13px; line-height: 1.5; }.import-settings { display: flex; gap: 24px; padding: 12px 24px; border-top: 1px solid var(--line); background: #fbfcfb; }.import-settings label { display: flex; align-items: center; gap: 7px; color: var(--ink-700); font-size: 12px; }.import-settings select { height: 30px; border: 1px solid #cbd6cc; border-radius: 4px; color: var(--ink-700); background: #fff; }.import-modal > footer { justify-content: flex-end; gap: 10px; border-top: 1px solid var(--line); border-bottom: 0; }.import-modal > footer .primary-button { border-radius: 6px; height: 38px; }
+.import-modal { width: min(980px, calc(100vw - 80px)); }.import-project-grid, .import-source-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 16px 24px; }.import-project-grid { border-bottom: 1px solid var(--line); background: #fbfcfb; }.import-project-grid > label { display: grid; gap: 7px; color: var(--ink-700); font-size: 12px; }.import-project-grid > label > input, .compact-picker { height: 38px; border: 1px solid #c8d3c9; border-radius: 6px; background: #fff; }.import-project-grid > label > input { padding: 0 11px; outline: none; }.compact-picker { display: flex; overflow: hidden; }.compact-picker input { flex: 1; min-width: 0; padding: 0 11px; border: 0; outline: none; }.compact-picker button { padding: 0 13px; border: 0; border-left: 1px solid #c8d3c9; color: var(--green-900); background: #fff; cursor: pointer; }.import-source-grid { padding-top: 3px; padding-bottom: 3px; }.import-source-grid > section { min-width: 0; }.import-source-grid .import-path { padding: 12px 0 8px; }.import-source-grid .import-settings { justify-content: space-between; gap: 10px; padding: 8px 0 12px; border-top: 0; background: transparent; }.preview-empty { display: grid; min-height: 160px; place-items: center; color: var(--ink-500); font-size: 13px; }.import-contract { margin-right: auto; color: var(--ink-500); font-size: 11px; }.primary-button:disabled { opacity: .55; cursor: wait; }
+.annotation-panel { position: fixed; z-index: 10; top: 116px; right: 0; bottom: 58px; display: flex; flex-direction: column; width: 355px; overflow: auto; border-left: 1px solid #ccd9cd; background: #fbfdfb; box-shadow: -12px 0 30px rgb(32 51 35 / 10%); }.annotation-panel header { display: flex; align-items: flex-start; justify-content: space-between; padding: 19px 18px 12px; }.annotation-panel header button { padding: 5px; border: 0; background: transparent; color: var(--ink-500); cursor: pointer; }.annotation-panel h2 { margin: 4px 0 0; color: var(--ink-900); font-size: 16px; }.annotation-panel h2 small { display: inline-block; margin-left: 3px; padding: 2px 6px; border-radius: 10px; color: var(--green-900); background: var(--green-100); font-size: 11px; }.annotation-filter { display: flex; gap: 4px; padding: 0 13px 13px; border-bottom: 1px solid var(--line); }.annotation-filter button { padding: 7px 8px; border: 1px solid transparent; border-radius: 5px; color: var(--ink-500); background: transparent; font-size: 12px; cursor: pointer; }.annotation-filter button.active { border-color: #b3d5b7; color: var(--green-900); background: #f3faf1; }.annotation-card { display: grid; grid-template-columns: 25px 1fr; gap: 7px; margin: 13px 13px 0; padding: 13px 11px; border: 1px solid #d3dde5; border-radius: 8px; background: #fff; }.annotation-card--draft { border-color: #d3c4ec; }.annotation-number { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: #fff; background: #9864d5; font-size: 12px; }.annotation-number--green { background: #3c9a5a; }.annotation-state { display: flex; align-items: center; gap: 7px; color: var(--ink-900); font-size: 12px; font-weight: 650; }.annotation-state span { color: var(--ink-500); font-weight: 500; }.annotation-state time { margin-left: auto; color: var(--ink-500); font-size: 10px; font-weight: 400; }.annotation-card h3 { margin: 12px 0 7px; color: var(--ink-900); font-size: 14px; }.annotation-card p { margin: 0; color: var(--ink-700); font-size: 12px; line-height: 1.55; }.annotation-links { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; padding: 8px; border-radius: 5px; background: #f8faf8; color: var(--ink-700); font-size: 11px; }.annotation-links b { float: right; color: var(--ink-500); font-weight: 500; }.annotation-card footer { display: flex; gap: 15px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }.annotation-card footer button, .resolve-button, .new-annotation { display: inline-flex; align-items: center; gap: 5px; border: 0; color: var(--ink-700); background: transparent; font-size: 12px; cursor: pointer; }.resolve-button { margin-top: 11px; padding: 6px 9px; border: 1px solid #b5dab9; border-radius: 5px; color: var(--green-900); background: #f2faf1; }.new-annotation { justify-content: center; margin: 13px; padding: 10px; border: 1px solid #abd1af; border-radius: 6px; color: var(--green-900); background: #f4fbf2; }
 </style>

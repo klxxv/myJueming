@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-MVP Phase 0 基线已完成：架构合同、十二项 ADR、视觉规范、确定性 fixture、真实语料兼容策略与 Computer Use 验收矩阵已冻结。Tauri 2/Vue 3/Rust workspace 已创建，前端生产构建、Rust check/Clippy/test 和 Windows 调试可执行文件构建已通过；下一阶段是核心垂直链路。
+MVP Phase 1 核心垂直链路已接通：Tauri 文件选择、每侧独立编码/分段预览、稳定 ID、暂定布局、`.jm` 原子持久化、打开/保存、编辑和重排 Revision 已实现。政府报告 fixture 的 create/open、编辑重开、重排稳定 ID 与多余目标段未链接均有测试；前端生产构建、Rust Clippy/test 和 Windows 调试可执行文件构建已通过。下一阶段是人工 Alignment、虚拟化以及真实桌面验收。
 
 ## 主要文档
 
