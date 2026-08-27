@@ -1,0 +1,16 @@
+{
+  "name": "jueming-aligner",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24.14.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @jueming/desktop tauri dev",
+    "dev:web": "pnpm --filter @jueming/desktop dev",
+    "build": "pnpm --filter @jueming/desktop build",
+    "build:desktop": "pnpm --filter @jueming/desktop tauri build",
+    "typecheck": "pnpm --filter @jueming/desktop typecheck"
+  }
+}

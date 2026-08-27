@@ -1,0 +1,12 @@
+[package]
+name = "jueming-kernel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[dependencies]
+jueming-core = { path = "../jueming-core" }
+jueming-protocol = { path = "../jueming-protocol" }
+jueming-storage = { path = "../jueming-storage" }
+thiserror.workspace = true

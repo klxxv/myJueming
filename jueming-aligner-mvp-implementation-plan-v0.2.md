@@ -920,10 +920,10 @@ MVP 只有在以下条件全部满足时才算完成：
 
 实现期间按关键节点完成并提交：
 
-- [ ] 确认产品名、应用 ID、工程扩展名和许可证；
+- [ ] 确认许可证（产品名 `决明对齐器 Jueming Aligner`、应用 ID `com.jueming.aligner`、工程扩展名 `.jm` 已冻结）；
 - [ ] 确认目标 Windows 最低版本与安装包形式；
 - [x] 冻结前端技术路线：Tauri 2 + Vue 3 + TypeScript strict + 第 6.1 节基础库；
-- [ ] 在脚手架创建日选择兼容的精确版本并提交 Cargo/pnpm lockfile；
+- [x] 在脚手架创建日选择兼容的精确版本并提交 Cargo/pnpm lockfile；
 - [x] 完成 Phase 0 的十二项 ADR；
 - [x] 冻结 Project Format v1 与 Command/Query/Event v1；
 - [x] 冻结 ParallelWorkspace mode 状态机、Alignment anchor 与 Context Lens 合同；

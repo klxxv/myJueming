@@ -1,0 +1,10 @@
+[package]
+name = "jueming-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[dependencies]
+jueming-core = { path = "../jueming-core" }
+serde.workspace = true

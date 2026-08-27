@@ -12,6 +12,10 @@ coverage/
 playwright-report/
 test-results/
 
+# The MVP targets Windows; Tauri can regenerate mobile icon sets from the source asset.
+/apps/desktop/src-tauri/icons/android/
+/apps/desktop/src-tauri/icons/ios/
+
 # Local project data and runtime state
 *.jm/
 *.jm.tmp/
