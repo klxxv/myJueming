@@ -1,0 +1,40 @@
+# Rust / Tauri build outputs
+/target/
+**/target/
+
+# Node / Vite outputs
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.vite/
+coverage/
+playwright-report/
+test-results/
+
+# Local project data and runtime state
+*.jm/
+*.jm.tmp/
+*.log
+*.pid
+.env
+.env.*
+!.env.example
+
+# Editor / OS state
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Large legacy reference binaries; keep documentation and screenshots instead
+*.exe
+*.zip
+/最终版效果图-暂不用/
+
+# User-provided local compatibility corpus; test in place without redistributing
+/A_阿古顿巴.txt
+/A_Akhu Tenpa.txt

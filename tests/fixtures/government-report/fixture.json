@@ -1,0 +1,19 @@
+{
+  "id": "government-report-zh-en-8x8",
+  "title": "2024政府工作报告_中英对齐",
+  "source": {
+    "language": "zh-CN",
+    "file": "report_zh.txt"
+  },
+  "target": {
+    "language": "en",
+    "file": "report_en.txt"
+  },
+  "importMode": "nonEmptyLineAsSegment",
+  "expected": {
+    "sourceSegments": 8,
+    "targetSegments": 8,
+    "initialAlignments": 8,
+    "alignmentCardinality": "1:1"
+  }
+}
