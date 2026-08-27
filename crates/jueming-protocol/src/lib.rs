@@ -73,6 +73,43 @@ pub struct ProjectSnapshot {
     pub revisions: Vec<Revision>,
     pub source_profile: ImportProfile,
     pub target_profile: ImportProfile,
+    #[serde(default)]
+    pub bookmarks: Vec<Bookmark>,
+    #[serde(default)]
+    pub annotations: Vec<HumanAnnotation>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Bookmark {
+    pub bookmark_id: BookmarkId,
+    pub project_id: ProjectId,
+    pub segment_id: SegmentId,
+    pub alignment_id: Option<AlignmentId>,
+    pub label: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnnotationStatus {
+    Draft,
+    InProgress,
+    Resolved,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct HumanAnnotation {
+    pub annotation_id: AnnotationId,
+    pub project_id: ProjectId,
+    pub title: String,
+    pub body: String,
+    pub status: AnnotationStatus,
+    pub linked_segment_ids: Vec<SegmentId>,
+    pub alignment_id: Option<AlignmentId>,
+    pub local_author_label: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -87,6 +124,161 @@ pub struct ProjectSummary {
     pub source_unlinked_count: u64,
     pub target_unlinked_count: u64,
     pub revision_id: RevisionId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RevisionListResponse {
+    pub project_id: ProjectId,
+    pub current_revision_id: RevisionId,
+    pub revisions: Vec<Revision>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SegmentRevisionDiff {
+    pub segment_id: SegmentId,
+    pub before: Option<Segment>,
+    pub after: Option<Segment>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct OrderRevisionDiff {
+    pub document_id: DocumentId,
+    pub before: Option<SegmentOrder>,
+    pub after: Option<SegmentOrder>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AlignmentRevisionDiff {
+    pub alignment_id: AlignmentId,
+    pub before: Option<Alignment>,
+    pub after: Option<Alignment>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RevisionComparison {
+    pub project_id: ProjectId,
+    pub from_revision_id: RevisionId,
+    pub to_revision_id: RevisionId,
+    pub segment_changes: Vec<SegmentRevisionDiff>,
+    pub order_changes: Vec<OrderRevisionDiff>,
+    pub alignment_changes: Vec<AlignmentRevisionDiff>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SearchSegmentsRequest {
+    pub project_id: ProjectId,
+    pub query: String,
+    pub regex: bool,
+    pub case_sensitive: bool,
+    pub language_id: Option<String>,
+    pub base_revision_id: RevisionId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SegmentSearchHit {
+    pub segment_id: SegmentId,
+    pub document_id: DocumentId,
+    pub language_id: String,
+    pub content: String,
+    pub alignment_id: Option<AlignmentId>,
+    pub revision_id: RevisionId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SearchSegmentsResponse {
+    pub revision_id: RevisionId,
+    pub hits: Vec<SegmentSearchHit>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReplacePreviewRequest {
+    pub project_id: ProjectId,
+    pub query: String,
+    pub replacement: String,
+    pub regex: bool,
+    pub case_sensitive: bool,
+    pub language_id: Option<String>,
+    pub base_revision_id: RevisionId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReplacePreviewItem {
+    pub segment_id: SegmentId,
+    pub before: String,
+    pub after: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReplacePreviewResponse {
+    pub base_revision_id: RevisionId,
+    pub selected_segment_ids: Vec<SegmentId>,
+    pub items: Vec<ReplacePreviewItem>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReplaceApplyRequest {
+    pub preview: ReplacePreviewRequest,
+    pub selected_segment_ids: Vec<SegmentId>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct BookmarkCreateRequest {
+    pub segment_id: SegmentId,
+    pub alignment_id: Option<AlignmentId>,
+    pub label: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct BookmarkUpdateRequest {
+    pub bookmark_id: BookmarkId,
+    pub segment_id: SegmentId,
+    pub alignment_id: Option<AlignmentId>,
+    pub label: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AnnotationCreateRequest {
+    pub title: String,
+    pub body: String,
+    pub status: AnnotationStatus,
+    pub linked_segment_ids: Vec<SegmentId>,
+    pub alignment_id: Option<AlignmentId>,
+    pub local_author_label: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AnnotationUpdateRequest {
+    pub annotation_id: AnnotationId,
+    pub title: String,
+    pub body: String,
+    pub status: AnnotationStatus,
+    pub linked_segment_ids: Vec<SegmentId>,
+    pub alignment_id: Option<AlignmentId>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExportFormat {
+    Txt,
+    Json,
+    Xml,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ExportRequest {
+    pub format: ExportFormat,
+    pub output_path: String,
+    #[serde(default = "default_true")]
+    pub include_unlinked: bool,
+    #[serde(default = "default_separator")]
+    pub side_separator: String,
+}
+
+fn default_true() -> bool {
+    true
+}
+fn default_separator() -> String {
+    " ".into()
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -124,10 +316,13 @@ pub enum CommandKind {
     ApplySegmentation,
     UpdateSegment,
     MoveSegment,
+    LinkSegments,
+    UnlinkAlignment,
+    MergeAlignments,
+    SplitAlignment,
     CreateAlignment,
     DeleteAlignment,
     MergeAlignment,
-    SplitAlignment,
     CreateAnnotation,
     UpdateAnnotation,
     DeleteAnnotation,
@@ -167,34 +362,27 @@ pub struct AlignmentSelectionPayload {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct LinkSegmentsPayload {
+    pub source_segment_ids: Vec<SegmentId>,
+    pub target_segment_ids: Vec<SegmentId>,
+    /// Existing active relations are only removed after an explicit user
+    /// confirmation. Omitting this field is equivalent to `false`.
+    #[serde(default)]
+    pub replace_existing: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SplitAlignmentPayload {
+    pub alignment_id: AlignmentId,
+    /// Groups are paired by index. Every group must be non-empty and the
+    /// groups must partition the original alignment references.
+    pub source_groups: Vec<Vec<SegmentId>>,
+    pub target_groups: Vec<Vec<SegmentId>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct AlignmentRefPayload {
     pub alignment_id: AlignmentId,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct SegmentSearchHit {
-    pub segment_id: SegmentId,
-    pub document_id: DocumentId,
-    pub language_id: String,
-    pub content: String,
-    pub alignment_id: Option<AlignmentId>,
-    pub revision_id: RevisionId,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct SearchSegmentsRequest {
-    pub project_id: ProjectId,
-    pub query: String,
-    pub regex: bool,
-    pub case_sensitive: bool,
-    pub language_id: Option<String>,
-    pub base_revision_id: RevisionId,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct SearchSegmentsResponse {
-    pub revision_id: RevisionId,
-    pub hits: Vec<SegmentSearchHit>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

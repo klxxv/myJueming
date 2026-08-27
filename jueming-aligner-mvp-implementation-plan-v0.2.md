@@ -1,9 +1,9 @@
 # 决明对齐器（Jueming Aligner）MVP 实施计划
 
 > 计划版本：v0.2  
-> 计划状态：Phase 1 Vertical Slice Implemented / Validation In Progress
+> 计划状态：MVP Feature Complete / Windows & Visual Validation In Progress
 > 适用阶段：本地优先、单机、人工对齐 MVP  
-> 当前阶段：Phase 1 的导入、分段、`.jm` 持久化、稳定 ID 与统一工作区已接通；进入人工 Alignment 与桌面验收
+> 当前阶段：Phase 1–6 的本地功能链路已接通；正在执行真实“阿古顿巴”语料、Windows Tauri 桌面操作与效果图同屏验收
 > 固定技术主线：Tauri 2 + Rust Kernel + Vue 3 + TypeScript  
 > 参考资料：`jueming_global_architecture_handoff_v0.2.md`、`jueming-aligner-mvp-functional-spec-v0.1.md`、`MVP效果图/` 下七张效果图、2026-08-27 前端路线与 SISU 减法实现历史对话
 
@@ -737,7 +737,7 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 ### Phase 1：Project、Import、Segmentation、Persistence
 
-实现状态（2026-08-28）：核心垂直链路已实现。Tauri 文件选择器可分别选择原文/译文，Rust Kernel 支持 UTF-8、UTF-8 BOM、Windows 严格 GB18030、非空行/规则分句/SISU 标记行 profile；创建工程会生成稳定 UUIDv7 ID、暂定 1:1 布局与原子写入的 `.jm/project.json`，打开、显式保存、编辑自动保存、顺序变更自动保存均经过 Tauri `KernelClient` 边界并追加 Revision。政府报告 fixture 的 create/open、编辑重开、重排稳定 ID 与多余目标段未链接均已有单元测试。大列表虚拟化与实际桌面 Computer Use 归入 Phase 2/最终验收，不以本条状态替代整体验收。
+实现状态（2026-08-28）：核心垂直链路已实现。Tauri 文件选择器可分别选择原文/译文，Rust Kernel 支持 UTF-8、UTF-8 BOM、Windows 严格 GB18030、非空行/规则分句/SISU 标记行 profile；创建工程会生成稳定 UUIDv7 ID、暂定 1:1 布局与原子写入的 `.jm/project.json`，打开、显式保存、编辑自动保存、顺序变更自动保存均经过 Tauri `KernelClient` 边界并追加 Revision。政府报告 fixture 的 create/open、编辑重开、重排稳定 ID 与多余目标段未链接均已有单元测试。大列表虚拟化已在 Phase 2 接通；实际桌面 Computer Use 仍属于最终验收，不以本条状态替代整体验收。
 
 实现：Tauri 2 + Vue 3 应用壳、KernelClient、工程创建/打开、TXT/Paste、UTF-8/BOM/GB18030 解码预览、普通行/规则分句/旧版标注行三种导入 profile、稳定 ID、初始布局、工程目录、保存与重开、TanStack Virtual 最小列表。
 
@@ -747,6 +747,8 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 ### Phase 2：Parallel Review 与人工 Alignment
 
+实现状态（2026-08-28）：已实现 Alignment-centric 双栏 ViewModel、TanStack 可变高度虚拟列表、稳定 ID 选中/跳转、未对齐行以及 Link / Unlink / Merge / Split。Rust 测试覆盖 1:1、1:n、n:1、n:m、显式替换占用、非法选择回滚及重开一致性；等待 Windows UI 主路径验收。
+
 实现：`ParallelWorkspace`、`ParallelViewport`、`AlignmentViewportController`、双栏 Slice 加载、可变高度虚拟滚动、selection、AlignmentId 双向定位、inline Context Lens、未对齐状态、Link / Unlink / Merge / Split、对齐校验。
 
 依赖：Phase 1。
@@ -754,6 +756,8 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 退出条件：1:1、1:2、2:1、2:2、n:m 均可创建、显示、保存、重开；非法重复占用被拒绝且不污染 Revision。
 
 ### Phase 3：Edit、Order、Undo / Redo
+
+实现状态（2026-08-28）：已实现双击单句编辑、取消/保存、上移/下移、真实拖拽落盘、进入 Order 模式时的顺序基线恢复，以及持久 Undo / Redo。编辑控件当前使用原生 `textarea`，因 MVP 只编辑单个 Segment，未引入 CodeMirror；这不改变 Segment/Revision 合同，当前 View Find 与高级编辑器快捷键留在发布候选收口项。
 
 实现：CodeMirror 6 单句编辑、取消、当前 View Find、增量失效、上移/下移/首尾移动/拖拽、crossing 提示、`ViewModeController`、Command 逆操作、会话撤销重做。
 
@@ -763,6 +767,8 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 ### Phase 4：Search / Replace、Bookmark、单机批注
 
+实现状态（2026-08-28）：Rust Kernel 已实现普通/大小写/正则/语言侧 Project Search、带 base revision 的替换预览与一次 Revision 原子提交、Bookmark CRUD、HumanAnnotation CRUD/Resolve；Vue 已接入结果跳转、替换预览、书签页和批注 Rail。待真机验证焦点、键盘和大列表跳转。
+
 实现：`Ctrl+Shift+F` Kernel Project Search、基础索引、普通/大小写/正则搜索、`CorpusQueryView`、平行上下文跳转、替换预览与原子提交、书签、批注 gutter 和侧栏。
 
 依赖：Phase 3 的 ChangeSet 和 Slice。
@@ -771,6 +777,8 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 ### Phase 5：Autosave 与持久 History
 
+实现状态（2026-08-28）：所有 canonical 写操作均原子保存当前 snapshot 与对应 Revision snapshot；已实现 Revision 列表、结构化 compare、Undo、Redo、Restore-as-new-revision 和双栏 History。工程格式 v0.1 采用 `.jm/project.json + revisions/*.json`，由 `jueming-storage` 隔离；SQLite/Chunk backend 是可替换实现而非 MVP 必需条件。故障安全由同目录临时文件 + 原子替换和重开测试覆盖，最终仍需 Windows 强制终止演练。
+
 实现：Operation Log、延迟 flush、手动 flush、崩溃恢复、Text/Alignment/Project 三种 History 投影、CodeMirror unified/side-by-side diff、恢复为新 Revision、保存状态 UI。
 
 依赖：Phase 1–4 的全部 canonical Command。
@@ -778,6 +786,8 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 退出条件：在故障注入点强制终止进程，工程仍能打开到最后完整提交；恢复旧版本不删除后续历史。
 
 ### Phase 6：Export、Settings 与视觉收口
+
+实现状态（2026-08-28）：TXT/JSON/XML 原子导出、Light/Eye Care、界面缩放、侧栏折叠、离线状态、空状态、错误反馈和主效果图结构均已接入。前端 production build 与严格类型检查通过；同尺寸视觉对照和 Tauri 文件对话框全链路正在验收。
 
 实现：TXT/JSON/XML、导出校验、字体/字号/主题/UI 缩放、vue-i18n 文案、快捷键、空状态、错误状态、design tokens、与效果图一致的主布局。
 

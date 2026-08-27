@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-MVP Phase 1 核心垂直链路已接通：Tauri 文件选择、每侧独立编码/分段预览、稳定 ID、暂定布局、`.jm` 原子持久化、打开/保存、编辑和重排 Revision 已实现。政府报告 fixture 的 create/open、编辑重开、重排稳定 ID 与多余目标段未链接均有测试；前端生产构建、Rust Clippy/test 和 Windows 调试可执行文件构建已通过。下一阶段是人工 Alignment、虚拟化以及真实桌面验收。
+MVP 功能代码已进入整体验收：Tauri 文件选择、双侧独立编码/分段预览、稳定 ID、暂定布局、`.jm` 原子持久化、可变高度虚拟列表、人工 Link/Unlink/Merge/Split、编辑与拖拽重排、Undo/Redo、搜索/原子替换、书签、单机批注、持久 History、TXT/JSON/XML 导出及本地外观设置均已接入 Rust Kernel。Rust 全工作区测试（26 项）、Clippy `-D warnings` 与前端生产构建已通过；Windows Tauri 真机操作和效果图同屏对照仍是完成标记前的最后质量门。
 
 ## 主要文档
 
@@ -26,8 +26,10 @@ Tauri 2 Desktop
   → TypeScript KernelClient
   → Tauri Command / Query / Event
   → Rust Kernel
-  → SQLite + Operation Log + Chunk/Slice Storage
+  → .jm Atomic Snapshot + Append-only Revision Storage
 ```
+
+当前工程格式 v0.1 在 `jueming-storage` 边界内使用原子 JSON snapshot 与逐 Revision 文件；未来切换 SQLite/Chunk backend 不改变 `KernelClient` 或核心 ID 合同。
 
 以下命令从仓库根目录运行。
 

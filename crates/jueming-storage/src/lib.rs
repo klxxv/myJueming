@@ -40,6 +40,10 @@ impl ProjectLayout {
         self.root.join(SNAPSHOT_FILE)
     }
 
+    pub fn revision_snapshot_path(&self, revision_id: impl std::fmt::Display) -> PathBuf {
+        self.revisions_dir().join(format!("{revision_id}.json"))
+    }
+
     pub fn revisions_dir(&self) -> PathBuf {
         self.root.join("revisions")
     }
@@ -80,6 +84,35 @@ impl ProjectLayout {
 
     pub fn read_snapshot<T: DeserializeOwned>(&self) -> Result<T, StorageError> {
         let path = self.snapshot_path();
+        let bytes = fs::read(&path).map_err(|source| StorageError::Io {
+            path: path.clone(),
+            source,
+        })?;
+        serde_json::from_slice(&bytes).map_err(|source| StorageError::Json { path, source })
+    }
+
+    /// Persist one complete, independently reopenable revision snapshot. The
+    /// snapshot contains ordinary canonical DTOs only; it never embeds another
+    /// snapshot, so history growth is linear rather than recursive.
+    pub fn write_revision_snapshot<T: Serialize>(
+        &self,
+        revision_id: impl std::fmt::Display,
+        value: &T,
+    ) -> Result<(), StorageError> {
+        self.ensure()?;
+        let path = self.revision_snapshot_path(revision_id);
+        let bytes = serde_json::to_vec_pretty(value).map_err(|source| StorageError::Json {
+            path: path.clone(),
+            source,
+        })?;
+        write_bytes_atomic(&path, &bytes)
+    }
+
+    pub fn read_revision_snapshot<T: DeserializeOwned>(
+        &self,
+        revision_id: impl std::fmt::Display,
+    ) -> Result<T, StorageError> {
+        let path = self.revision_snapshot_path(revision_id);
         let bytes = fs::read(&path).map_err(|source| StorageError::Io {
             path: path.clone(),
             source,
