@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type LanguageSide = "source" | "target";
 export type WorkspaceMode = "review" | "edit" | "order" | "history";
-export type Encoding = "utf-8" | "utf-8-bom" | "gb18030";
+export type Encoding = "utf8" | "utf8-bom" | "gb18030";
 export type SegmentationMode = "non_empty_line" | "sentence_rules" | "legacy_tagged_line";
 
 export interface SegmentDto {

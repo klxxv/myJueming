@@ -8,11 +8,13 @@ export type SearchSide = "both" | "source" | "target";
 
 export interface SearchResult {
   id: string;
+  label?: string;
   sourceId?: string | null;
   targetId?: string | null;
   sourceText: string;
   targetText: string;
   alignmentId?: string | null;
+  alignmentLabel?: string;
 }
 
 export interface SearchQueryOptions {
@@ -162,11 +164,11 @@ const openReplacePreview = () => {
     <div class="sr-table">
       <div class="sr-table-head"><span>ID</span><span>中文（上下文）</span><span>匹配词</span><span>English（上下文）</span><span>对齐 ID</span></div>
       <button v-for="result in matchingResults" :key="result.id" class="sr-row" type="button" @click="emit('select-result', result)">
-        <span class="sr-id">{{ result.id }}</span>
+        <span class="sr-id" :title="result.id">{{ result.label ?? result.id }}</span>
         <span class="sr-context"><template v-for="(chunk, index) in parts(result.sourceText)" :key="`${result.id}-source-${index}`"><mark v-if="chunk.match">{{ chunk.text }}</mark><template v-else>{{ chunk.text }}</template></template></span>
         <mark class="sr-match">{{ query || "—" }}</mark>
         <span class="sr-context"><template v-for="(chunk, index) in parts(result.targetText)" :key="`${result.id}-target-${index}`"><mark v-if="chunk.match">{{ chunk.text }}</mark><template v-else>{{ chunk.text }}</template></template></span>
-        <span class="sr-alignment">{{ result.alignmentId ?? "—" }}</span>
+        <span class="sr-alignment" :title="result.alignmentId ?? undefined">{{ result.alignmentLabel ?? result.alignmentId ?? "—" }}</span>
       </button>
       <div v-if="!matchingResults.length" class="sr-empty"><Filter :size="18" />输入查询条件后显示句段结果。</div>
     </div>

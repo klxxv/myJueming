@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-MVP 功能代码已进入整体验收：Tauri 文件选择、双侧独立编码/分段预览、稳定 ID、暂定布局、`.jm` 原子持久化、可变高度虚拟列表、人工 Link/Unlink/Merge/Split、编辑与拖拽重排、Undo/Redo、搜索/原子替换、书签、单机批注、持久 History、TXT/JSON/XML 导出及本地外观设置均已接入 Rust Kernel。Rust 全工作区测试（26 项）、Clippy `-D warnings` 与前端生产构建已通过；Windows Tauri 真机操作和效果图同屏对照仍是完成标记前的最后质量门。
+MVP 功能代码已完成本地桌面闭环：Tauri 文件选择、双侧独立编码/分段预览、稳定 ID、暂定布局、`.jm` 原子持久化、可变高度虚拟列表、人工 Link/Unlink/Merge/Split、编辑与拖拽重排、Undo/Redo、搜索/原子替换、书签、单机批注、持久 History、TXT/JSON/XML 导出及本地外观设置均已接入 Rust Kernel。Windows Tauri 已用根目录真实“阿古顿巴”文件完成 GB18030/UTF-8 导入、307×308 不等段布局、编辑、搜索、重排、书签、批注、历史、TXT 导出和关闭重开；Review、Edit、Order、Search、Annotation、History 六个 P0 状态已完成同尺寸效果图结构验收。Rust 全工作区测试（26 项）、Clippy `-D warnings`、前端生产构建与 Tauri debug 构建均已通过。POS、Lemma、自动语义对齐、OCR、云协作和外部插件加载明确延期。
 
 ## 主要文档
 

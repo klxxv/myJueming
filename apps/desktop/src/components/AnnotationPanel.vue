@@ -10,6 +10,7 @@ export type AnnotationFilter = "all" | AnnotationStatus;
 export interface AnnotationLink {
   side: "source" | "target";
   segmentId: string;
+  label?: string;
   text?: string;
 }
 
@@ -110,7 +111,7 @@ const submitEdit = (annotationId: string) => {
           </template>
           <template v-else>
             <h3>{{ annotation.title }}</h3><p>{{ annotation.body }}</p>
-            <div v-if="annotation.links.length" class="annotation-links"><span v-for="link in annotation.links" :key="`${annotation.id}-${link.side}-${link.segmentId}`">{{ link.side === "source" ? "中文（原文）" : "English（译文）" }} <b>{{ link.segmentId }}</b><small v-if="link.text">{{ link.text }}</small></span></div>
+            <div v-if="annotation.links.length" class="annotation-links"><span v-for="link in annotation.links" :key="`${annotation.id}-${link.side}-${link.segmentId}`">{{ link.side === "source" ? "中文（原文）" : "English（译文）" }} <b :title="link.segmentId">{{ link.label ?? link.segmentId }}</b><small v-if="link.text">{{ link.text }}</small></span></div>
             <footer class="annotation-card-actions"><button type="button" @click.stop="startEdit(annotation)"><Pencil :size="13" />编辑</button><button type="button" @click.stop="emit('delete', annotation.id)"><Trash2 :size="13" />删除</button><button v-if="annotation.status !== 'resolved'" class="annotation-resolve" type="button" @click.stop="emit('resolve', annotation.id)"><Check :size="13" />标记已解决</button></footer>
           </template>
         </div>

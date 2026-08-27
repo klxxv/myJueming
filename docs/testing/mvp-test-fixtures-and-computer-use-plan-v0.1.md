@@ -3,7 +3,7 @@
 > 文档版本：v0.1  
 > 盘点日期：2026-08-27  
 > 适用范围：Tauri 2 + Rust Kernel + Vue 3 + TypeScript 的 Windows 单机 MVP  
-> 当前状态：前置盘点完成；应用尚未创建，Computer Use 脚本只定义步骤，不执行自动化
+> 当前状态：应用与真实工程均已创建；CU-10、核心桌面闭环与六张 P0 效果图结构验收已执行
 
 ## 1. 目的与证据边界
 
@@ -20,7 +20,36 @@
 | MVP效果图/*.png | 视觉和交互状态证据；不是完整功能规格 | 否，是截图对比基线 |
 | 本文件 | 将上述约束转成可重复的测试素材与验收脚本 | 后续测试执行依据 |
 
-当前仓库仅做了 Git 初始化，尚无应用脚手架。因此本文件不会把“找不到可启动应用”误报成产品缺陷；在脚手架和安装包产出前，Computer Use 只能处于待执行状态。
+本文件最初用于 Phase 0 前置盘点，现保留原始检查项作为审计记录。2026-08-28 已生成 Tauri/Vue/Rust workspace、debug 桌面可执行文件和真实 `.jm` 工程；下文凡写“尚未创建/待执行”的早期盘点结论，以本节后的执行记录为准。
+
+### 1.1 2026-08-28 实际执行记录
+
+| 验证路径 | 实际结果 |
+|---|---|
+| 中文/英文导入 | `A_阿古顿巴.txt` 以 GB18030 + SISU 标记行导入 307 段；`A_Akhu Tenpa.txt` 以 UTF-8 + SISU 标记行导入 308 段；预览无乱码、无 `<seg>`/POS 后缀泄漏 |
+| 初始布局 | 307 个 provisional Alignment，末尾 1 个 target unlinked；虚拟列表可滚到 000307/000308 |
+| Edit/History | 首段英文改为 `Akhu Tenpa [verified]`，Undo/Redo 正常，R1 与当前 Revision 可比较 |
+| Search | Project Search 查询 `Akhu` 返回 82 条，可跳回对应 Alignment；结果使用六位展示编号和稳定 ID 锚点 |
+| Order/Alignment | Source 上移与恢复顺序正常；Unlink 后计数降为 306/308，Undo 恢复 307/308 |
+| Bookmark/Annotation | 首段书签和 Draft 批注持久化；批注关联中文/英文 000001，Rail 压缩正文而非覆盖 |
+| Save/Open/Export | 关闭应用后从 `test-output/阿古顿巴_中英对齐.jm` 重开成功；TXT 导出首行为 `1:1\t阿古顿巴\tAkhu Tenpa [verified]` |
+
+仍未宣告通过的发布专项：强制终止故障注入、安装包冷机依赖检查和 Medium/Stress 性能基线。POS 图只作延期反证，不作为待实现页面。
+
+### 1.2 2026-08-28 六屏同尺寸视觉验收
+
+六张参考图与对应 Tauri 实现截图已按一对一顺序放入同一次视觉比较输入，而不是分别凭记忆判断。截图证据保存在被 Git 忽略的 `test-output/qa/`，避免把运行产物混入源码提交。
+
+| 状态 | 结论 | 已接受的有意差异 |
+|---|---|---|
+| Review / 平行阅读 | 顶栏、左侧导航、双栏、连接区、选中双色和底栏结构通过 | 使用真实阿古顿巴语料，行高与政府报告示意内容不同 |
+| Edit / 平行修改 | 行内编辑、保存/取消、字数和配对锚点通过 | MVP 一次只编辑一个 Segment，因此只展开目标侧编辑器 |
+| Order / 语句重排 | 排序工具栏、拖拽手柄、上/下移与恢复顺序通过 | 最终截图为静止态；真实拖拽和落点已另行实机验证 |
+| Search / 搜索与替换 | 查询栏、结果表、六位编号、命中高亮和跳转通过 | 当前以结果表和替换预览对话框承载工作流，不复制示意图底部常驻预览 |
+| Annotation / 单机批注 | Rail 压缩正文、状态、关联片段与模式上下文通过 | 真实工程只有一条批注；不叠加已明确延期的 POS token 层 |
+| History / 自动保存与历史 | 时间线、版本选择、双栏文本 Diff、恢复入口和增删色通过 | 采用结构化文本 Diff，不复制示意图中的人工自然语言变更摘要 |
+
+本次结论是“核心结构与关键状态通过”，不是逐像素一致声明。POS 效果图未纳入六屏通过数，只验证入口不伪装为已实现能力。
 
 ## 2. 当前仓库盘点
 
@@ -29,14 +58,14 @@
 | 检查项 | 当前证据 | 结论 |
 |---|---|---|
 | Git 仓库 | .git 目录存在，分支为 main | 已初始化并已统一主分支名称 |
-| Git 提交 | git log 无提交，显示 No commits yet | 尚无基线提交 |
-| 工作区 | .gitignore、README、三份根级 Markdown、效果图、Phase 0 docs 和 Tiny fixture 均未跟踪 | 仍无应用代码可启动；等待 Phase 0 基线提交 |
-| 前端 manifest | package.json 不存在 | 尚未创建 Node/Vue 工程 |
-| Rust manifest | Cargo.toml 不存在 | 尚未创建 Tauri/Rust workspace |
-| Tauri 配置 | src-tauri/tauri.conf.json 不存在 | 尚无可启动桌面应用 |
-| 测试目录 | docs/design、docs/architecture、docs/adr、docs/testing 与 tests/fixtures 已创建 | Tiny fixture 和规范已存在；tests/e2e、benchmarks 随脚手架建立 |
+| Git 提交 | main 已有 Phase 0、脚手架、核心工程链路和功能闭环四个关键节点提交 | 当前收口变化将在视觉/真实语料验收节点提交 |
+| 工作区 | 根目录文档、效果图、fixtures、Vue/Tauri/Rust 源码均已跟踪；`test-output/` 被忽略 | 运行证据与用户语料不进入源码提交 |
+| 前端 manifest | 根 `package.json` 与 `apps/desktop/package.json` 存在 | Vue 3 + TypeScript + Vite 工程可生产构建 |
+| Rust manifest | 根 `Cargo.toml` 与 crates workspace 存在 | Kernel、storage、Tauri host 均可测试和 Clippy |
+| Tauri 配置 | `apps/desktop/src-tauri/tauri.conf.json` 存在 | debug 桌面应用可构建、启动并完成文件对话框流程 |
+| 测试目录 | docs/design、docs/architecture、docs/adr、docs/testing 与 tests/fixtures 已创建 | Tiny fixture 用于确定性测试，真实语料用于兼容验收 |
 
-本子任务不创建上述应用脚手架，也不修改其他现有文件。
+上表反映 2026-08-28 收口状态；早期盘点中的缺失项已由实现阶段补齐。
 
 ### 2.2 文件清单与测试相关性
 
@@ -64,17 +93,15 @@
 | SISU Aligner 2.0.0软件及说用说明.zip | 55,394,169 bytes | 旧版安装包归档 | 否；归档内仅有 exe 与说明 PDF |
 | SISU Aligner 2.0.0.exe | 54,678,693 bytes | 旧版 Windows 程序 | 否；不能作为 Jueming MVP 被测应用 |
 
-当前有两类双语絍收材料：`tests/fixtures/government-report/` 下的 8+8 UTF-8 TXT 用于确定性断言与视觉截图；根目录“阿古顿巴”双语 TXT 用于 GB18030/UTF-8、旧版标注行和左右段数不等的真实兼容性验收。应用尚未生成，因此两类都不能标记为“已通过”。
+当前有两类双语验收材料：`tests/fixtures/government-report/` 下的 8+8 UTF-8 TXT 用于确定性断言与视觉截图；根目录“阿古顿巴”双语 TXT 用于 GB18030/UTF-8、旧版标注行和左右段数不等的真实兼容性验收。两类材料均已进入实际测试；阿古顿巴完整桌面路径的结果见 1.1。
 
-### 2.3 现有缺口
+### 2.3 剩余发布级缺口
 
-1. Tiny 8+8 source/target UTF-8 TXT、基础 manifest 与本地真实“阿古顿巴”语料已存在，但尚未有应用执行导入。
-2. 缺少覆盖 1:2、2:1、2:2、n:m、unlinked 的结构 fixture，以及 Small、Medium、Stress fixture。
-3. 缺少 app/package/Cargo lockfile，暂不能构建、启动或截图。
-4. 缺少导出 TXT/JSON/XML 的 golden files。
-5. 缺少故障注入点和可重复的自动保存恢复测试入口。
-6. 缺少截图采集命名规则、同尺寸窗口和像素/结构比对工具配置。
-7. 旧版 SISU 可作为产品使用习惯参考，但不是 Jueming 架构和功能验收证据。
+1. 1:2、2:1、2:2、n:m、unlinked 已有 Kernel 测试，但仍需补充 Small、Medium、Stress 文件级 fixture。
+2. TXT/JSON/XML 已有单元测试与 TXT 实机导出，三种格式的外部 golden round-trip 报告仍待发布阶段补齐。
+3. 原子写入与重开已有测试，强制终止故障注入仍待执行。
+4. 同尺寸结构比较已完成；125%/150% DPI 和窄窗口响应式截图仍待发布回归。
+5. 旧版 SISU 只作为产品使用习惯和输入兼容参考，不是 Jueming 架构和功能验收证据。
 
 ## 3. Windows/Tauri 构建前置盘点
 
@@ -97,7 +124,7 @@
 | Tauri CLI | cargo-tauri、tauri 均未找到 | 尚未安装；后续从项目本地 devDependency 或 cargo tauri CLI 固定版本，不在本盘点阶段安装 |
 | PDF 文本工具 | pdftotext 未找到 | 旧版说明 PDF 目前只做资产清单，不作为 fixture 解析 |
 
-构建前置的当前结论是“系统编译环境基本具备，项目工具链和应用工程缺失”。不要用旧版 SISU Aligner 2.0.0.exe 代替 Jueming 应用进行验收。
+构建前置的当前结论是“系统编译环境、固定项目工具链与应用工程均已可用”。旧版 SISU Aligner 2.0.0.exe 只用于参考，不得代替 Jueming 应用验收。
 
 建议在 Phase 0 结束时补充并冻结：
 
@@ -381,15 +408,13 @@ GPU、CPU、内存、磁盘、显示器和 DPI 必须在第一次真正 benchmar
 | T12 | Performance | 第 7 节报告 | 达到冻结后的门槛且可复现 |
 | T13 | GB18030/旧版标注行真实语料 | CU-10、导入计数、原文件 hash、导出 JSON | 307+308 段可预览、保存、重开、搜索和导出；无乱码、无标记泄漏、原文件未改写 |
 
-在应用脚手架、fixture、构建包和截图工具均存在前，T01–T12 的证据状态应标记为“待执行”，不能标记为通过。本盘点已证明的只有“系统前置基本可用”和“参考素材存在”。
+当前 T01–T11 和 T13 的核心路径已有自动化或 Windows 实机证据；T12 性能、故障注入和干净环境安装仍属于发布级待执行项。具体通过范围以 1.1、1.2 和各测试命令结果为准，不把尚未执行的专项外推为通过。
 
-## 9. Phase 0 后续动作
+## 9. 发布前后续动作
 
-1. 由主任务创建 Tauri 2/Vue 3 workspace，并提交精确版本和 lockfile。
-2. 以现有 tests/fixtures/government-report Tiny fixture 和 fixture.json 为 CU-01 到 CU-09 的起点；以根目录“阿古顿巴”文件执行 CU-10；补建复杂 Alignment、其他异常编码和规模 fixture。
-3. 创建截图基线目录和命名约定，先固定 1448×1086，再补 125%/150% DPI。
-4. 把七张参考图拆成 Playwright/Computer Use 的状态断言，不以“看起来像”代替功能断言。
-5. 实现只读导出核对器和 fixture manifest 校验器；实现前不得声称导出 round-trip。
-6. 补采 CPU/GPU/RAM/磁盘/DPI，并冻结 benchmark 机器。
-7. 安装/固定 Tauri CLI 后做最小 Windows smoke test，确认 WebView2、开发运行和打包运行均可用。
-8. 每个关键节点由主任务按团队约定提交 Git，并在截图报告记录对应 commit；本子任务不创建提交。
+1. 为 Small、Medium、Stress 规模补建文件级 fixture，记录 CPU/GPU/RAM/磁盘/DPI 并冻结 benchmark 机器。
+2. 执行自动保存强制终止故障注入，确认工程只能回到最后完整 Revision。
+3. 在干净 Windows 环境检查安装包、WebView2 依赖提示、首次启动、三格式导出和卸载残留。
+4. 补做 125%/150% DPI、键盘无障碍和窄窗口回归；必要时形成可版本化的图像差异阈值。
+5. 给 TXT/JSON/XML 建立外部 golden files 与 round-trip 报告。
+6. 继续以关键交付节点提交 Git；截图和真实工程保留在忽略目录，不提交用户语料与运行产物。

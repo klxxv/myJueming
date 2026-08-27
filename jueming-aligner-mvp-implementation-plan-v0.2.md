@@ -1,9 +1,9 @@
 # 决明对齐器（Jueming Aligner）MVP 实施计划
 
 > 计划版本：v0.2  
-> 计划状态：MVP Feature Complete / Windows & Visual Validation In Progress
+> 计划状态：MVP Feature Complete / Windows 真实语料验收通过 / 核心视觉验收通过 / Release Hardening 待执行
 > 适用阶段：本地优先、单机、人工对齐 MVP  
-> 当前阶段：Phase 1–6 的本地功能链路已接通；正在执行真实“阿古顿巴”语料、Windows Tauri 桌面操作与效果图同屏验收
+> 当前阶段：Phase 1–6 的本地功能链路与六张 P0 效果图结构验收已完成；“阿古顿巴”307×308 工程已完成 Windows Tauri 桌面闭环，后续工作进入故障注入、规模性能与安装包冷机检查
 > 固定技术主线：Tauri 2 + Rust Kernel + Vue 3 + TypeScript  
 > 参考资料：`jueming_global_architecture_handoff_v0.2.md`、`jueming-aligner-mvp-functional-spec-v0.1.md`、`MVP效果图/` 下七张效果图、2026-08-27 前端路线与 SISU 减法实现历史对话
 
@@ -15,7 +15,7 @@
 
 ```text
 新建或打开工程
-  → 粘贴或导入双语普通 / 旧版标注 TXT
+  → 导入双语普通 / 旧版标注 TXT（Kernel 保留 Paste 输入合同）
   → 规则分句并预览
   → 生成初始平行布局
   → 人工 Link / Unlink / Merge / Split
@@ -77,6 +77,19 @@ MVP 不实现自动 NLP 或云能力。完整架构中相关能力只注册稳�
 - “单机批注”是用户创建的审校意见，属于 Human Annotation Layer；
 - “POS / Lemma / NER”是机器生成的语言学 Annotation Layer；
 - 本 MVP 只实现前者。两者不能共用一个含义模糊的业务对象。
+
+### 2.4 SISU 参考中实际采纳的实现减法
+
+本轮新增的 SISU 历史对话只作为实现参考，不扩大需求，也不覆盖决明效果图。采纳以下对当前实现有直接收益的部分：
+
+1. 以“双栏文本 → 人工句级关系 → 保存/重开 → 导出”为最短产品主链，避免先做完整语料分析平台；
+2. 首版只绑定内置 TXT/Paste、规则分段、人工 Alignment、基础字符串索引和 TXT/JSON/XML Exporter，Tauri 内全部走 in-process `KernelClient`；
+3. 底层继续使用稳定 `Segment`、`SegmentOrder` 与 `Alignment`，不因界面看似“文本行”而退回数组下标身份；
+4. SISU 的剪切粘贴式调整提升为显式 `Link / Unlink / Merge / Split / MoveSegment`，每次操作形成 ChangeSet 与 Revision；
+5. 保留 Order Mode，因为它成本低、直接改善人工对齐；编辑保持单 Segment 轻量控件，不引入整篇富文本；
+6. POS、Lemma、自动语义对齐、Embedding、OCR、云协作和外部插件加载保持 `UNBOUND` / 延期，不进入 MVP 主链。
+
+不采纳其“只有四个页面”和“History 只做会话撤销”的更激进裁剪。搜索替换、书签、单机批注和持久 History 已由决明效果图确认，继续属于本 MVP。桌面新建向导当前优先真实 TXT 文件；`TextInput::Paste` 已在 Rust Kernel 与 TypeScript 合同中实现，粘贴入口作为后续小迭代，不阻塞本次文件型语料闭环。
 
 ---
 
@@ -737,7 +750,7 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 ### Phase 1：Project、Import、Segmentation、Persistence
 
-实现状态（2026-08-28）：核心垂直链路已实现。Tauri 文件选择器可分别选择原文/译文，Rust Kernel 支持 UTF-8、UTF-8 BOM、Windows 严格 GB18030、非空行/规则分句/SISU 标记行 profile；创建工程会生成稳定 UUIDv7 ID、暂定 1:1 布局与原子写入的 `.jm/project.json`，打开、显式保存、编辑自动保存、顺序变更自动保存均经过 Tauri `KernelClient` 边界并追加 Revision。政府报告 fixture 的 create/open、编辑重开、重排稳定 ID 与多余目标段未链接均已有单元测试。大列表虚拟化已在 Phase 2 接通；实际桌面 Computer Use 仍属于最终验收，不以本条状态替代整体验收。
+实现状态（2026-08-28）：核心垂直链路已实现并通过真实桌面验证。Tauri 文件选择器可分别选择原文/译文，Rust Kernel 支持 UTF-8、UTF-8 BOM、Windows 严格 GB18030、非空行/规则分句/SISU 标记行 profile；创建工程会生成稳定 UUIDv7 ID、暂定 1:1 布局与原子写入的 `.jm/project.json`，打开、显式保存、编辑自动保存、顺序变更自动保存均经过 Tauri `KernelClient` 边界并追加 Revision。政府报告 fixture 的 create/open、编辑重开、重排稳定 ID 与多余目标段未链接均已有单元测试；真实“阿古顿巴”已从 UI 导入为 source 307、target 308、307 个 Alignment 和 1 个 target unlinked，并在关闭应用后从 `.jm` 文件夹重开成功。
 
 实现：Tauri 2 + Vue 3 应用壳、KernelClient、工程创建/打开、TXT/Paste、UTF-8/BOM/GB18030 解码预览、普通行/规则分句/旧版标注行三种导入 profile、稳定 ID、初始布局、工程目录、保存与重开、TanStack Virtual 最小列表。
 
@@ -747,7 +760,7 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 ### Phase 2：Parallel Review 与人工 Alignment
 
-实现状态（2026-08-28）：已实现 Alignment-centric 双栏 ViewModel、TanStack 可变高度虚拟列表、稳定 ID 选中/跳转、未对齐行以及 Link / Unlink / Merge / Split。Rust 测试覆盖 1:1、1:n、n:1、n:m、显式替换占用、非法选择回滚及重开一致性；等待 Windows UI 主路径验收。
+实现状态（2026-08-28）：已实现 Alignment-centric 双栏 ViewModel、TanStack 可变高度虚拟列表、稳定 ID 选中/跳转、未对齐行以及 Link / Unlink / Merge / Split。Rust 测试覆盖 1:1、1:n、n:1、n:m、显式替换占用、非法选择回滚及重开一致性；Windows UI 已验证 307×308 虚拟列表首尾滚动、Unlink 和 Undo 恢复，不 materialize 全量 DOM。
 
 实现：`ParallelWorkspace`、`ParallelViewport`、`AlignmentViewportController`、双栏 Slice 加载、可变高度虚拟滚动、selection、AlignmentId 双向定位、inline Context Lens、未对齐状态、Link / Unlink / Merge / Split、对齐校验。
 
@@ -767,7 +780,7 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 ### Phase 4：Search / Replace、Bookmark、单机批注
 
-实现状态（2026-08-28）：Rust Kernel 已实现普通/大小写/正则/语言侧 Project Search、带 base revision 的替换预览与一次 Revision 原子提交、Bookmark CRUD、HumanAnnotation CRUD/Resolve；Vue 已接入结果跳转、替换预览、书签页和批注 Rail。待真机验证焦点、键盘和大列表跳转。
+实现状态（2026-08-28）：Rust Kernel 已实现普通/大小写/正则/语言侧 Project Search、带 base revision 的替换预览与一次 Revision 原子提交、Bookmark CRUD、HumanAnnotation CRUD/Resolve；Vue 已接入结果跳转、替换预览、书签页和批注 Rail。Windows UI 已验证 `Ctrl+Shift+F`、82 个 Akhu 命中、结果跳转、书签重开、批注创建与关联片段；展示层统一使用六位人类可读编号，稳定 UUID 仅作为底层锚点和 tooltip。
 
 实现：`Ctrl+Shift+F` Kernel Project Search、基础索引、普通/大小写/正则搜索、`CorpusQueryView`、平行上下文跳转、替换预览与原子提交、书签、批注 gutter 和侧栏。
 
@@ -777,7 +790,7 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 ### Phase 5：Autosave 与持久 History
 
-实现状态（2026-08-28）：所有 canonical 写操作均原子保存当前 snapshot 与对应 Revision snapshot；已实现 Revision 列表、结构化 compare、Undo、Redo、Restore-as-new-revision 和双栏 History。工程格式 v0.1 采用 `.jm/project.json + revisions/*.json`，由 `jueming-storage` 隔离；SQLite/Chunk backend 是可替换实现而非 MVP 必需条件。故障安全由同目录临时文件 + 原子替换和重开测试覆盖，最终仍需 Windows 强制终止演练。
+实现状态（2026-08-28）：所有 canonical 写操作均原子保存当前 snapshot 与对应 Revision snapshot；已实现 Revision 列表、结构化 compare、Undo、Redo、Restore-as-new-revision 和双栏 History。工程格式 v0.1 采用 `.jm/project.json + revisions/*.json`，由 `jueming-storage` 隔离；SQLite/Chunk backend 是可替换实现而非 MVP 必需条件。真实工程已验证 Edit → Undo → Redo、Move → Reset、Unlink → Undo、关闭 → 重开和 R1↔当前版本 Diff。故障安全由同目录临时文件 + 原子替换和重开测试覆盖，强制终止故障注入仍归 Phase 7。
 
 实现：Operation Log、延迟 flush、手动 flush、崩溃恢复、Text/Alignment/Project 三种 History 投影、CodeMirror unified/side-by-side diff、恢复为新 Revision、保存状态 UI。
 
@@ -787,7 +800,7 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 ### Phase 6：Export、Settings 与视觉收口
 
-实现状态（2026-08-28）：TXT/JSON/XML 原子导出、Light/Eye Care、界面缩放、侧栏折叠、离线状态、空状态、错误反馈和主效果图结构均已接入。前端 production build 与严格类型检查通过；同尺寸视觉对照和 Tauri 文件对话框全链路正在验收。
+实现状态（2026-08-28）：TXT/JSON/XML 原子导出、Light/Eye Care、界面缩放、侧栏折叠、离线状态、空状态、错误反馈和主效果图结构均已接入。Windows 文件对话框已完成导入、打开与 TXT 导出，导出首行验证为 `1:1\t阿古顿巴\tAkhu Tenpa [verified]`；前端 production build、Tauri debug 构建与严格类型检查通过。Review、Edit、Order、Search、Annotation、History 六个状态已分别与同尺寸效果图在同一比较输入中核对，区域拓扑、层级、模式上下文、双栏关系色和底部状态结构通过；真实语料密度、单侧编辑、搜索无独立底部预览、静态截图未展示拖拽悬浮态，以及延期 POS 覆盖层是已记录的有意差异，不冒充像素级一致。
 
 实现：TXT/JSON/XML、导出校验、字体/字号/主题/UI 缩放、vue-i18n 文案、快捷键、空状态、错误状态、design tokens、与效果图一致的主布局。
 
