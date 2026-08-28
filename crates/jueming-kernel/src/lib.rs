@@ -183,6 +183,11 @@ impl KernelService {
         Ok(())
     }
 
+    pub fn clear_cache(&self, project_path: impl AsRef<Path>) -> Result<u64, KernelError> {
+        let layout = ProjectLayout::new(project_path.as_ref())?;
+        layout.clear_cache().map_err(KernelError::from)
+    }
+
     pub fn summarize(&self, snapshot: &ProjectSnapshot) -> Result<ProjectSummary, KernelError> {
         validate_snapshot(snapshot)?;
         let source_document = &snapshot.documents[0];

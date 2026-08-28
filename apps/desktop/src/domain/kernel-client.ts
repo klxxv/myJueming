@@ -250,6 +250,7 @@ export interface KernelClient {
   getCurrentProject(): Promise<ProjectSnapshot>;
   getProjectSummary(): Promise<ProjectSummaryDto>;
   flushProject(): Promise<void>;
+  clearCache(): Promise<number>;
   updateSegment(segmentId: string, content: string): Promise<void>;
   moveSegment(segmentId: string, beforeSegmentId?: string, afterSegmentId?: string): Promise<void>;
   reorderSegments(orderedSegmentIds: string[]): Promise<ProjectSnapshot>;
@@ -327,6 +328,10 @@ export const createKernelClient = (): KernelClient => ({
   async flushProject() {
     if (!inTauri()) return;
     await invoke("flush_project");
+  },
+  async clearCache() {
+    if (!inTauri()) return 0;
+    return invoke<number>("clear_cache");
   },
   async updateSegment(segmentId, content) {
     if (!inTauri()) return;

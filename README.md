@@ -16,7 +16,8 @@ MVP 功能代码已完成本地桌面闭环：Tauri 文件选择、双侧独立�
 - [ADR 索引](./docs/adr/000-index.md)
 - [MVP 视觉规范](./docs/design/mvp-visual-spec-v0.1.md)
 - [测试与 Computer Use 验收计划](./docs/testing/mvp-test-fixtures-and-computer-use-plan-v0.1.md)
-- [品牌图标源文件](./assets/brand/jueming-aligner-icon-source.png)
+- [Windows / macOS 快捷键、触控板与打包说明](./docs/platform/desktop-platform-guide-v0.1.md)
+- [当前品牌图标母版](./assets/brand/jueming-aligner-icon-master-v2.png)
 
 ## MVP 技术主线
 
@@ -46,3 +47,5 @@ pnpm --dir apps/desktop tauri build --debug --no-bundle
 ```
 
 当前工具链锁定在 `pnpm-lock.yaml` 和 `Cargo.lock`；开发器运行 `pnpm dev`。
+
+Windows 安装包运行 `pnpm build:desktop:windows`；在 macOS 上运行 `pnpm build:desktop:macos` 生成 Intel + Apple Silicon Universal `.app` 与 `.dmg`。GitHub Actions 也可手动执行 `.github/workflows/package-desktop.yml` 完成双端打包。

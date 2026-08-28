@@ -96,6 +96,24 @@ fn flush_project(state: State<'_, AppKernelState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn clear_cache(state: State<'_, AppKernelState>) -> Result<u64, String> {
+    let path = {
+        let guard = state.current.lock().map_err(|_| lock_error())?;
+        guard
+            .as_ref()
+            .map(|current| current.path.clone())
+            .ok_or_else(|| "No local project is open.".to_owned())?
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        KernelService
+            .clear_cache(&path)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("The cache cleanup worker failed: {error}"))?
+}
+
+#[tauri::command]
 fn update_segment(
     segment_id: SegmentId,
     content: String,
@@ -505,6 +523,7 @@ pub fn run() {
             get_project_summary,
             get_current_project,
             flush_project,
+            clear_cache,
             update_segment,
             move_segment,
             reorder_segments,

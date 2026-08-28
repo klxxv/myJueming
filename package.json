@@ -11,6 +11,8 @@
     "dev:web": "pnpm --filter @jueming/desktop dev",
     "build": "pnpm --filter @jueming/desktop build",
     "build:desktop": "pnpm --filter @jueming/desktop tauri build",
+    "build:desktop:windows": "pnpm --filter @jueming/desktop tauri build --bundles nsis,msi",
+    "build:desktop:macos": "pnpm --filter @jueming/desktop tauri build --target universal-apple-darwin --bundles app,dmg",
     "typecheck": "pnpm --filter @jueming/desktop typecheck"
   }
 }

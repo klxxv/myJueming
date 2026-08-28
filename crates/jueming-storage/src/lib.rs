@@ -119,6 +119,53 @@ impl ProjectLayout {
         })?;
         serde_json::from_slice(&bytes).map_err(|source| StorageError::Json { path, source })
     }
+
+    /// Removes only the derived cache tree and recreates its empty root.
+    /// Canonical project and revision files are deliberately out of scope.
+    pub fn clear_cache(&self) -> Result<u64, StorageError> {
+        self.ensure()?;
+        let cache = self.cache_dir();
+        let removed_bytes = directory_size(&cache)?;
+        fs::remove_dir_all(&cache).map_err(|source| StorageError::Io {
+            path: cache.clone(),
+            source,
+        })?;
+        fs::create_dir_all(&cache).map_err(|source| StorageError::Io {
+            path: cache,
+            source,
+        })?;
+        Ok(removed_bytes)
+    }
+}
+
+fn directory_size(path: &Path) -> Result<u64, StorageError> {
+    let mut total = 0;
+    for entry in fs::read_dir(path).map_err(|source| StorageError::Io {
+        path: path.to_path_buf(),
+        source,
+    })? {
+        let entry = entry.map_err(|source| StorageError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let entry_path = entry.path();
+        let file_type = entry.file_type().map_err(|source| StorageError::Io {
+            path: entry_path.clone(),
+            source,
+        })?;
+        if file_type.is_dir() {
+            total += directory_size(&entry_path)?;
+        } else if file_type.is_file() {
+            total += entry
+                .metadata()
+                .map_err(|source| StorageError::Io {
+                    path: entry_path,
+                    source,
+                })?
+                .len();
+        }
+    }
+    Ok(total)
 }
 
 /// Writes a sibling temporary file, flushes it, then atomically replaces `path`.
@@ -225,5 +272,43 @@ mod tests {
             .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
             .count();
         assert_eq!(temporary_files, 0);
+    }
+
+    #[test]
+    fn cache_cleanup_never_touches_snapshot_or_revisions() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let layout = ProjectLayout::new(temporary.path().join("sample.jm")).expect("layout");
+        layout
+            .write_snapshot(&Snapshot {
+                revision: 2,
+                text: "canonical".into(),
+            })
+            .expect("write canonical snapshot");
+        layout
+            .write_revision_snapshot(
+                2,
+                &Snapshot {
+                    revision: 2,
+                    text: "history".into(),
+                },
+            )
+            .expect("write revision snapshot");
+        fs::create_dir_all(layout.cache_dir().join("search")).expect("cache folder");
+        fs::write(
+            layout.cache_dir().join("search/index.bin"),
+            b"derived-cache",
+        )
+        .expect("cache file");
+
+        assert_eq!(layout.clear_cache().expect("clear cache"), 13);
+        assert!(layout.cache_dir().is_dir());
+        assert_eq!(
+            fs::read_dir(layout.cache_dir())
+                .expect("empty cache")
+                .count(),
+            0
+        );
+        assert!(layout.snapshot_path().is_file());
+        assert!(layout.revision_snapshot_path(2).is_file());
     }
 }

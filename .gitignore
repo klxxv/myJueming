@@ -10,6 +10,7 @@ dist/
 .vite/
 coverage/
 playwright-report/
+.playwright-cli/
 test-results/
 
 # The MVP targets Windows; Tauri can regenerate mobile icon sets from the source asset.

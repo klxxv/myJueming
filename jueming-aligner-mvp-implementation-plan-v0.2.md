@@ -106,15 +106,15 @@ MVP 不实现自动 NLP 或云能力。完整架构中相关能力只注册稳�
 | 平行阅读 | 双栏虚拟列表、当前 Alignment 高亮、双向定位、Context Lens | 点击任一侧 Segment 能定位另一侧；上下文扩展不丢失当前 Alignment anchor |
 | 人工对齐 | 多选、Link、Unlink、Merge、Split，支持 1:1、1:n、n:1、n:m | 所有操作可撤销、持久化；未对齐 Segment 可筛出 |
 | 单句编辑 | 双击或 Enter 编辑，保存、取消、字数、脏状态 | 编辑不改变 SegmentId；已有 AlignmentId 默认保持 |
-| 语句重排 | 上移、下移、拖拽，左右侧独立排序 | 重排只改变 `PositionKey` / 顺序，不改变 SegmentId 或 AlignmentId |
-| 搜索 | View Find 与 Kernel Project Search、语言范围、普通文本、大小写、基础正则、结果跳转 | `Ctrl+F` 不扫描全库；Project Search 结果以 SegmentId 锚定并可跳回平行视图 |
+| 语句重排 | 上移、下移、拖拽；MVP 先实现中文源侧排序并保留英文关系提示 | 重排只改变 `PositionKey` / 顺序，不改变 SegmentId 或 AlignmentId |
+| 搜索 | Review View Find 与 Kernel Project Search、语言范围、普通文本、大小写、基础正则、结果跳转 | `Ctrl+F` 只查当前打开的平行工作区并按 stable ID 跳转；Project Search 结果以 SegmentId 锚定并可跳回平行视图 |
 | 替换 | 单个替换、全部替换、范围选择、变更预览 | 批量替换作为一个 ChangeSet 提交，可一次撤销，不允许静默部分成功 |
 | 书签 | 添加、删除、列表、跳转 | 书签按 SegmentId 锚定，重排后仍可正确跳转 |
 | 单机批注 | 新建、编辑、删除、状态、筛选、关联左右 Segment / Alignment | 支持 Draft、In Progress、Resolved；无账号和协作依赖 |
 | 自动保存 | 操作日志写入、延迟刷盘、崩溃恢复、手动保存 | 正常编辑无需频繁手动保存；异常退出后可恢复到最后成功落盘版本 |
 | 历史 | Undo、Redo、持久版本列表、版本差异、恢复 | 恢复旧版本会创建新 Revision，不覆盖或删除既有历史 |
 | 导出 | Parallel TXT、JSON、XML | 1:n、n:1、n:m 和未对齐项均有明确、可测试的输出语义 |
-| 设置 | 主题、护眼模式、UI 缩放、左右字体与字号 | 设置持久化，但不污染工程 canonical data |
+| 设置 | 主题、护眼模式、UI 缩放、自动保存延迟、派生缓存清理策略 | 设置持久化，但不污染工程 canonical data；缓存清理不得删除 Revision 历史 |
 | 状态反馈 | 未保存/保存中/已保存、进度、错误提示、对齐统计 | 长操作可取消或失败回滚，不留下不可打开的工程 |
 
 ### 3.2 P1：有余量再纳入，不阻塞 MVP 发布
@@ -171,7 +171,7 @@ MVP 不实现自动 NLP 或云能力。完整架构中相关能力只注册稳�
 | Mode | 视觉重点 | 滚动语义 | 主要操作 |
 |---|---|---|---|
 | Review | Lyrics-like 当前 Alignment 强调，远端上下文渐淡 | 左右围绕 AlignmentId 语义跟随 | 阅读、跳转、审阅 |
-| Edit | 当前 Segment 进入 CodeMirror，配对侧稳定在视觉中心 | 当前 Alignment 保持 anchor | 修改、保存、取消 |
+| Edit | 当前 Segment 进入单句编辑卡片，配对侧稳定在视觉中心 | 当前 Alignment 保持 anchor | 修改、自动保存、保存退出、放弃退出 |
 | Order | 所有 Segment 等权，取消淡化和焦点强调 | 两侧保留关系提示，不强制跟随 | 拖拽、键盘重排 |
 | History | unified / side-by-side diff 与 revision trace | 由 RevisionId 驱动，不跟随当前 scroll | 比较、查看、恢复 |
 
@@ -211,8 +211,9 @@ P0 不因 Dockview 或多窗口延期而阻塞；inline expand 是完整可用�
 ### 4.5 Edit Mode
 
 - 一次只编辑一个 Segment，另一侧保持可见；
-- 编辑器使用 CodeMirror 6，不使用 `contenteditable` 自行实现文本编辑栈；
-- `Ctrl+Enter` 保存，`Esc` 取消；
+- MVP 一次只编辑单个短 Segment，使用原生 `textarea`，不使用 `contenteditable`；当多行编辑、编辑器内替换或复杂输入法需求出现时再升级为 CodeMirror 6；
+- `Ctrl+Enter` 保存并退出，`Esc` 保存并退出；显式“放弃并退出”只放弃最近一次成功自动保存之后的草稿；
+- Review 状态双击任意中文或英文 Segment 直接进入 Edit；离开 Edit 时由 `ViewModeController` 执行保存 / 放弃 / 继续编辑守卫；
 - 保存产生 `UpdateSegment` Command 和一个可撤销 ChangeSet；
 - 保存后 SegmentId、AlignmentId 不变；
 - 基础搜索索引仅增量更新受影响 Segment；
@@ -220,14 +221,14 @@ P0 不因 Dockview 或多窗口延期而阻塞；inline expand 是完整可用�
 
 ### 4.6 Order Mode
 
-- 两侧各自独立拖拽；
-- 支持拖动、上移、下移、移到开头、移到末尾、恢复进入模式前的顺序；
-- 提交的是 `MoveSegment(segment_id, before|after)`，不是数组索引；
+- MVP 拖动中文源侧卡片，英文侧保持 Alignment 关系提示；英文侧独立排序留作后续扩展；
+- 支持拖动、上移、下移、恢复进入模式前的顺序；
+- 拖拽层输出 stable SegmentId 的完整排列，Kernel 负责把它转换为 canonical order；上移/下移仍使用 stable ID 邻接关系，不把可见数组 index 当身份；
 - 拖动过程中显示插入位置；
 - 发生 crossing alignment 时只提示，不自动改变 Alignment；
 - 一次拖拽产生一个 ChangeSet。
 
-拖拽输入使用浏览器 Pointer / Drag primitives 和自研的 domain command adapter，不把通用拖拽库产生的数组 index 直接提交给 Kernel。拖拽手柄必须有等价键盘操作。
+拖拽输入使用 `@atlaskit/pragmatic-drag-and-drop` 的 element adapter，并由决明自研 domain command adapter 把拖放结果解释为 stable SegmentId 排列；不把库内部 index 直接提交给 Kernel。拖拽手柄必须有上移/下移等价键盘操作，并与 `@tanstack/vue-virtual` 的虚拟行挂载/卸载生命周期绑定。
 
 ### 4.7 Alignment 操作
 
@@ -246,10 +247,10 @@ P0 不因 Dockview 或多窗口延期而阻塞；inline expand 是完整可用�
 
 查找分为两个明确入口：
 
-- `Ctrl+F`：View Find，只处理当前 CodeMirror、当前展开段落、当前 Diff 或当前批注；编辑器内使用 `@codemirror/search`；
+- `Ctrl+F`：Review View Find，只处理当前已打开 `ParallelWorkspace` 的中文/英文 Segment DTO，返回 stable SegmentId / AlignmentId 后交给 virtualizer 定位；不依赖当前 DOM 是否已经渲染；
 - `Ctrl+Shift+F`：Kernel Project Search，查询 Document / Project 范围，通过 `KernelClient → Query → HitSet` 返回；
-- 前端 JS Regex 只用于当前 View；项目级普通文本和基础 Regex 在 Rust Kernel 执行；
-- 前端不得用 DOM、Pinia 中的当前 Slice 或 `hugeText.match()` 冒充全工程搜索。
+- View Find 只做大小写不敏感的普通文本匹配与上一处/下一处；项目级普通文本和基础 Regex 在 Rust Kernel 执行；
+- 前端不得扫描 DOM 或把当前 View Find 冒充跨工程搜索。
 
 替换流程：
 
@@ -397,9 +398,10 @@ UI State 不得写入 canonical 表；有价值的布局偏好进入用户设置
 | 前端状态 | Pinia | 只保存 session、workspace、selection、panel、用户设置和轻量 Slice cache；Kernel 仍是 canonical source of truth |
 | IPC | Tauri commands + events/channels，封装为 `KernelClient` | 小型控制 DTO 走 Command/Query；进度和变更走 Event/Channel；UI 不直接调用零散 Tauri command |
 | 虚拟滚动 | `@tanstack/vue-virtual` | `ParallelViewport`、搜索结果、书签/批注/历史长列表；item key 必须使用 stable ID |
-| Segment 编辑器 | CodeMirror 6 | Edit Mode 文本编辑、输入法、选择、键位、当前 View 查找 |
-| View Find | `@codemirror/search` | `Ctrl+F`、find next/previous、当前编辑器替换；不得承担全工程搜索 |
-| Diff | `@codemirror/merge` | unified / side-by-side 文本 History Diff；决明自己实现 History 外壳和 Revision 选择 |
+| 排序拖拽 | `@atlaskit/pragmatic-drag-and-drop` | element adapter 绑定虚拟行，提供拖动源、drop target 和插入边；决明只实现 stable ID 领域适配 |
+| Segment 编辑器 | 原生 `textarea`（MVP） | 单 Segment 编辑、输入法、脏状态与快捷退出；CodeMirror 6 作为复杂编辑需求出现后的替换实现 |
+| View Find | 自研轻量控制器 + TanStack Virtual 定位 | Review 下 `Ctrl+F`、上一处/下一处、stable AlignmentId 跳转；不承担 Kernel Project Search |
+| Diff | Kernel 结构化 compare + 自研双栏 History 外壳 | MVP 展示 Segment / 顺序 / Alignment 结构化差异；CodeMirror MergeView 留作更复杂文本 diff 的可替换呈现层 |
 | 无样式交互原语 | Reka UI | Dialog、Popover、Menu、Tooltip、Select、Tabs、焦点管理和键盘可访问性 |
 | Dock | `dockview-vue` | P1 Context Pane 与可序列化辅助布局；不接管正文双栏核心布局 |
 | 原生多窗口 | Tauri `WebviewWindow` | P1 “Open in New Window”；窗口间只共享 ID/Query，不复制可变 canonical state |
@@ -456,9 +458,11 @@ SQLite Catalog + Operation Log + Chunk/Slice Storage + Rebuildable Index
 
 | 基础能力 | 库/平台 |
 |---|---|
-| 文本编辑与当前 View 查找 | CodeMirror 6 + `@codemirror/search` |
-| 文本 Diff | `@codemirror/merge` |
+| 单句文本编辑 | 浏览器原生 `textarea`（MVP）；CodeMirror 6 作为可替换升级路径 |
+| Review 当前 View 查找 | 轻量输入控件 + `@tanstack/vue-virtual` stable ID 定位 |
+| 文本 Diff | Kernel compare + 当前 History 双栏呈现；`@codemirror/merge` 延后 |
 | 长列表虚拟化 | `@tanstack/vue-virtual` |
+| 排序拖拽 | `@atlaskit/pragmatic-drag-and-drop` |
 | Dialog/Menu/Popover/Tooltip | Reka UI |
 | Context Dock | `dockview-vue`（P1） |
 | 原生窗口 | Tauri `WebviewWindow`（P1） |
@@ -770,9 +774,9 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 ### Phase 3：Edit、Order、Undo / Redo
 
-实现状态（2026-08-28）：已实现双击单句编辑、取消/保存、上移/下移、真实拖拽落盘、进入 Order 模式时的顺序基线恢复，以及持久 Undo / Redo。编辑控件当前使用原生 `textarea`，因 MVP 只编辑单个 Segment，未引入 CodeMirror；这不改变 Segment/Revision 合同，当前 View Find 与高级编辑器快捷键留在发布候选收口项。
+实现状态（2026-08-28）：已实现显式 `ViewModeController` 状态机，覆盖 Review / Edit / Order / History、clean / dirty / saving / error 编辑会话以及保存 / 放弃 / 继续编辑离开守卫。Review 可双击任一句段进入 Edit，`Esc` 与 `Ctrl/⌘+Enter` 可保存并快速退出；当前 Alignment 在保存后的 snapshot 刷新中保持稳定。Order 使用 `@atlaskit/pragmatic-drag-and-drop` 绑定 TanStack Virtual 的虚拟行，支持插入边反馈、stable SegmentId 重排、上移/下移和进入模式时基线恢复；拖拽限定由卡片手柄发起，避免 macOS 触控板滚动或轻触误拖。持久 Undo / Redo 已接通，macOS 使用 `⌘Z / ⇧⌘Z`，Windows / Linux 使用 `Ctrl+Z / Ctrl+Y`，文本输入焦点保留系统原生撤销栈。编辑控件当前使用原生 `textarea`，因 MVP 只编辑单个 Segment，未引入 CodeMirror，这不改变 Segment/Revision 合同。
 
-实现：CodeMirror 6 单句编辑、取消、当前 View Find、增量失效、上移/下移/首尾移动/拖拽、crossing 提示、`ViewModeController`、Command 逆操作、会话撤销重做。
+实现：原生 `textarea` 单句编辑、自动保存、保存退出、放弃退出、Review `Ctrl+F` 当前 View Find、stable ID 虚拟定位与 highlight 动画、上移/下移/拖拽/基线恢复、`ViewModeController`、Command 逆操作、会话撤销重做。
 
 依赖：Phase 2。
 
@@ -780,7 +784,7 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 ### Phase 4：Search / Replace、Bookmark、单机批注
 
-实现状态（2026-08-28）：Rust Kernel 已实现普通/大小写/正则/语言侧 Project Search、带 base revision 的替换预览与一次 Revision 原子提交、Bookmark CRUD、HumanAnnotation CRUD/Resolve；Vue 已接入结果跳转、替换预览、书签页和批注 Rail。Windows UI 已验证 `Ctrl+Shift+F`、82 个 Akhu 命中、结果跳转、书签重开、批注创建与关联片段；展示层统一使用六位人类可读编号，稳定 UUID 仅作为底层锚点和 tooltip。
+实现状态（2026-08-28）：Rust Kernel 已实现普通/大小写/正则/语言侧 Project Search、带 base revision 的替换预览与一次 Revision 原子提交、Bookmark CRUD、HumanAnnotation CRUD/Resolve；Vue 已接入结果跳转、替换预览、书签页和批注 Rail。Review 新增独立 `Ctrl/⌘+F` 快速查找条，支持中英文匹配、计数、`Ctrl/⌘+G` 下一处、`Ctrl/⌘+Shift+G` 上一处、虚拟滚动 smooth jump 与短暂 highlight；`Ctrl/⌘+Shift+F` 仍只进入 Kernel Project Search。大文档查找增加 120 ms 输入防抖和文本预归一化索引，不再随每次按键重复小写转换全文。Windows UI 已验证 `Ctrl+F` 搜索“接生”跳至第 000010 组、`Ctrl+Shift+F` 的 82 个 Akhu 命中、结果跳转、书签重开、批注创建与关联片段；展示层统一使用六位人类可读编号，稳定 UUID 仅作为底层锚点和 tooltip。
 
 实现：`Ctrl+Shift+F` Kernel Project Search、基础索引、普通/大小写/正则搜索、`CorpusQueryView`、平行上下文跳转、替换预览与原子提交、书签、批注 gutter 和侧栏。
 
@@ -790,9 +794,9 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 ### Phase 5：Autosave 与持久 History
 
-实现状态（2026-08-28）：所有 canonical 写操作均原子保存当前 snapshot 与对应 Revision snapshot；已实现 Revision 列表、结构化 compare、Undo、Redo、Restore-as-new-revision 和双栏 History。工程格式 v0.1 采用 `.jm/project.json + revisions/*.json`，由 `jueming-storage` 隔离；SQLite/Chunk backend 是可替换实现而非 MVP 必需条件。真实工程已验证 Edit → Undo → Redo、Move → Reset、Unlink → Undo、关闭 → 重开和 R1↔当前版本 Diff。故障安全由同目录临时文件 + 原子替换和重开测试覆盖，强制终止故障注入仍归 Phase 7。
+实现状态（2026-08-28）：所有 canonical 写操作均原子保存当前 snapshot 与对应 Revision snapshot；已实现 Revision 列表、结构化 compare、Undo、Redo、Restore-as-new-revision 和双栏 History。编辑自动保存默认停止输入 3 秒后提交，设置中可选 1 / 3 / 5 / 10 / 30 秒；一次 debounce 提交一个完整 `UpdateSegment` Revision，不按字符生成历史。工程格式 v0.1 采用 `.jm/project.json + revisions/*.json`，由 `jueming-storage` 隔离；canonical `revisions/` 在 MVP 永久保留，不设置自动删除。可重建 `.jm/cache` 可按每次启动 / 每 7 天 / 每 30 天 / 从不清理，并支持手动清理；Storage 测试保证清理仅触及 cache，不删除 `project.json` 或 revision snapshots。真实工程已验证 Edit → 自动保存 → Undo、Move → Reset、Unlink → Undo、关闭 → 重开和 R1↔当前版本 Diff。故障安全由同目录临时文件 + 原子替换和重开测试覆盖，强制终止故障注入仍归 Phase 7。
 
-实现：Operation Log、延迟 flush、手动 flush、崩溃恢复、Text/Alignment/Project 三种 History 投影、CodeMirror unified/side-by-side diff、恢复为新 Revision、保存状态 UI。
+实现：debounced Revision 提交、手动 flush、安全关闭前 flush、原子 snapshot、Text/Alignment/Project History 投影、双栏 diff、恢复为新 Revision、保存状态 UI、派生缓存安全清理。
 
 依赖：Phase 1–4 的全部 canonical Command。
 
@@ -800,7 +804,9 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 ### Phase 6：Export、Settings 与视觉收口
 
-实现状态（2026-08-28）：TXT/JSON/XML 原子导出、Light/Eye Care、界面缩放、侧栏折叠、离线状态、空状态、错误反馈和主效果图结构均已接入。Windows 文件对话框已完成导入、打开与 TXT 导出，导出首行验证为 `1:1\t阿古顿巴\tAkhu Tenpa [verified]`；前端 production build、Tauri debug 构建与严格类型检查通过。Review、Edit、Order、Search、Annotation、History 六个状态已分别与同尺寸效果图在同一比较输入中核对，区域拓扑、层级、模式上下文、双栏关系色和底部状态结构通过；真实语料密度、单侧编辑、搜索无独立底部预览、静态截图未展示拖拽悬浮态，以及延期 POS 覆盖层是已记录的有意差异，不冒充像素级一致。
+实现状态（2026-08-28）：TXT/JSON/XML 原子导出、Light/Eye Care、界面缩放、侧栏折叠、自动保存延迟、缓存清理策略、离线状态、空状态、错误反馈和主效果图结构均已接入。设置页新增自动 / macOS / Windows-Linux 快捷键布局、当前键位表与触控板优化开关；macOS 自定义窗口栏采用左侧 traffic-light 排列。触控板滚动会立即取消尚未完成的跳转 rAF，系统“减少动态效果”会直接定位。Windows 文件对话框已完成导入、打开与 TXT 导出，导出首行验证为 `1:1\t阿古顿巴\tAkhu Tenpa [verified]`；前端 production build、Tauri debug 构建与严格类型检查通过。Review、Edit、Order、Search、Annotation、History、Settings 七个状态已分别完成桌面端检查；真实 307×308 工程已验证快速查找跳转与 highlight、双击编辑与 Escape 退出、30 秒草稿守卫、自动保存形成 Revision、源侧顺序持久化与基线恢复、派生缓存清理不删除历史。静态截图未展示拖拽悬浮态，以及延期 POS 覆盖层是已记录的有意差异，不冒充像素级一致。
+
+双平台打包状态（2026-08-28）：根脚本固定 Windows `NSIS + MSI` 与 macOS `Universal app + DMG`。GitHub Actions 在 `main` push / PR 执行 TypeScript 与 Rust 质量门禁，手动运行或 `v*` 标签在门禁后打包 Windows x64 和 macOS Universal；Universal 同时包含 `aarch64-apple-darwin` 和 `x86_64-apple-darwin`。Actions 依赖锁到官方主版本对应的完整提交 SHA、权限收敛为只读，并按平台/架构/包类型上传 workflow artifacts。macOS 最低版本固定为 11.0，测试产物采用 ad-hoc 签名，正式分发再由 CI secret 覆盖为 Developer ID 并 notarize。用户提供的花朵图标已保真清除点阵画布，形成透明 1024×1024 品牌母版，并生成 Tauri Windows/macOS/PNG 全套资源及网页 favicon。ARM 热点审计已移除查找逐键全文归一化、为 rAF 设置 420 ms 上限和用户输入取消、把递归缓存清理移入 Rust blocking worker；没有空闲轮询、无限动画或常驻 GPU hint。真实 Apple Silicon 温升与能耗仍必须作为 Phase 7 硬件门禁执行，不能由跨平台 CI 推断。
 
 实现：TXT/JSON/XML、导出校验、字体/字号/主题/UI 缩放、vue-i18n 文案、快捷键、空状态、错误状态、design tokens、与效果图一致的主布局。
 
@@ -955,7 +961,7 @@ MVP 只有在以下条件全部满足时才算完成：
 - [x] 把七张效果图拆成页面、组件、状态和交互验收清单；
 - [ ] 为 8+8、1,000+1,000、50,000+50,000 建立合法 fixture；
 - [ ] 冻结 Alignment split 的交互规则和 TXT 多段连接符；
-- [ ] 确定自动保存延迟、Revision 聚合窗口和日志保留策略；
+- [x] 确定自动保存延迟、Revision 聚合窗口和日志保留策略：默认 3 秒，可选 1/3/5/10/30 秒；一次 debounce 一个完整 Revision；canonical Revision 永久保留，只有 `.jm/cache` 按策略清理；
 - [ ] 确定替换正则语义、大小写规则与 Unicode 行为；
 - [ ] 建立 CI、格式化、静态检查、单测、E2E 和打包门禁；
 - [ ] 完成数据损坏与崩溃恢复演练方案；
@@ -970,7 +976,8 @@ MVP 只有在以下条件全部满足时才算完成：
 - [Pinia](https://pinia.vuejs.org/introduction.html)：用于跨组件 UI / workspace state，不承担 canonical data；
 - [Vue Router](https://router.vuejs.org/introduction.html)：只管理顶层工作区，Parallel mode 留在工作区内部；
 - [TanStack Virtual Vue adapter](https://tanstack.com/virtual/latest/docs/installation)：用于可变高度正文和长结果列表；
-- [CodeMirror Reference](https://codemirror.net/docs/ref/)：`@codemirror/search` 提供当前 View 查找/替换，`@codemirror/merge` 提供 MergeView 和 unified diff；
+- [Pragmatic drag and drop](https://github.com/atlassian/pragmatic-drag-and-drop)：用于虚拟行的轻量拖动源与 drop target；[Virtualization recipe](https://atlassian.design/components/pragmatic-drag-and-drop/core-package/recipes/virtualization)规定与虚拟列表挂载生命周期配合；
+- [CodeMirror Reference](https://codemirror.net/docs/ref/)：保留为复杂多行编辑、编辑器内替换或 MergeView 的升级路径；MVP 单句编辑不强制引入；
 - [Reka UI](https://reka-ui.com/docs/overview/introduction)：提供无样式、accessibility-first 的 Vue primitives；
 - [Dockview Vue](https://dockview.dev/docs/overview/introduction/)：P1 Context Pane 的 Dock、布局序列化与 Vue 3 adapter；
 - [Vitest](https://vitest.dev/guide/)：Vite 原生前端测试与组件/浏览器测试基础。
