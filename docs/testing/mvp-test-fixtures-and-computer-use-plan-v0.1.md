@@ -182,8 +182,8 @@ These achievements are hard-won, achieved through the joint efforts of people of
 | 关系 | source Segment | target Segment | 预期 |
 |---|---|---|---|
 | 1:1 | Z001 | E001 | 普通 provisional 或 manual link |
-| 1:2 | Z002 | E002、E003 | Merge/Link 后可见 |
-| 2:1 | Z003、Z004 | E004 | Merge 后可见 |
+| 1:2 | Z002 | E002、E003 | Group/Link 后可见 |
+| 2:1 | Z003、Z004 | E004 | Group 后可见 |
 | 2:2 | Z005、Z006 | E005、E006 | 复杂组 |
 | n:m | Z007、Z008、Z009 | E007、E008 | 关系 cardinality 正确 |
 | unlinked | Z010 | 无 | 明确未连接，不能伪装为空白 1:1 |
@@ -254,25 +254,28 @@ expected-alignment.json 必须按 stable SegmentId 和 AlignmentId 描述，不�
 4. 筛选未对齐、书签或指定 Segment，确认跳转先加载局部 Slice，不要求目标原先就在 DOM。
 5. 截图：当前组淡绿/淡黄高亮、连接区、上下文展开和未对齐状态。
 
-#### CU-03 Link、Unlink、Merge、Split
+#### CU-03 Link、Unlink、Group、Ungroup 与 Segment 内容结构
 
 1. 选择未连接的 source/target，点击 Link；确认关系从 unlinked 变成 1:1，产生保存状态变化。
 2. 选择已有关系，点击 Unlink；确认 Segment 保留而 Alignment 被删除。
-3. 将一条 source 与两条 target 合并成 1:2；再对另一组做 2:1。
+3. 将一条 source 与两条 target Group 成 1:2；再对另一组 Group 成 2:1。
 4. 创建 2:2 或 n:m，确认所有 refs 都属于同一个 Alignment 且不重复占用。
-5. 对复杂关系执行 Split，确认产品要求的分组结果；若无法确定语义，应拆成 unlinked 并让用户重新 Link，而不是静默猜测。
+5. 对复杂关系执行 Ungroup，确认明确的分组结果；若无法确定语义，应 Unlink 后让用户重新 Link，而不是静默猜测。
 6. 尝试把已属于不同 Alignment 的 Segment 直接重复 Link，确认弹出替换/先 Unlink 提示且没有错误 Revision。
-7. 每类 cardinality 保存截图，并在历史或只读导出中核对 AlignmentId。
+7. 对同侧连续 Segment 做 Merge 内容，确认首项 ID 保留、被吸收 ID 离开 active 集合、书签/批注锚点被迁移；再 Split 内容，确认 parts 无损、首项 ID 保留、后续 ID 新建且先继承原 Alignment。
+8. 尝试跨两个 active Alignment 内容 Merge，确认被拒绝或先展示明确 Group 后继续预览；每类 cardinality 保存截图，并在历史或只读导出中核对 AlignmentId。
 
 #### CU-04 Edit 与 Undo/Redo
 
 1. 切换 Edit，双击一个英文 Segment；确认 CodeMirror 编辑器、字数、拼写检查/状态、保存与取消控件出现。
 2. 修改文本后按取消，确认原文和 Revision 不变；再次修改后保存，确认 SegmentId 和既有 AlignmentId 不变。
 3. 在输入过程中切换模式，确认出现保存、放弃或取消切换守卫；不允许静默丢草稿。
-4. 执行 Edit、Move、Merge、Split 等操作，逐步 Undo 回到初态，再 Redo 到末态；保存每个关键状态。
+4. 执行 Edit、Move、Merge 内容、Split 内容、Group、Ungroup 等操作，逐步 Undo 回到初态，再 Redo 到末态；保存每个关键状态。
 5. 截图：编辑态、取消后的态、保存后的态、Undo/Redo 状态。
 
 #### CU-05 Order
+
+本迭代暂缓 drag 的自动化/Computer Use 验收；以下脚本保留为后续回归，不得作为当前完成证据。当前仅验证 Move Up/Move Down 的 stable-ID 语义与端点注册的集成契约。
 
 1. 切换 Order 模式，确认工具栏显示拖动排序、上移、下移、恢复顺序。
 2. 用拖动手柄移动中文第四组，确认插入位置提示；再用上移/下移完成一次等价操作。

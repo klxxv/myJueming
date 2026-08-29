@@ -14,13 +14,14 @@ use jueming_core::{
     validate_alignment, validate_project, validate_segment_order,
 };
 use jueming_protocol::{
-    AlignmentRevisionDiff, AnnotationCreateRequest, AnnotationStatus, AnnotationUpdateRequest,
-    Bookmark, BookmarkCreateRequest, BookmarkUpdateRequest, CONTRACT_VERSION, CreateProjectRequest,
+    AlignmentGapEdge, AlignmentRevisionDiff, AnnotationCreateRequest, AnnotationStatus,
+    AnnotationUpdateRequest, Bookmark, BookmarkCreateRequest, BookmarkPreview,
+    BookmarkUpdateRequest, COMMON_LTR_LANGUAGES, CONTRACT_VERSION, CreateProjectRequest,
     ExportFormat, ExportRequest, HumanAnnotation, ImportPreviewResponse, OrderRevisionDiff,
     ProjectSnapshot, ProjectSummary, ReplaceApplyRequest, ReplacePreviewItem,
     ReplacePreviewRequest, ReplacePreviewResponse, RevisionComparison, RevisionListResponse,
     SearchSegmentsRequest, SearchSegmentsResponse, SegmentRevisionDiff, SegmentSearchHit,
-    SourceAssetRecord, TextInput,
+    SourceAssetRecord, SupportedLanguage, SupportedLanguageId, TextInput,
 };
 use jueming_storage::{ProjectLayout, StorageError};
 use regex::RegexBuilder;
@@ -31,6 +32,12 @@ use thiserror::Error;
 pub struct KernelService;
 
 impl KernelService {
+    /// Returns the frozen, left-to-right language chooser catalogue. Kept at
+    /// the Kernel boundary so the UI does not duplicate a domain policy.
+    pub fn supported_languages(&self) -> Vec<SupportedLanguage> {
+        COMMON_LTR_LANGUAGES.to_vec()
+    }
+
     pub fn preview_import(
         &self,
         input: &TextInput,
@@ -61,24 +68,26 @@ impl KernelService {
             return Err(KernelError::EmptyImport);
         }
 
+        let source_language = canonical_language(&request.source.language_id)?;
+        let target_language = canonical_language(&request.target.language_id)?;
         let now = timestamp();
         let revision_id = RevisionId::new(1);
         let mut project = Project::new(
             &request.name,
-            &request.source.language_id,
-            &request.target.language_id,
+            &source_language,
+            &target_language,
             revision_id,
             &now,
         );
         let mut source_document = Document::new(
             project.project_id,
-            &request.source.language_id,
+            &source_language,
             &request.source.title,
             revision_id,
         );
         let mut target_document = Document::new(
             project.project_id,
-            &request.target.language_id,
+            &target_language,
             &request.target.title,
             revision_id,
         );
@@ -391,9 +400,61 @@ impl KernelService {
         Ok(next)
     }
 
-    pub fn list_bookmarks(&self, snapshot: &ProjectSnapshot) -> Result<Vec<Bookmark>, KernelError> {
+    pub fn list_bookmarks(
+        &self,
+        snapshot: &ProjectSnapshot,
+    ) -> Result<Vec<BookmarkPreview>, KernelError> {
         validate_snapshot(snapshot)?;
-        Ok(snapshot.bookmarks.clone())
+        let segment_map: HashMap<_, _> = snapshot
+            .segments
+            .iter()
+            .map(|segment| (segment.segment_id, segment))
+            .collect();
+        let document_map: HashMap<_, _> = snapshot
+            .documents
+            .iter()
+            .map(|document| (document.document_id, document))
+            .collect();
+        let order_map: HashMap<_, _> = snapshot
+            .segment_orders
+            .iter()
+            .map(|order| (order.document_id, order))
+            .collect();
+        snapshot
+            .bookmarks
+            .iter()
+            .map(|bookmark| {
+                let segment = segment_map
+                    .get(&bookmark.segment_id)
+                    .ok_or(KernelError::SegmentNotFound(bookmark.segment_id))?;
+                let document = document_map.get(&segment.document_id).ok_or_else(|| {
+                    KernelError::InvalidSnapshot("bookmark document is missing".into())
+                })?;
+                let order = order_map.get(&segment.document_id).ok_or_else(|| {
+                    KernelError::InvalidSnapshot("bookmark segment order is missing".into())
+                })?;
+                let index = order
+                    .entries
+                    .iter()
+                    .position(|entry| entry.segment_id == bookmark.segment_id)
+                    .ok_or(KernelError::SegmentNotFound(bookmark.segment_id))?;
+                let context = |offset: isize| {
+                    index
+                        .checked_add_signed(offset)
+                        .and_then(|position| order.entries.get(position))
+                        .and_then(|entry| segment_map.get(&entry.segment_id))
+                        .map(|segment| segment.content.clone())
+                };
+                Ok(BookmarkPreview {
+                    bookmark: bookmark.clone(),
+                    document_title: document.title.clone(),
+                    language_id: document.language_id.clone(),
+                    segment_content: segment.content.clone(),
+                    before_context: context(-1),
+                    after_context: context(1),
+                })
+            })
+            .collect()
     }
 
     pub fn update_bookmark(
@@ -856,6 +917,168 @@ impl KernelService {
         Ok(next)
     }
 
+    /// Insert a visual gap on the selected segment's side and rebuild the
+    /// remaining suffix as ordered 1:1 manual alignments. The gap itself is
+    /// represented canonically by the opposite segment becoming unlinked; no
+    /// fake or empty Segment is introduced.
+    pub fn insert_alignment_gap(
+        &self,
+        project_path: impl AsRef<Path>,
+        snapshot: &ProjectSnapshot,
+        segment_id: SegmentId,
+        edge: AlignmentGapEdge,
+    ) -> Result<ProjectSnapshot, KernelError> {
+        validate_snapshot(snapshot)?;
+        let source_document_id = snapshot
+            .documents
+            .first()
+            .ok_or_else(|| KernelError::InvalidSnapshot("missing source document".into()))?
+            .document_id;
+        let target_document_id = snapshot
+            .documents
+            .get(1)
+            .ok_or_else(|| KernelError::InvalidSnapshot("missing target document".into()))?
+            .document_id;
+        let selected_segment = snapshot
+            .segments
+            .iter()
+            .find(|segment| segment.segment_id == segment_id)
+            .ok_or(KernelError::SegmentNotFound(segment_id))?;
+        let selected_alignment = snapshot
+            .alignments
+            .iter()
+            .find(|alignment| {
+                alignment.source_segment_ids.contains(&segment_id)
+                    || alignment.target_segment_ids.contains(&segment_id)
+            })
+            .ok_or(KernelError::AlignmentGapRequiresLinkedSegment(segment_id))?;
+        let source_order = ordered_segment_ids(snapshot, source_document_id)?;
+        let target_order = ordered_segment_ids(snapshot, target_document_id)?;
+        let source_ranks: HashMap<_, _> = source_order
+            .iter()
+            .enumerate()
+            .map(|(index, id)| (*id, index))
+            .collect();
+        let target_ranks: HashMap<_, _> = target_order
+            .iter()
+            .enumerate()
+            .map(|(index, id)| (*id, index))
+            .collect();
+
+        let (source_start, target_start, source_pair_start, target_pair_start) =
+            if selected_segment.document_id == source_document_id {
+                let selected_rank = *source_ranks
+                    .get(&segment_id)
+                    .ok_or(KernelError::InvalidMoveAnchor)?;
+                let opposite_ranks = selected_alignment
+                    .target_segment_ids
+                    .iter()
+                    .filter_map(|id| target_ranks.get(id).copied())
+                    .collect::<Vec<_>>();
+                let opposite_start = match edge {
+                    AlignmentGapEdge::Before => opposite_ranks.iter().min().copied(),
+                    AlignmentGapEdge::After => {
+                        opposite_ranks.iter().max().copied().map(|rank| rank + 1)
+                    }
+                }
+                .ok_or(KernelError::AlignmentGapOutOfRange)?;
+                let selected_start =
+                    selected_rank + usize::from(matches!(edge, AlignmentGapEdge::After));
+                (
+                    selected_start,
+                    opposite_start,
+                    selected_start,
+                    opposite_start + 1,
+                )
+            } else if selected_segment.document_id == target_document_id {
+                let selected_rank = *target_ranks
+                    .get(&segment_id)
+                    .ok_or(KernelError::InvalidMoveAnchor)?;
+                let opposite_ranks = selected_alignment
+                    .source_segment_ids
+                    .iter()
+                    .filter_map(|id| source_ranks.get(id).copied())
+                    .collect::<Vec<_>>();
+                let opposite_start = match edge {
+                    AlignmentGapEdge::Before => opposite_ranks.iter().min().copied(),
+                    AlignmentGapEdge::After => {
+                        opposite_ranks.iter().max().copied().map(|rank| rank + 1)
+                    }
+                }
+                .ok_or(KernelError::AlignmentGapOutOfRange)?;
+                let selected_start =
+                    selected_rank + usize::from(matches!(edge, AlignmentGapEdge::After));
+                (
+                    opposite_start,
+                    selected_start,
+                    opposite_start + 1,
+                    selected_start,
+                )
+            } else {
+                return Err(KernelError::WrongAlignmentSide(segment_id));
+            };
+
+        if source_start >= source_order.len()
+            || target_start >= target_order.len()
+            || source_pair_start >= source_order.len()
+            || target_pair_start >= target_order.len()
+        {
+            return Err(KernelError::AlignmentGapOutOfRange);
+        }
+        let pair_count =
+            (source_order.len() - source_pair_start).min(target_order.len() - target_pair_start);
+        if pair_count == 0 {
+            return Err(KernelError::AlignmentGapOutOfRange);
+        }
+
+        let affected_segment_ids: HashSet<_> = source_order[source_start..]
+            .iter()
+            .chain(target_order[target_start..].iter())
+            .copied()
+            .collect();
+        let removed_alignment_count = snapshot
+            .alignments
+            .iter()
+            .filter(|alignment| {
+                alignment
+                    .source_segment_ids
+                    .iter()
+                    .chain(alignment.target_segment_ids.iter())
+                    .any(|id| affected_segment_ids.contains(id))
+            })
+            .count();
+        let revision_id = next_revision_id(snapshot);
+        let mut next = snapshot.clone();
+        advance_revision(
+            &mut next,
+            "insert_alignment_gap",
+            (removed_alignment_count + pair_count) as u64,
+            format!(
+                "Inserted alignment gap {:?} segment {segment_id} and realigned {pair_count} pairs",
+                edge
+            ),
+        );
+        next.alignments.retain(|alignment| {
+            !alignment
+                .source_segment_ids
+                .iter()
+                .chain(alignment.target_segment_ids.iter())
+                .any(|id| affected_segment_ids.contains(id))
+        });
+        for offset in 0..pair_count {
+            next.alignments.push(jueming_core::Alignment::new(
+                snapshot.project.project_id,
+                vec![source_order[source_pair_start + offset]],
+                vec![target_order[target_pair_start + offset]],
+                revision_id,
+            )?);
+        }
+        refresh_alignment_metadata(&mut next);
+        validate_snapshot(&next)?;
+        self.save_project(project_path, &next)?;
+        Ok(next)
+    }
+
     /// Link the selected segments into one manual alignment. Existing active
     /// alignments are replaced only when the caller explicitly opts in.
     pub fn link_segments(
@@ -912,6 +1135,7 @@ impl KernelService {
             target_segment_ids,
             revision_id,
         )?);
+        refresh_alignment_metadata(&mut next);
         validate_snapshot(&next)?;
         self.save_project(project_path, &next)?;
         Ok(next)
@@ -940,19 +1164,224 @@ impl KernelService {
         );
         next.alignments
             .retain(|alignment| alignment.alignment_id != alignment_id);
+        refresh_alignment_metadata(&mut next);
         validate_snapshot(&next)?;
         self.save_project(project_path, &next)?;
         Ok(next)
     }
 
-    pub fn merge_alignments(
+    /// Merge consecutive segments from one document into the first segment in
+    /// display order. The operation is deliberately content-only: it is only
+    /// valid when every selected segment is unlinked, or every one belongs to
+    /// the same active alignment.
+    pub fn merge_segments(
+        &self,
+        project_path: impl AsRef<Path>,
+        snapshot: &ProjectSnapshot,
+        segment_ids: Vec<SegmentId>,
+        merged_content: &str,
+    ) -> Result<ProjectSnapshot, KernelError> {
+        validate_snapshot(snapshot)?;
+        if segment_ids.len() < 2 || has_duplicate_ids(&segment_ids) {
+            return Err(KernelError::MergeSegmentsRequiresMultiple);
+        }
+        let first_segment = snapshot
+            .segments
+            .iter()
+            .find(|segment| segment.segment_id == segment_ids[0])
+            .ok_or(KernelError::SegmentNotFound(segment_ids[0]))?;
+        let document_id = first_segment.document_id;
+        for segment_id in &segment_ids {
+            let segment = snapshot
+                .segments
+                .iter()
+                .find(|segment| segment.segment_id == *segment_id)
+                .ok_or(KernelError::SegmentNotFound(*segment_id))?;
+            if segment.document_id != document_id {
+                return Err(KernelError::MergeSegmentsDifferentDocuments);
+            }
+        }
+        let order = snapshot
+            .segment_orders
+            .iter()
+            .find(|order| order.document_id == document_id)
+            .ok_or(KernelError::InvalidMoveAnchor)?;
+        let selected: HashSet<_> = segment_ids.iter().copied().collect();
+        let selected_positions = order
+            .entries
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| selected.contains(&entry.segment_id).then_some(index))
+            .collect::<Vec<_>>();
+        if selected_positions.len() != segment_ids.len()
+            || selected_positions.last().copied()
+                != selected_positions
+                    .first()
+                    .map(|start| start + segment_ids.len() - 1)
+        {
+            return Err(KernelError::MergeSegmentsNotConsecutive);
+        }
+        let ordered_selected = selected_positions
+            .iter()
+            .map(|index| order.entries[*index].segment_id)
+            .collect::<Vec<_>>();
+        let survivor = ordered_selected[0];
+        let memberships = alignment_by_segment(snapshot);
+        let selected_alignment_ids = ordered_selected
+            .iter()
+            .filter_map(|id| memberships.get(id).copied())
+            .collect::<HashSet<_>>();
+        if !(selected_alignment_ids.is_empty()
+            || (selected_alignment_ids.len() == 1
+                && ordered_selected
+                    .iter()
+                    .all(|id| memberships.contains_key(id))))
+        {
+            return Err(KernelError::MergeSegmentsAlignmentConflict);
+        }
+
+        let revision_id = next_revision_id(snapshot);
+        let mut next = snapshot.clone();
+        advance_revision(
+            &mut next,
+            "merge_segments",
+            ordered_selected.len() as u64,
+            format!("Merged {} segments into {survivor}", ordered_selected.len()),
+        );
+        next.segments
+            .iter_mut()
+            .find(|segment| segment.segment_id == survivor)
+            .ok_or(KernelError::SegmentNotFound(survivor))?
+            .update_content(merged_content, revision_id);
+        next.segments.retain(|segment| {
+            !selected.contains(&segment.segment_id) || segment.segment_id == survivor
+        });
+        let next_order = next
+            .segment_orders
+            .iter_mut()
+            .find(|order| order.document_id == document_id)
+            .ok_or(KernelError::InvalidMoveAnchor)?;
+        next_order
+            .entries
+            .retain(|entry| !selected.contains(&entry.segment_id) || entry.segment_id == survivor);
+        rekey_order(next_order, revision_id);
+        if let Some(alignment_id) = selected_alignment_ids.iter().next().copied() {
+            let alignment = next
+                .alignments
+                .iter_mut()
+                .find(|alignment| alignment.alignment_id == alignment_id)
+                .ok_or(KernelError::AlignmentNotFound(alignment_id))?;
+            replace_alignment_segment_refs(alignment, &selected, survivor, revision_id);
+        }
+        migrate_segment_metadata_after_merge(&mut next, &selected, survivor);
+        validate_snapshot(&next)?;
+        self.save_project(project_path, &next)?;
+        Ok(next)
+    }
+
+    /// Split one segment into lossless, non-empty content parts. The original
+    /// ID remains anchored to the first part; additional parts receive new
+    /// stable IDs and inherit the original alignment when one exists.
+    pub fn split_segment(
+        &self,
+        project_path: impl AsRef<Path>,
+        snapshot: &ProjectSnapshot,
+        segment_id: SegmentId,
+        parts: Vec<String>,
+    ) -> Result<ProjectSnapshot, KernelError> {
+        validate_snapshot(snapshot)?;
+        let original = snapshot
+            .segments
+            .iter()
+            .find(|segment| segment.segment_id == segment_id)
+            .cloned()
+            .ok_or(KernelError::SegmentNotFound(segment_id))?;
+        if parts.len() < 2 || parts.iter().any(String::is_empty) {
+            return Err(KernelError::InvalidSplitParts);
+        }
+        if parts.concat() != original.content {
+            return Err(KernelError::SplitContentMismatch);
+        }
+        let original_alignment_id = alignment_by_segment(snapshot).get(&segment_id).copied();
+        let revision_id = next_revision_id(snapshot);
+        let mut next = snapshot.clone();
+        advance_revision(
+            &mut next,
+            "split_segment",
+            parts.len() as u64,
+            format!("Split segment {segment_id} into {} parts", parts.len()),
+        );
+        next.segments
+            .iter_mut()
+            .find(|segment| segment.segment_id == segment_id)
+            .ok_or(KernelError::SegmentNotFound(segment_id))?
+            .update_content(parts[0].clone(), revision_id);
+        let inserted_segments = parts
+            .into_iter()
+            .enumerate()
+            .skip(1)
+            .map(|(index, content)| {
+                let mut segment = Segment::new(original.document_id, content, revision_id);
+                segment.content_ref = ContentRef {
+                    key: format!("{}#split-{index}", original.content_ref.key),
+                };
+                segment
+            })
+            .collect::<Vec<_>>();
+        let inserted_ids = inserted_segments
+            .iter()
+            .map(|segment| segment.segment_id)
+            .collect::<Vec<_>>();
+        next.segments.extend(inserted_segments);
+        let order = next
+            .segment_orders
+            .iter_mut()
+            .find(|order| order.document_id == original.document_id)
+            .ok_or(KernelError::InvalidMoveAnchor)?;
+        let insertion_index = order
+            .entries
+            .iter()
+            .position(|entry| entry.segment_id == segment_id)
+            .ok_or(KernelError::SegmentNotFound(segment_id))?;
+        for (offset, inserted_id) in inserted_ids.iter().enumerate() {
+            order.entries.insert(
+                insertion_index + 1 + offset,
+                OrderedSegmentRef {
+                    segment_id: *inserted_id,
+                    position_key: PositionKey(String::new()),
+                },
+            );
+        }
+        rekey_order(order, revision_id);
+        if let Some(alignment_id) = original_alignment_id {
+            let alignment = next
+                .alignments
+                .iter_mut()
+                .find(|alignment| alignment.alignment_id == alignment_id)
+                .ok_or(KernelError::AlignmentNotFound(alignment_id))?;
+            insert_alignment_segment_refs(alignment, segment_id, &inserted_ids, revision_id);
+        }
+        migrate_annotation_links_after_split(&mut next, segment_id, &inserted_ids);
+        validate_snapshot(&next)?;
+        self.save_project(project_path, &next)?;
+        Ok(next)
+    }
+
+    /// Combine complete alignment relations (and optionally unlinked segments)
+    /// into one new relation.  This never changes Segment content.
+    pub fn group_alignment(
         &self,
         project_path: impl AsRef<Path>,
         snapshot: &ProjectSnapshot,
         alignment_ids: Vec<jueming_core::AlignmentId>,
+        unlinked_segment_ids: Vec<SegmentId>,
     ) -> Result<ProjectSnapshot, KernelError> {
         validate_snapshot(snapshot)?;
-        if alignment_ids.len() < 2 || has_duplicate_ids(&alignment_ids) {
+        if alignment_ids.is_empty()
+            || alignment_ids.len() + unlinked_segment_ids.len() < 2
+            || has_duplicate_ids(&alignment_ids)
+            || has_duplicate_ids(&unlinked_segment_ids)
+        {
             return Err(KernelError::MergeRequiresMultiple);
         }
         let selected: Vec<_> = alignment_ids
@@ -978,14 +1407,44 @@ impl KernelService {
                     .unwrap(),
             ));
         }
-        let source_ids = selected
+        let mut source_ids = selected
             .iter()
             .flat_map(|alignment| alignment.source_segment_ids.iter().copied())
             .collect::<Vec<_>>();
-        let target_ids = selected
+        let mut target_ids = selected
             .iter()
             .flat_map(|alignment| alignment.target_segment_ids.iter().copied())
             .collect::<Vec<_>>();
+        let aligned_segment_ids: HashSet<_> = snapshot
+            .alignments
+            .iter()
+            .flat_map(|alignment| {
+                alignment
+                    .source_segment_ids
+                    .iter()
+                    .chain(alignment.target_segment_ids.iter())
+                    .copied()
+            })
+            .collect();
+        let source_document_id = snapshot.documents[0].document_id;
+        let target_document_id = snapshot.documents[1].document_id;
+        for segment_id in &unlinked_segment_ids {
+            if aligned_segment_ids.contains(segment_id) {
+                return Err(KernelError::MergeSegmentAlreadyAligned(*segment_id));
+            }
+            let segment = snapshot
+                .segments
+                .iter()
+                .find(|segment| segment.segment_id == *segment_id)
+                .ok_or(KernelError::SegmentNotFound(*segment_id))?;
+            if segment.document_id == source_document_id {
+                source_ids.push(*segment_id);
+            } else if segment.document_id == target_document_id {
+                target_ids.push(*segment_id);
+            } else {
+                return Err(KernelError::WrongAlignmentSide(*segment_id));
+            }
+        }
         if has_duplicate_ids(&source_ids) || has_duplicate_ids(&target_ids) {
             return Err(KernelError::DuplicateActiveAlignment(
                 source_ids
@@ -999,14 +1458,19 @@ impl KernelService {
                     .unwrap_or(source_ids[0]),
             ));
         }
+        ensure_selection(snapshot, &source_ids, &target_ids)?;
         let (source_ids, target_ids) = ordered_alignment_refs(snapshot, source_ids, target_ids);
         let revision_id = next_revision_id(snapshot);
         let mut next = snapshot.clone();
         advance_revision(
             &mut next,
-            "merge_alignment",
-            alignment_ids.len() as u64,
-            format!("Merged {} alignments", alignment_ids.len()),
+            "group_alignment",
+            (alignment_ids.len() + unlinked_segment_ids.len()) as u64,
+            format!(
+                "Grouped {} alignments and {} unlinked segments",
+                alignment_ids.len(),
+                unlinked_segment_ids.len()
+            ),
         );
         next.alignments
             .retain(|alignment| !alignment_ids.contains(&alignment.alignment_id));
@@ -1016,12 +1480,27 @@ impl KernelService {
             target_ids,
             revision_id,
         )?);
+        refresh_alignment_metadata(&mut next);
         validate_snapshot(&next)?;
         self.save_project(project_path, &next)?;
         Ok(next)
     }
 
-    pub fn split_alignment(
+    /// Compatibility entry point for older IPC callers. New revisions still
+    /// record the canonical `group_alignment` operation.
+    pub fn merge_alignments(
+        &self,
+        project_path: impl AsRef<Path>,
+        snapshot: &ProjectSnapshot,
+        alignment_ids: Vec<jueming_core::AlignmentId>,
+        unlinked_segment_ids: Vec<SegmentId>,
+    ) -> Result<ProjectSnapshot, KernelError> {
+        self.group_alignment(project_path, snapshot, alignment_ids, unlinked_segment_ids)
+    }
+
+    /// Partition one complex alignment into explicitly chosen relations. This
+    /// changes relations only, never Segment text.
+    pub fn ungroup_alignment(
         &self,
         project_path: impl AsRef<Path>,
         snapshot: &ProjectSnapshot,
@@ -1055,10 +1534,10 @@ impl KernelService {
         let mut next = snapshot.clone();
         advance_revision(
             &mut next,
-            "split_alignment",
+            "ungroup_alignment",
             source_groups.len() as u64,
             format!(
-                "Split alignment {alignment_id} into {} groups",
+                "Ungrouped alignment {alignment_id} into {} groups",
                 source_groups.len()
             ),
         );
@@ -1072,9 +1551,29 @@ impl KernelService {
                 revision_id,
             )?);
         }
+        refresh_alignment_metadata(&mut next);
         validate_snapshot(&next)?;
         self.save_project(project_path, &next)?;
         Ok(next)
+    }
+
+    /// Compatibility entry point for older IPC callers. New revisions still
+    /// record the canonical `ungroup_alignment` operation.
+    pub fn split_alignment(
+        &self,
+        project_path: impl AsRef<Path>,
+        snapshot: &ProjectSnapshot,
+        alignment_id: jueming_core::AlignmentId,
+        source_groups: Vec<Vec<SegmentId>>,
+        target_groups: Vec<Vec<SegmentId>>,
+    ) -> Result<ProjectSnapshot, KernelError> {
+        self.ungroup_alignment(
+            project_path,
+            snapshot,
+            alignment_id,
+            source_groups,
+            target_groups,
+        )
     }
 }
 
@@ -1495,6 +1994,152 @@ fn next_revision_id(snapshot: &ProjectSnapshot) -> RevisionId {
     RevisionId::new(snapshot.project.current_revision_id.value() + 1)
 }
 
+fn canonical_language(value: &str) -> Result<String, KernelError> {
+    SupportedLanguageId::parse_compatible(value)
+        .map(|language| language.as_str().to_owned())
+        .ok_or_else(|| KernelError::UnsupportedLanguage(value.to_owned()))
+}
+
+fn rekey_order(order: &mut SegmentOrder, revision_id: RevisionId) {
+    for (index, entry) in order.entries.iter_mut().enumerate() {
+        entry.position_key = PositionKey(format!("{index:020}"));
+    }
+    order.updated_revision_id = revision_id;
+}
+
+fn replace_alignment_segment_refs(
+    alignment: &mut jueming_core::Alignment,
+    replaced: &HashSet<SegmentId>,
+    survivor: SegmentId,
+    revision_id: RevisionId,
+) {
+    let replace = |ids: &mut Vec<SegmentId>| {
+        let mut seen = HashSet::new();
+        ids.retain(|id| !replaced.contains(id) || *id == survivor);
+        for id in ids.iter_mut() {
+            if replaced.contains(id) {
+                *id = survivor;
+            }
+        }
+        ids.retain(|id| seen.insert(*id));
+    };
+    replace(&mut alignment.source_segment_ids);
+    replace(&mut alignment.target_segment_ids);
+    alignment.cardinality = jueming_core::Cardinality::of(
+        alignment.source_segment_ids.len(),
+        alignment.target_segment_ids.len(),
+    )
+    .expect("merge always retains one segment on each alignment side");
+    alignment.updated_revision_id = revision_id;
+}
+
+fn insert_alignment_segment_refs(
+    alignment: &mut jueming_core::Alignment,
+    original: SegmentId,
+    inserted: &[SegmentId],
+    revision_id: RevisionId,
+) {
+    let insert_after = |ids: &mut Vec<SegmentId>| {
+        if let Some(index) = ids.iter().position(|id| *id == original) {
+            ids.splice(index + 1..index + 1, inserted.iter().copied());
+        }
+    };
+    insert_after(&mut alignment.source_segment_ids);
+    insert_after(&mut alignment.target_segment_ids);
+    alignment.cardinality = jueming_core::Cardinality::of(
+        alignment.source_segment_ids.len(),
+        alignment.target_segment_ids.len(),
+    )
+    .expect("split preserves both alignment sides");
+    alignment.updated_revision_id = revision_id;
+}
+
+fn migrate_segment_metadata_after_merge(
+    snapshot: &mut ProjectSnapshot,
+    replaced: &HashSet<SegmentId>,
+    survivor: SegmentId,
+) {
+    let now = timestamp();
+    for bookmark in &mut snapshot.bookmarks {
+        if replaced.contains(&bookmark.segment_id) {
+            bookmark.segment_id = survivor;
+            bookmark.updated_at = now.clone();
+        }
+    }
+    for annotation in &mut snapshot.annotations {
+        let previous = annotation.linked_segment_ids.clone();
+        let mut seen = HashSet::new();
+        annotation.linked_segment_ids = annotation
+            .linked_segment_ids
+            .iter()
+            .map(|id| if replaced.contains(id) { survivor } else { *id })
+            .filter(|id| seen.insert(*id))
+            .collect();
+        if annotation.linked_segment_ids != previous {
+            annotation.updated_at = now.clone();
+        }
+    }
+}
+
+fn migrate_annotation_links_after_split(
+    snapshot: &mut ProjectSnapshot,
+    original: SegmentId,
+    inserted: &[SegmentId],
+) {
+    let now = timestamp();
+    for annotation in &mut snapshot.annotations {
+        let previous = annotation.linked_segment_ids.clone();
+        let mut links = Vec::with_capacity(annotation.linked_segment_ids.len() + inserted.len());
+        for id in &annotation.linked_segment_ids {
+            links.push(*id);
+            if *id == original {
+                links.extend(inserted.iter().copied());
+            }
+        }
+        let mut seen = HashSet::new();
+        links.retain(|id| seen.insert(*id));
+        if links != previous {
+            annotation.linked_segment_ids = links;
+            annotation.updated_at = now.clone();
+        }
+    }
+}
+
+/// Relationship IDs are ephemeral navigation hints in sidecars. Whenever a
+/// relation is replaced, derive a still-active hint from the canonical segment
+/// links; when no single relation covers an annotation, clear the hint.
+fn refresh_alignment_metadata(snapshot: &mut ProjectSnapshot) {
+    let memberships = alignment_by_segment(snapshot);
+    let now = timestamp();
+    for bookmark in &mut snapshot.bookmarks {
+        let next_alignment = memberships.get(&bookmark.segment_id).copied();
+        if bookmark.alignment_id != next_alignment {
+            bookmark.alignment_id = next_alignment;
+            bookmark.updated_at = now.clone();
+        }
+    }
+    for annotation in &mut snapshot.annotations {
+        let linked_alignments = annotation
+            .linked_segment_ids
+            .iter()
+            .map(|segment_id| memberships.get(segment_id).copied())
+            .collect::<Vec<_>>();
+        let next_alignment = linked_alignments
+            .first()
+            .copied()
+            .flatten()
+            .filter(|candidate| {
+                linked_alignments
+                    .iter()
+                    .all(|alignment_id| *alignment_id == Some(*candidate))
+            });
+        if annotation.alignment_id != next_alignment {
+            annotation.alignment_id = next_alignment;
+            annotation.updated_at = now.clone();
+        }
+    }
+}
+
 fn has_duplicate_ids<T: Eq + std::hash::Hash>(values: &[T]) -> bool {
     let mut seen = HashSet::new();
     values.iter().any(|value| !seen.insert(value))
@@ -1543,6 +2188,18 @@ fn ensure_selection(
     Ok(())
 }
 
+fn ordered_segment_ids(
+    snapshot: &ProjectSnapshot,
+    document_id: jueming_core::DocumentId,
+) -> Result<Vec<SegmentId>, KernelError> {
+    snapshot
+        .segment_orders
+        .iter()
+        .find(|order| order.document_id == document_id)
+        .map(|order| order.entries.iter().map(|entry| entry.segment_id).collect())
+        .ok_or(KernelError::InvalidMoveAnchor)
+}
+
 fn ordered_alignment_refs(
     snapshot: &ProjectSnapshot,
     mut source_ids: Vec<SegmentId>,
@@ -1577,7 +2234,7 @@ fn validate_split_groups(
     source_groups: &[Vec<SegmentId>],
     target_groups: &[Vec<SegmentId>],
 ) -> Result<(), KernelError> {
-    if source_groups.is_empty()
+    if source_groups.len() < 2
         || source_groups.len() != target_groups.len()
         || source_groups.iter().any(Vec::is_empty)
         || target_groups.iter().any(Vec::is_empty)
@@ -1719,6 +2376,11 @@ pub fn validate_snapshot(snapshot: &ProjectSnapshot) -> Result<(), KernelError> 
         ));
     }
     validate_project(&snapshot.project, &snapshot.documents, &snapshot.revisions)?;
+    canonical_language(&snapshot.project.source_language)?;
+    canonical_language(&snapshot.project.target_language)?;
+    for document in &snapshot.documents {
+        canonical_language(&document.language_id)?;
+    }
     let source_document = &snapshot.documents[0];
     let target_document = &snapshot.documents[1];
     let segment_map: HashMap<_, _> = snapshot
@@ -1824,9 +2486,31 @@ pub enum KernelError {
     AlignmentSelectionConflict,
     #[error("segment {0} is on the wrong alignment side")]
     WrongAlignmentSide(SegmentId),
-    #[error("merge requires at least two distinct alignments")]
+    #[error("language {0} is not in the supported left-to-right language catalogue")]
+    UnsupportedLanguage(String),
+    #[error("segment merge requires at least two distinct segments")]
+    MergeSegmentsRequiresMultiple,
+    #[error("segments can only be merged within one document")]
+    MergeSegmentsDifferentDocuments,
+    #[error("segments can only be merged when they are consecutive in SegmentOrder")]
+    MergeSegmentsNotConsecutive,
+    #[error("segments must all be unlinked or all belong to one active alignment before merging")]
+    MergeSegmentsAlignmentConflict,
+    #[error("a segment split requires two or more non-empty parts")]
+    InvalidSplitParts,
+    #[error("split parts must concatenate exactly to the original segment content")]
+    SplitContentMismatch,
+    #[error("merge requires at least two distinct alignments or unlinked segments")]
     MergeRequiresMultiple,
-    #[error("split groups must be non-empty, paired, and partition the original alignment")]
+    #[error("segment {0} is already part of an active alignment and cannot be merged as unlinked")]
+    MergeSegmentAlreadyAligned(SegmentId),
+    #[error("segment {0} must belong to an active alignment before a gap can be inserted")]
+    AlignmentGapRequiresLinkedSegment(SegmentId),
+    #[error("an alignment gap requires at least one later source/target pair")]
+    AlignmentGapOutOfRange,
+    #[error(
+        "ungroup requires at least two non-empty paired groups that partition the original alignment"
+    )]
     SplitGroupsMismatch,
     #[error("revision {0} is not available")]
     RevisionNotFound(RevisionId),
@@ -1958,7 +2642,7 @@ mod tests {
     }
 
     #[test]
-    fn reorder_changes_only_document_order_and_keeps_alignment_ids() {
+    fn cross_block_reorder_changes_only_document_order_and_keeps_alignments() {
         let temporary = tempfile::tempdir().expect("temporary directory");
         let path = temporary.path().join("ordered.jm");
         let service = KernelService;
@@ -1988,6 +2672,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             alignment_ids
         );
+        assert_eq!(moved.alignments, snapshot.alignments);
         assert_eq!(moved.project.current_revision_id, RevisionId::new(2));
     }
 
@@ -2022,6 +2707,139 @@ mod tests {
             .reorder_segments(&path, &reordered, vec![requested[0], requested[0]])
             .expect_err("duplicate IDs are rejected");
         assert!(matches!(invalid, KernelError::InvalidMoveAnchor));
+    }
+
+    #[test]
+    fn source_gap_before_unlinks_the_opposite_segment_and_realigns_the_suffix() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let path = temporary.path().join("source-gap.jm");
+        let service = KernelService;
+        let initial = service
+            .create_project(&government_request(&path))
+            .expect("create project");
+        let source: Vec<_> = initial.segment_orders[0]
+            .entries
+            .iter()
+            .map(|entry| entry.segment_id)
+            .collect();
+        let target: Vec<_> = initial.segment_orders[1]
+            .entries
+            .iter()
+            .map(|entry| entry.segment_id)
+            .collect();
+        let preserved_prefix_ids: Vec<_> = initial.alignments[..2]
+            .iter()
+            .map(|alignment| alignment.alignment_id)
+            .collect();
+
+        let shifted = service
+            .insert_alignment_gap(&path, &initial, source[2], AlignmentGapEdge::Before)
+            .expect("insert source gap before the third source segment");
+
+        assert!(preserved_prefix_ids.iter().all(|id| {
+            shifted
+                .alignments
+                .iter()
+                .any(|alignment| alignment.alignment_id == *id)
+        }));
+        assert!(
+            !shifted
+                .alignments
+                .iter()
+                .any(|alignment| alignment.target_segment_ids.contains(&target[2]))
+        );
+        for offset in 0..5 {
+            assert!(shifted.alignments.iter().any(|alignment| {
+                alignment.source_segment_ids == vec![source[2 + offset]]
+                    && alignment.target_segment_ids == vec![target[3 + offset]]
+            }));
+        }
+        assert!(
+            !shifted
+                .alignments
+                .iter()
+                .any(|alignment| alignment.source_segment_ids.contains(&source[7]))
+        );
+        assert_eq!(shifted.project.current_revision_id, RevisionId::new(2));
+        assert_eq!(
+            shifted.revisions.last().unwrap().change_set.operation,
+            "insert_alignment_gap"
+        );
+        assert_eq!(service.open_project(&path).expect("reopen"), shifted);
+    }
+
+    #[test]
+    fn target_gap_after_preserves_the_selected_pair_and_realigns_following_pairs() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let path = temporary.path().join("target-gap.jm");
+        let service = KernelService;
+        let initial = service
+            .create_project(&government_request(&path))
+            .expect("create project");
+        let source: Vec<_> = initial.segment_orders[0]
+            .entries
+            .iter()
+            .map(|entry| entry.segment_id)
+            .collect();
+        let target: Vec<_> = initial.segment_orders[1]
+            .entries
+            .iter()
+            .map(|entry| entry.segment_id)
+            .collect();
+        let selected_alignment_id = initial
+            .alignments
+            .iter()
+            .find(|alignment| alignment.target_segment_ids == vec![target[2]])
+            .unwrap()
+            .alignment_id;
+
+        let shifted = service
+            .insert_alignment_gap(&path, &initial, target[2], AlignmentGapEdge::After)
+            .expect("insert target gap below the third target segment");
+
+        assert!(
+            shifted
+                .alignments
+                .iter()
+                .any(|alignment| alignment.alignment_id == selected_alignment_id)
+        );
+        assert!(
+            !shifted
+                .alignments
+                .iter()
+                .any(|alignment| alignment.source_segment_ids.contains(&source[3]))
+        );
+        for offset in 0..4 {
+            assert!(shifted.alignments.iter().any(|alignment| {
+                alignment.source_segment_ids == vec![source[4 + offset]]
+                    && alignment.target_segment_ids == vec![target[3 + offset]]
+            }));
+        }
+        assert!(
+            !shifted
+                .alignments
+                .iter()
+                .any(|alignment| alignment.target_segment_ids.contains(&target[7]))
+        );
+        assert_eq!(service.open_project(&path).expect("reopen"), shifted);
+    }
+
+    #[test]
+    fn alignment_gap_rejects_a_tail_without_writing() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let path = temporary.path().join("invalid-gap.jm");
+        let service = KernelService;
+        let initial = service
+            .create_project(&government_request(&path))
+            .expect("create project");
+        let last_source = initial.segment_orders[0].entries.last().unwrap().segment_id;
+
+        let error = service
+            .insert_alignment_gap(&path, &initial, last_source, AlignmentGapEdge::After)
+            .expect_err("a gap without a later pair must be rejected");
+
+        assert!(matches!(error, KernelError::AlignmentGapOutOfRange));
+        assert_eq!(service.open_project(&path).expect("reopen"), initial);
     }
 
     #[test]
@@ -2149,9 +2967,15 @@ mod tests {
                 &path,
                 &linked,
                 vec![created_id, linked.alignments[2].alignment_id],
+                Vec::new(),
             )
             .expect("merge");
         assert_eq!(merged.project.current_revision_id, RevisionId::new(3));
+        assert_eq!(merged.segments, linked.segments);
+        assert_eq!(
+            merged.revisions.last().unwrap().change_set.operation,
+            "group_alignment"
+        );
         let merged_id = merged
             .alignments
             .iter()
@@ -2161,6 +2985,11 @@ mod tests {
         let split = service
             .split_alignment(&path, &merged, merged_id, Vec::new(), Vec::new())
             .expect("split into pairs");
+        assert_eq!(split.segments, merged.segments);
+        assert_eq!(
+            split.revisions.last().unwrap().change_set.operation,
+            "ungroup_alignment"
+        );
         assert!(
             split
                 .alignments
@@ -2178,6 +3007,99 @@ mod tests {
                 .any(|alignment| alignment.alignment_id == removed)
         );
         assert_eq!(service.open_project(&path).expect("reopen"), unlinked);
+    }
+
+    #[test]
+    fn merge_combines_an_active_alignment_with_unlinked_segments() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let path = temporary.path().join("merge-unlinked.jm");
+        let service = KernelService;
+        let initial = service
+            .create_project(&government_request(&path))
+            .expect("create project");
+        let source: Vec<_> = initial
+            .segments
+            .iter()
+            .filter(|segment| segment.document_id == initial.documents[0].document_id)
+            .map(|segment| segment.segment_id)
+            .collect();
+        let target: Vec<_> = initial
+            .segments
+            .iter()
+            .filter(|segment| segment.document_id == initial.documents[1].document_id)
+            .map(|segment| segment.segment_id)
+            .collect();
+        let kept_alignment_id = initial
+            .alignments
+            .iter()
+            .find(|alignment| alignment.source_segment_ids.contains(&source[0]))
+            .expect("first alignment")
+            .alignment_id;
+        let detached_alignment_id = initial
+            .alignments
+            .iter()
+            .find(|alignment| alignment.source_segment_ids.contains(&source[1]))
+            .expect("second alignment")
+            .alignment_id;
+        let unlinked = service
+            .unlink_alignment(&path, &initial, detached_alignment_id)
+            .expect("unlink second alignment");
+        let merged = service
+            .merge_alignments(
+                &path,
+                &unlinked,
+                vec![kept_alignment_id],
+                vec![source[1], target[1]],
+            )
+            .expect("merge active alignment with unlinked segments");
+
+        let replacement = merged
+            .alignments
+            .iter()
+            .find(|alignment| {
+                alignment.source_segment_ids == vec![source[0], source[1]]
+                    && alignment.target_segment_ids == vec![target[0], target[1]]
+            })
+            .expect("merged n:m alignment");
+        assert_eq!(
+            replacement.cardinality,
+            jueming_core::Cardinality::ManyToMany
+        );
+        assert_ne!(replacement.alignment_id, kept_alignment_id);
+        assert!(
+            !merged
+                .alignments
+                .iter()
+                .any(|alignment| alignment.alignment_id == kept_alignment_id)
+        );
+        assert_eq!(merged.project.current_revision_id, RevisionId::new(3));
+        assert_eq!(service.open_project(&path).expect("reopen"), merged);
+    }
+
+    #[test]
+    fn merge_rejects_a_segment_that_is_still_aligned_without_writing() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let path = temporary.path().join("merge-conflict.jm");
+        let service = KernelService;
+        let initial = service
+            .create_project(&government_request(&path))
+            .expect("create project");
+        let first_alignment = initial.alignments[0].alignment_id;
+        let occupied_segment = initial.alignments[1].source_segment_ids[0];
+        let error = service
+            .merge_alignments(
+                &path,
+                &initial,
+                vec![first_alignment],
+                vec![occupied_segment],
+            )
+            .expect_err("occupied segment must not be accepted as unlinked");
+
+        assert!(matches!(
+            error,
+            KernelError::MergeSegmentAlreadyAligned(id) if id == occupied_segment
+        ));
+        assert_eq!(service.open_project(&path).expect("reopen"), initial);
     }
 
     #[test]
@@ -2248,6 +3170,16 @@ mod tests {
             )
             .expect_err("incomplete partition must fail");
         assert!(matches!(error, KernelError::SplitGroupsMismatch));
+        let no_op = service
+            .ungroup_alignment(
+                &path,
+                &linked,
+                alignment_id,
+                vec![vec![source[0], source[1]]],
+                vec![vec![target[0], target[1]]],
+            )
+            .expect_err("ungroup must create at least two relations");
+        assert!(matches!(no_op, KernelError::SplitGroupsMismatch));
         assert_eq!(service.open_project(&path).expect("reopen"), linked);
     }
 
@@ -2345,6 +3277,39 @@ mod tests {
             service.open_project(&path).expect("reopen restored"),
             restored
         );
+    }
+
+    #[test]
+    fn orphan_revision_file_is_invisible_until_the_current_snapshot_advances() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let path = temporary.path().join("orphan-revision.jm");
+        let service = KernelService;
+        let initial = service
+            .create_project(&government_request(&path))
+            .expect("create project");
+        let layout = ProjectLayout::new(&path).expect("layout");
+        let mut orphan = initial.clone();
+        advance_revision(
+            &mut orphan,
+            "simulated_interrupted_write",
+            1,
+            "revision file reached disk before project.json".into(),
+        );
+        layout
+            .write_revision_snapshot(RevisionId::new(2), &orphan)
+            .expect("write the first half of persist_snapshot");
+
+        assert_eq!(service.open_project(&path).unwrap(), initial);
+        let visible = service.list_revisions(&path).expect("visible history");
+        assert_eq!(visible.current_revision_id, RevisionId::new(1));
+        assert_eq!(visible.revisions.len(), 1);
+
+        let segment_id = initial.segments[0].segment_id;
+        let committed = service
+            .update_segment(&path, &initial, segment_id, "committed after recovery")
+            .expect("overwrite orphan with a complete commit");
+        assert_eq!(committed.project.current_revision_id, RevisionId::new(2));
+        assert_eq!(service.open_project(&path).unwrap(), committed);
     }
 
     #[test]
@@ -2514,6 +3479,296 @@ mod tests {
         assert_eq!(resolved.annotations[0].status, AnnotationStatus::Resolved);
         assert_eq!(resolved.project.current_revision_id, RevisionId::new(7));
         assert_eq!(resolved.revisions.len(), 7);
+    }
+
+    #[test]
+    fn segment_content_operations_migrate_sidecars_and_survive_history_round_trip() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let path = temporary.path().join("segment-content-history.jm");
+        let service = KernelService;
+        let initial = service
+            .create_project(&government_request(&path))
+            .expect("create project");
+        let source = initial.segment_orders[0]
+            .entries
+            .iter()
+            .map(|entry| entry.segment_id)
+            .collect::<Vec<_>>();
+        let target = initial.segment_orders[1]
+            .entries
+            .iter()
+            .map(|entry| entry.segment_id)
+            .collect::<Vec<_>>();
+        let first_content = initial
+            .segments
+            .iter()
+            .find(|segment| segment.segment_id == source[0])
+            .unwrap()
+            .content
+            .clone();
+        let second_content = initial
+            .segments
+            .iter()
+            .find(|segment| segment.segment_id == source[1])
+            .unwrap()
+            .content
+            .clone();
+        let linked = service
+            .link_segments(
+                &path,
+                &initial,
+                vec![source[0], source[1]],
+                vec![target[0], target[1]],
+                true,
+            )
+            .expect("make a complex alignment");
+        let alignment_id = linked
+            .alignments
+            .iter()
+            .find(|alignment| alignment.source_segment_ids == vec![source[0], source[1]])
+            .unwrap()
+            .alignment_id;
+        let bookmarked = service
+            .create_bookmark(
+                &path,
+                &linked,
+                BookmarkCreateRequest {
+                    segment_id: source[1],
+                    alignment_id: Some(alignment_id),
+                    label: "absorbed anchor".into(),
+                },
+            )
+            .expect("bookmark absorbed segment");
+        let annotated = service
+            .create_annotation(
+                &path,
+                &bookmarked,
+                AnnotationCreateRequest {
+                    title: "split later".into(),
+                    body: "keep both references".into(),
+                    status: AnnotationStatus::Draft,
+                    linked_segment_ids: vec![source[0], source[1]],
+                    alignment_id: Some(alignment_id),
+                    local_author_label: "Local".into(),
+                },
+            )
+            .expect("annotation");
+        let combined = format!("{first_content}{second_content}");
+        let merged = service
+            .merge_segments(&path, &annotated, vec![source[1], source[0]], &combined)
+            .expect("merge consecutive aligned segments");
+        assert_eq!(
+            merged.revisions.last().unwrap().change_set.operation,
+            "merge_segments"
+        );
+        assert!(
+            merged
+                .segments
+                .iter()
+                .all(|segment| segment.segment_id != source[1])
+        );
+        assert_eq!(merged.bookmarks[0].segment_id, source[0]);
+        assert_eq!(merged.bookmarks[0].alignment_id, Some(alignment_id));
+        assert_eq!(merged.annotations[0].linked_segment_ids, vec![source[0]]);
+        assert_eq!(
+            merged
+                .alignments
+                .iter()
+                .find(|alignment| alignment.alignment_id == alignment_id)
+                .unwrap()
+                .source_segment_ids,
+            vec![source[0]]
+        );
+        let previews = service.list_bookmarks(&merged).expect("bookmark preview");
+        assert_eq!(previews[0].segment_content, combined);
+        assert!(previews[0].after_context.is_some());
+        assert_eq!(service.open_project(&path).unwrap(), merged);
+
+        let split = service
+            .split_segment(
+                &path,
+                &merged,
+                source[0],
+                vec![first_content.clone(), second_content.clone()],
+            )
+            .expect("lossless split");
+        let split_id = split
+            .segment_orders
+            .iter()
+            .find(|order| order.document_id == initial.documents[0].document_id)
+            .unwrap()
+            .entries[1]
+            .segment_id;
+        assert_ne!(split_id, source[1]);
+        assert_eq!(split.bookmarks[0].segment_id, source[0]);
+        assert_eq!(
+            split.annotations[0].linked_segment_ids,
+            vec![source[0], split_id]
+        );
+        assert_eq!(
+            split
+                .alignments
+                .iter()
+                .find(|alignment| alignment.alignment_id == alignment_id)
+                .unwrap()
+                .source_segment_ids,
+            vec![source[0], split_id]
+        );
+        assert_eq!(service.open_project(&path).unwrap(), split);
+
+        let undone = service.undo(&path, &split).expect("undo split");
+        assert_eq!(undone.segments, merged.segments);
+        let redone = service.redo(&path, &undone).expect("redo split");
+        assert_eq!(redone.segments, split.segments);
+        assert_eq!(service.open_project(&path).unwrap(), redone);
+    }
+
+    #[test]
+    fn segment_conflicts_are_atomic_and_relation_changes_migrate_sidecar_hints() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let path = temporary.path().join("segment-content-conflicts.jm");
+        let service = KernelService;
+        let initial = service
+            .create_project(&government_request(&path))
+            .expect("create project");
+        let source = initial.segment_orders[0]
+            .entries
+            .iter()
+            .map(|entry| entry.segment_id)
+            .collect::<Vec<_>>();
+        let target = initial.segment_orders[1]
+            .entries
+            .iter()
+            .map(|entry| entry.segment_id)
+            .collect::<Vec<_>>();
+        let rejected = service
+            .merge_segments(&path, &initial, vec![source[0], source[2]], "invalid")
+            .expect_err("nonconsecutive selections cannot merge");
+        assert!(matches!(rejected, KernelError::MergeSegmentsNotConsecutive));
+        let rejected = service
+            .split_segment(
+                &path,
+                &initial,
+                source[0],
+                vec!["different".into(), "text".into()],
+            )
+            .expect_err("non-lossless split cannot write");
+        assert!(matches!(rejected, KernelError::SplitContentMismatch));
+        assert_eq!(service.open_project(&path).unwrap(), initial);
+
+        let old_alignment_id = initial
+            .alignments
+            .iter()
+            .find(|alignment| alignment.source_segment_ids == vec![source[0]])
+            .unwrap()
+            .alignment_id;
+        let bookmarked = service
+            .create_bookmark(
+                &path,
+                &initial,
+                BookmarkCreateRequest {
+                    segment_id: source[0],
+                    alignment_id: Some(old_alignment_id),
+                    label: "group relation".into(),
+                },
+            )
+            .unwrap();
+        let grouped = service
+            .group_alignment(
+                &path,
+                &bookmarked,
+                vec![old_alignment_id, initial.alignments[1].alignment_id],
+                Vec::new(),
+            )
+            .expect("group full relations");
+        let new_alignment_id = grouped
+            .alignments
+            .iter()
+            .find(|alignment| {
+                alignment.source_segment_ids == vec![source[0], source[1]]
+                    && alignment.target_segment_ids == vec![target[0], target[1]]
+            })
+            .unwrap()
+            .alignment_id;
+        assert_ne!(new_alignment_id, old_alignment_id);
+        assert_eq!(grouped.bookmarks[0].alignment_id, Some(new_alignment_id));
+        assert_eq!(
+            grouped.revisions.last().unwrap().change_set.operation,
+            "group_alignment"
+        );
+        assert_eq!(service.open_project(&path).unwrap(), grouped);
+
+        let annotated = service
+            .create_annotation(
+                &path,
+                &grouped,
+                AnnotationCreateRequest {
+                    title: "spans the grouped relation".into(),
+                    body: "the hint must clear when the links split across children".into(),
+                    status: AnnotationStatus::Draft,
+                    linked_segment_ids: vec![source[0], source[1]],
+                    alignment_id: Some(new_alignment_id),
+                    local_author_label: "Local".into(),
+                },
+            )
+            .expect("annotation on grouped relation");
+        let ungrouped = service
+            .ungroup_alignment(
+                &path,
+                &annotated,
+                new_alignment_id,
+                vec![vec![source[0]], vec![source[1]]],
+                vec![vec![target[0]], vec![target[1]]],
+            )
+            .expect("explicitly ungroup relation");
+        let first_child = ungrouped
+            .alignments
+            .iter()
+            .find(|alignment| alignment.source_segment_ids == vec![source[0]])
+            .expect("first child relation")
+            .alignment_id;
+        assert_eq!(ungrouped.bookmarks[0].alignment_id, Some(first_child));
+        assert_eq!(ungrouped.annotations[0].alignment_id, None);
+        assert_eq!(
+            ungrouped.revisions.last().unwrap().change_set.operation,
+            "ungroup_alignment"
+        );
+
+        let unlinked = service
+            .unlink_alignment(&path, &ungrouped, first_child)
+            .expect("unlink child relation");
+        assert_eq!(unlinked.bookmarks[0].segment_id, source[0]);
+        assert_eq!(unlinked.bookmarks[0].alignment_id, None);
+        assert_eq!(
+            unlinked.annotations[0].linked_segment_ids,
+            vec![source[0], source[1]]
+        );
+        let undone = service.undo(&path, &unlinked).expect("undo unlink");
+        assert_eq!(undone.bookmarks[0].alignment_id, Some(first_child));
+        let redone = service.redo(&path, &undone).expect("redo unlink");
+        assert_eq!(redone.bookmarks[0].alignment_id, None);
+        assert_eq!(service.open_project(&path).unwrap(), redone);
+    }
+
+    #[test]
+    fn language_catalogue_is_exposed_and_legacy_chinese_is_normalized_on_create() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let path = temporary.path().join("language-catalogue.jm");
+        let service = KernelService;
+        let languages = service.supported_languages();
+        assert_eq!(languages.len(), 10);
+        assert_eq!(languages[0].language_id, "en");
+        let project = service
+            .create_project(&government_request(&path))
+            .expect("legacy zh-CN request stays compatible");
+        assert_eq!(project.project.source_language, "zh");
+        assert_eq!(project.documents[0].language_id, "zh");
+        let mut unsupported = government_request(&temporary.path().join("unsupported.jm"));
+        unsupported.source.language_id = "ar".into();
+        assert!(matches!(
+            service.create_project(&unsupported),
+            Err(KernelError::UnsupportedLanguage(language)) if language == "ar"
+        ));
     }
 
     #[test]

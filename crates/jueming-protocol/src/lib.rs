@@ -11,6 +11,127 @@ use serde::{Deserialize, Serialize};
 
 pub const CONTRACT_VERSION: &str = "1.0";
 
+/// Canonical IDs accepted by the MVP's left-to-right language chooser. They
+/// serialize as BCP-47 base language codes; `zh-CN` is accepted separately as
+/// a legacy input when opening or creating an older project.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SupportedLanguageId {
+    En,
+    Zh,
+    Hi,
+    Es,
+    Fr,
+    Bn,
+    Pt,
+    Ru,
+    Id,
+    De,
+}
+
+impl SupportedLanguageId {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::En => "en",
+            Self::Zh => "zh",
+            Self::Hi => "hi",
+            Self::Es => "es",
+            Self::Fr => "fr",
+            Self::Bn => "bn",
+            Self::Pt => "pt",
+            Self::Ru => "ru",
+            Self::Id => "id",
+            Self::De => "de",
+        }
+    }
+
+    pub fn parse_compatible(value: &str) -> Option<Self> {
+        Some(match value {
+            "en" => Self::En,
+            "zh" | "zh-CN" => Self::Zh,
+            "hi" => Self::Hi,
+            "es" => Self::Es,
+            "fr" => Self::Fr,
+            "bn" => Self::Bn,
+            "pt" => Self::Pt,
+            "ru" => Self::Ru,
+            "id" => Self::Id,
+            "de" => Self::De,
+            _ => return None,
+        })
+    }
+}
+
+/// The initial language chooser catalogue.  All entries use a left-to-right
+/// script, while language IDs remain ordinary BCP-47 strings so older project
+/// files (for example `zh-CN`) stay readable.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub struct SupportedLanguage {
+    pub language_id: &'static str,
+    pub native_name: &'static str,
+    pub english_name: &'static str,
+}
+
+pub const COMMON_LTR_LANGUAGES: [SupportedLanguage; 10] = [
+    SupportedLanguage {
+        language_id: "en",
+        native_name: "English",
+        english_name: "English",
+    },
+    SupportedLanguage {
+        language_id: "zh",
+        native_name: "\u{4e2d}\u{6587}",
+        english_name: "Chinese",
+    },
+    SupportedLanguage {
+        language_id: "hi",
+        native_name: "\u{0939}\u{093f}\u{0928}\u{094d}\u{0926}\u{0940}",
+        english_name: "Hindi",
+    },
+    SupportedLanguage {
+        language_id: "es",
+        native_name: "Espa\u{00f1}ol",
+        english_name: "Spanish",
+    },
+    SupportedLanguage {
+        language_id: "fr",
+        native_name: "Fran\u{00e7}ais",
+        english_name: "French",
+    },
+    SupportedLanguage {
+        language_id: "bn",
+        native_name: "\u{09ac}\u{09be}\u{0982}\u{09b2}\u{09be}",
+        english_name: "Bengali",
+    },
+    SupportedLanguage {
+        language_id: "pt",
+        native_name: "Portugu\u{00ea}s",
+        english_name: "Portuguese",
+    },
+    SupportedLanguage {
+        language_id: "ru",
+        native_name: "\u{0420}\u{0443}\u{0441}\u{0441}\u{043a}\u{0438}\u{0439}",
+        english_name: "Russian",
+    },
+    SupportedLanguage {
+        language_id: "id",
+        native_name: "Bahasa Indonesia",
+        english_name: "Indonesian",
+    },
+    SupportedLanguage {
+        language_id: "de",
+        native_name: "Deutsch",
+        english_name: "German",
+    },
+];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AlignmentGapEdge {
+    Before,
+    After,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum TextInput {
@@ -88,6 +209,20 @@ pub struct Bookmark {
     pub label: String,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Read model for the bookmark panel. The canonical bookmark remains a small
+/// sidecar record; preview text is derived from the current snapshot so it can
+/// never become stale after content edits, merges, or splits.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct BookmarkPreview {
+    #[serde(flatten)]
+    pub bookmark: Bookmark,
+    pub document_title: String,
+    pub language_id: String,
+    pub segment_content: String,
+    pub before_context: Option<String>,
+    pub after_context: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -318,11 +453,20 @@ pub enum CommandKind {
     MoveSegment,
     LinkSegments,
     UnlinkAlignment,
+    /// Legacy wire name kept for reading old command logs. New commands use
+    /// `GroupAlignment`.
     MergeAlignments,
+    /// Legacy wire name kept for reading old command logs. New commands use
+    /// `UngroupAlignment`.
     SplitAlignment,
     CreateAlignment,
     DeleteAlignment,
+    /// Legacy wire name kept for reading old command logs.
     MergeAlignment,
+    GroupAlignment,
+    UngroupAlignment,
+    MergeSegments,
+    SplitSegment,
     CreateAnnotation,
     UpdateAnnotation,
     DeleteAnnotation,
@@ -349,6 +493,20 @@ pub struct UpdateSegmentPayload {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct MergeSegmentsPayload {
+    pub segment_ids: Vec<SegmentId>,
+    pub merged_content: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SplitSegmentPayload {
+    pub segment_id: SegmentId,
+    /// Parts must be non-empty and concatenate losslessly to the current
+    /// Segment content.
+    pub parts: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct MoveSegmentPayload {
     pub segment_id: SegmentId,
     pub before_segment_id: Option<SegmentId>,
@@ -362,6 +520,13 @@ pub struct AlignmentSelectionPayload {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GroupAlignmentPayload {
+    pub alignment_ids: Vec<AlignmentId>,
+    #[serde(default)]
+    pub unlinked_segment_ids: Vec<SegmentId>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct LinkSegmentsPayload {
     pub source_segment_ids: Vec<SegmentId>,
     pub target_segment_ids: Vec<SegmentId>,
@@ -372,13 +537,17 @@ pub struct LinkSegmentsPayload {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct SplitAlignmentPayload {
+pub struct UngroupAlignmentPayload {
     pub alignment_id: AlignmentId,
-    /// Groups are paired by index. Every group must be non-empty and the
-    /// groups must partition the original alignment references.
+    /// At least two groups are required and paired by index. Every group must
+    /// be non-empty and the groups must partition the original references.
     pub source_groups: Vec<Vec<SegmentId>>,
     pub target_groups: Vec<Vec<SegmentId>>,
 }
+
+/// Compatibility DTO for callers serialized before Group/Ungroup terminology
+/// was introduced. New command envelopes must use `UngroupAlignmentPayload`.
+pub type SplitAlignmentPayload = UngroupAlignmentPayload;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct AlignmentRefPayload {
@@ -464,5 +633,43 @@ mod tests {
                 .project_id,
             project
         );
+    }
+
+    #[test]
+    fn language_catalogue_uses_ten_ltr_base_codes_and_reads_legacy_chinese() {
+        assert_eq!(COMMON_LTR_LANGUAGES.len(), 10);
+        assert_eq!(
+            SupportedLanguageId::parse_compatible("zh-CN"),
+            Some(SupportedLanguageId::Zh)
+        );
+        assert_eq!(SupportedLanguageId::parse_compatible("ar"), None);
+        assert_eq!(SupportedLanguageId::Ru.as_str(), "ru");
+    }
+
+    #[test]
+    fn bookmark_preview_serializes_as_a_flat_read_model() {
+        let preview = BookmarkPreview {
+            bookmark: Bookmark {
+                bookmark_id: BookmarkId::new(),
+                project_id: ProjectId::new(),
+                segment_id: SegmentId::new(),
+                alignment_id: Some(AlignmentId::new()),
+                label: "Review this passage".into(),
+                created_at: "2026-08-29T00:00:00Z".into(),
+                updated_at: "2026-08-29T00:00:00Z".into(),
+            },
+            document_title: "Source".into(),
+            language_id: "zh".into(),
+            segment_content: "当前正文".into(),
+            before_context: Some("上文".into()),
+            after_context: Some("下文".into()),
+        };
+
+        let value = serde_json::to_value(preview).unwrap();
+        assert!(value.get("bookmark").is_none());
+        assert!(value["bookmark_id"].as_str().is_some());
+        assert!(value["segment_id"].as_str().is_some());
+        assert_eq!(value["segment_content"], "当前正文");
+        assert_eq!(value["language_id"], "zh");
     }
 }
