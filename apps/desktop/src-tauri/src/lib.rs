@@ -2,11 +2,11 @@ use std::sync::Mutex;
 
 use jueming_kernel::KernelService;
 use jueming_protocol::{
-    AlignmentId, AnnotationCreateRequest, AnnotationUpdateRequest, BookmarkCreateRequest,
-    BookmarkUpdateRequest, CreateProjectRequest, ExportRequest, ImportPreviewResponse,
-    PreviewImportRequest, ProjectSnapshot, ProjectSummary, ReplaceApplyRequest,
-    ReplacePreviewRequest, RevisionComparison, RevisionId, RevisionListResponse,
-    SearchSegmentsRequest, SearchSegmentsResponse, SegmentId,
+    AlignmentGapEdge, AlignmentId, AnnotationCreateRequest, AnnotationUpdateRequest,
+    BookmarkCreateRequest, BookmarkUpdateRequest, CreateProjectRequest, ExportRequest,
+    ImportPreviewResponse, PreviewImportRequest, ProjectSnapshot, ProjectSummary,
+    ReplaceApplyRequest, ReplacePreviewRequest, RevisionComparison, RevisionId,
+    RevisionListResponse, SearchSegmentsRequest, SearchSegmentsResponse, SegmentId,
 };
 use tauri::State;
 
@@ -29,6 +29,11 @@ fn preview_import(request: PreviewImportRequest) -> Result<ImportPreviewResponse
     KernelService
         .preview_import(&request.input, &request.profile)
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_supported_languages() -> Vec<jueming_protocol::SupportedLanguage> {
+    KernelService.supported_languages()
 }
 
 #[tauri::command]
@@ -171,6 +176,23 @@ fn reorder_segments(
 }
 
 #[tauri::command]
+fn insert_alignment_gap(
+    segment_id: SegmentId,
+    edge: AlignmentGapEdge,
+    state: State<'_, AppKernelState>,
+) -> Result<ProjectSnapshot, String> {
+    let mut guard = state.current.lock().map_err(|_| lock_error())?;
+    let current = guard
+        .as_mut()
+        .ok_or_else(|| "No local project is open.".to_owned())?;
+    let next = KernelService
+        .insert_alignment_gap(&current.path, &current.snapshot, segment_id, edge)
+        .map_err(|error| error.to_string())?;
+    current.snapshot = next.clone();
+    Ok(next)
+}
+
+#[tauri::command]
 fn link_segments(
     source_segment_ids: Vec<SegmentId>,
     target_segment_ids: Vec<SegmentId>,
@@ -213,6 +235,7 @@ fn unlink_alignment(
 #[tauri::command]
 fn merge_alignments(
     alignment_ids: Vec<AlignmentId>,
+    unlinked_segment_ids: Option<Vec<SegmentId>>,
     state: State<'_, AppKernelState>,
 ) -> Result<ProjectSnapshot, String> {
     let mut guard = state.current.lock().map_err(|_| lock_error())?;
@@ -220,12 +243,40 @@ fn merge_alignments(
         .as_mut()
         .ok_or_else(|| "No local project is open.".to_owned())?;
     let next = KernelService
-        .merge_alignments(&current.path, &current.snapshot, alignment_ids)
+        .merge_alignments(
+            &current.path,
+            &current.snapshot,
+            alignment_ids,
+            unlinked_segment_ids.unwrap_or_default(),
+        )
         .map_err(|error| error.to_string())?;
     current.snapshot = next.clone();
     Ok(next)
 }
 
+#[tauri::command]
+fn group_alignment(
+    alignment_ids: Vec<AlignmentId>,
+    unlinked_segment_ids: Vec<SegmentId>,
+    state: State<'_, AppKernelState>,
+) -> Result<ProjectSnapshot, String> {
+    let mut guard = state.current.lock().map_err(|_| lock_error())?;
+    let current = guard
+        .as_mut()
+        .ok_or_else(|| "No local project is open.".to_owned())?;
+    let next = KernelService
+        .group_alignment(
+            &current.path,
+            &current.snapshot,
+            alignment_ids,
+            unlinked_segment_ids,
+        )
+        .map_err(|error| error.to_string())?;
+    current.snapshot = next.clone();
+    Ok(next)
+}
+
+/// Transitional IPC alias. New clients call `group_alignment`.
 #[tauri::command]
 fn split_alignment(
     alignment_id: AlignmentId,
@@ -245,6 +296,69 @@ fn split_alignment(
             source_groups,
             target_groups,
         )
+        .map_err(|error| error.to_string())?;
+    current.snapshot = next.clone();
+    Ok(next)
+}
+
+#[tauri::command]
+fn ungroup_alignment(
+    alignment_id: AlignmentId,
+    source_groups: Vec<Vec<SegmentId>>,
+    target_groups: Vec<Vec<SegmentId>>,
+    state: State<'_, AppKernelState>,
+) -> Result<ProjectSnapshot, String> {
+    let mut guard = state.current.lock().map_err(|_| lock_error())?;
+    let current = guard
+        .as_mut()
+        .ok_or_else(|| "No local project is open.".to_owned())?;
+    let next = KernelService
+        .ungroup_alignment(
+            &current.path,
+            &current.snapshot,
+            alignment_id,
+            source_groups,
+            target_groups,
+        )
+        .map_err(|error| error.to_string())?;
+    current.snapshot = next.clone();
+    Ok(next)
+}
+
+#[tauri::command]
+fn merge_segments(
+    segment_ids: Vec<SegmentId>,
+    merged_content: String,
+    state: State<'_, AppKernelState>,
+) -> Result<ProjectSnapshot, String> {
+    let mut guard = state.current.lock().map_err(|_| lock_error())?;
+    let current = guard
+        .as_mut()
+        .ok_or_else(|| "No local project is open.".to_owned())?;
+    let next = KernelService
+        .merge_segments(
+            &current.path,
+            &current.snapshot,
+            segment_ids,
+            &merged_content,
+        )
+        .map_err(|error| error.to_string())?;
+    current.snapshot = next.clone();
+    Ok(next)
+}
+
+#[tauri::command]
+fn split_segment(
+    segment_id: SegmentId,
+    parts: Vec<String>,
+    state: State<'_, AppKernelState>,
+) -> Result<ProjectSnapshot, String> {
+    let mut guard = state.current.lock().map_err(|_| lock_error())?;
+    let current = guard
+        .as_mut()
+        .ok_or_else(|| "No local project is open.".to_owned())?;
+    let next = KernelService
+        .split_segment(&current.path, &current.snapshot, segment_id, parts)
         .map_err(|error| error.to_string())?;
     current.snapshot = next.clone();
     Ok(next)
@@ -381,7 +495,7 @@ fn create_bookmark(
 #[tauri::command]
 fn list_bookmarks(
     state: State<'_, AppKernelState>,
-) -> Result<Vec<jueming_protocol::Bookmark>, String> {
+) -> Result<Vec<jueming_protocol::BookmarkPreview>, String> {
     let guard = state.current.lock().map_err(|_| lock_error())?;
     let current = guard
         .as_ref()
@@ -518,6 +632,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             preview_import,
+            list_supported_languages,
             create_project,
             open_project,
             get_project_summary,
@@ -527,10 +642,15 @@ pub fn run() {
             update_segment,
             move_segment,
             reorder_segments,
+            insert_alignment_gap,
             link_segments,
             unlink_alignment,
             merge_alignments,
+            group_alignment,
             split_alignment,
+            ungroup_alignment,
+            merge_segments,
+            split_segment,
             list_revisions,
             compare_revision,
             undo,

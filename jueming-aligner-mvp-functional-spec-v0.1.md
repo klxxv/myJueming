@@ -45,7 +45,7 @@ Segment
   ↓
 Alignment
   ↓
-Edit / Reorder / Merge / Split
+Edit / Reorder / Segment Merge / Split / Alignment Group / Ungroup
   ↓
 Save / Export
 ```
@@ -113,8 +113,8 @@ MVP 要求的是：**这些 Slot 已经有命名、Schema 和 Registry 位置，
 | 分段处理 | 规则分句 | 将长文本拆成 Segment |
 | 平行视图 | 双栏显示 | 观察原文 / 译文 Segment |
 | 人工对齐 | Link / Unlink | 建立或解除关系 |
-| 对齐合并 | Merge | 构造 2:1、1:2、n:m |
-| 对齐拆分 | Split | 拆开错误 Alignment |
+| Segment 内容结构 | Merge 内容 / Split 内容 | 合并或无损拆分同侧 Segment 文本 |
+| 对齐分组 | Group / Ungroup | 构造或拆开 1:n、n:1、n:m Alignment |
 | 顺序调整 | Move / Drag | 调整段内 Segment 顺序 |
 | 单句编辑 | Segment Edit | 修改原文或译文 |
 | Review | 当前对齐点突出 | 辅助逐句检查 |
@@ -142,7 +142,7 @@ Initial Parallel Layout
     ↓
 Manual Alignment
     ↓
-Reorder / Merge / Split / Link
+Reorder / Segment Merge / Split / Link / Group / Ungroup
     ↓
 Edit Segment
     ↓
@@ -197,7 +197,7 @@ Source Text
 Target Text
 ```
 
-第一版只要求双语工程，但 Core 数据模型不限制语言数量。
+第一版只要求双语工程，但 Core 数据模型不限制语言数量。新建向导冻结为 curated top-ten LTR 语言集：`en` English、`zh` 中文（普通话，横排）、`hi` हिन्दी、`es` Español、`fr` Français、`bn` বাংলা、`pt` Português、`ru` Русский、`id` Bahasa Indonesia、`de` Deutsch。语言代码是 BCP-47 基础代码；脚本方向以 Unicode CLDR 资料校验。RTL 语言在本版本不提供选择，不能通过自动检测或布局镜像绕过此限制。导入向导按语言预填分句提示（中文按句末标点而非空白；印地语/孟加拉语识别 `।`；其余按各自 Latin/Cyrillic 空白与句末标点），但不实现 NLP 自动分词。
 
 内部继续使用：
 
@@ -565,82 +565,45 @@ Z10     E10
 
 ---
 
-# 12. Merge
+# 12. Segment 内容结构：Merge 内容 / Split 内容
 
-Merge 用于多个 Segment 合并到同一个 Alignment Group。
-
-例如：
+`Merge 内容` 与 `Split 内容` 都是同一语言侧的 Segment 内容/结构操作，不是 Alignment 操作。它们会改变 Segment content、当前 Segment 集合和 `SegmentOrder`，并在一个原子 ChangeSet 中维护书签、批注、索引与 Revision。
 
 ```text
-Before
+Merge 内容
+Z10 + Z11  →  Z10
 
-Z10 ↔ E10
-Z11
+Split 内容
+Z10  →  Z10 + Z-new
 ```
 
-Merge 后：
+Merge 只接受同一 Document 中相邻的 Segment：当前顺序的第一个 Segment 保留 `SegmentId`，其余 Segment 被吸收进历史；合并后的正文必须由用户确认。Split 的 `parts[]` 必须是原正文的无损、有序、非空划分：原 `SegmentId` 保留第一 part，后续 part 新建 ID 并紧邻插入 `SegmentOrder`。
+
+当所选 Segment 全部未对齐，内容操作后仍未对齐。当它们全部属于同一个 Alignment，Merge 后该 Alignment 的 ref 收缩；Split 后所有 parts 首先继承该 Alignment 的 ref。不得把文本 Merge/Split 当成猜测新的翻译对应关系。
+
+## 12.1 跨 Alignment Block 的内容操作
+
+Alignment Block 只是当前两侧顺序与 refs 计算出的视觉投影，不保存 Block ID。若被 Merge 的 Segment 跨越两个 active Alignment/Block，界面必须拒绝直接执行并提示用户先 `Group`；可提供“Group 后继续”的明确预览，但提交时必须列出关系变化和内容变化。Split 后若用户希望不同 parts 分别对齐，先完成 Split，再显式 `Ungroup`；不能由 Split 自动切分 Alignment。
+
+# 13. Alignment 关系：Group / Ungroup
+
+`Group` 是原 Alignment Merge 的新名称，只改变关系，不改 Segment 正文或顺序。它要求选择完整 Alignment（或一个完整 Alignment 加未对齐 Segment），并创建一个新的 Alignment；所有被 Group 的旧 `AlignmentId` 失活。
 
 ```text
-Z10 + Z11 ↔ E10
+Z10 ↔ E10       Z10 + Z11 ↔ E10
+Z11       Group
 ```
 
-形成：
-
-```text
-2 : 1
-```
-
-另一种：
-
-```text
-Z20 ↔ E20
-      E21
-```
-
-合并：
-
-```text
-Z20 ↔ E20 + E21
-```
-
-形成：
-
-```text
-1 : 2
-```
-
----
-
-## 12.1 Merge 的作用
-
-解决典型翻译情况：
-
-- 一句原文译成两句；
-- 两句原文压缩成一句；
-- 意译导致边界不同；
-- 规则分句与译文边界不同；
-- 原译文之间存在局部重组。
-
----
-
-# 13. Split
-
-Split 将复杂 Alignment 拆开。
-
-例如：
+`Ungroup` 是原 Alignment Split 的新名称，只改变关系，不改 Segment 正文或顺序。它必须显示并提交明确、双侧均非空的 groups；原 `AlignmentId` 失活，每个子组使用新 ID。完全拆散为未对齐项使用 `Unlink`，不是 Ungroup。
 
 ```text
 Z20 + Z21 ↔ E20 + E21
-```
-
-拆分：
-
-```text
+        Ungroup
 Z20 ↔ E20
 Z21 ↔ E21
 ```
 
-也可以拆成未连接状态，再由用户重新 Link。
+Group/Ungroup 不猜语义。若提议的子组会留下不确定成员、交叉关系或未对齐项，必须在预览中显示并由用户修改或确认。
 
 ---
 
@@ -655,6 +618,8 @@ Order Mode 用于调整段内 Segment 顺序。
 - 取消当前句过度突出；
 - 显示清楚的拖动手柄；
 - 保留轻量 Alignment 关系提示。
+- 可跨 Alignment Block 拖动；Block 只是 UI 投影，跨越后可以显示 non-contiguous、interleaved 或 crossed 警示，但不修改关系成员。
+- 拖动卡片使用独立 Overlay；连线以稳定 `SegmentId` 的实时端口坐标跟随 Overlay，原位保留占位，drop 后完成虚拟列表重新测量才移除 Overlay，避免连线停在旧行。
 
 示例：
 
@@ -683,6 +648,7 @@ MVP 至少实现：
 Move Up
 Move Down
 Drag
+Insert Blank Above / Below
 ```
 
 ---
@@ -701,6 +667,12 @@ MoveSegment(
 ```
 
 Kernel 维护真实顺序。
+
+Order Mode 选中任一真实已对齐 Segment 后，可在其上方或下方插入同侧视觉空位。该操作不创建空文本 Segment，而是解除边界处另一侧 Segment 的关系，并按两侧当前顺序重建后续 1:1 Alignment；尾部无法配对的 Segment 保持未对齐。整个操作产生一个可撤销 Revision。
+
+拖放适配层只提交 stable ID 及 before/after 锚点。虚拟列表可卸载原 draggable，但必须用 monitor/稳定 target 按 ID 接续；动态高度使用 `measureElement`/`ResizeObserver`，不可对同一 virtual index 混用 `resizeItem`。拖动手柄至少 24px，原项约 0.4 opacity；Overlay 通过 Vue `Teleport` 置于 workspace 根层，避开父级 transform/overflow 的 stacking context，Windows 原生 preview 超过 280px 显著变淡时使用受控 Overlay。
+
+本迭代暂缓自动化 drag E2E 和视觉测试；仍必须覆盖 stable-ID 顺序提交、端点注册和 drop 后重新测量的单元/集成契约，不能把暂缓理解为放弃连线稳定性。
 
 ---
 
@@ -774,10 +746,12 @@ Alignment identity 保持
 用户通过：
 
 ```text
-Merge
-Split
+Merge 内容
+Split 内容
 Link
 Unlink
+Group
+Ungroup
 ```
 
 手工修正。
@@ -811,10 +785,12 @@ Bookmark {
 显示：
 
 ```text
-★ Z107
-★ Z158
-★ E324
+★ Z107  现在，我代表国务院……
+★ Z158  一、2020年工作回顾
+★ E324  Fellow Deputies, on behalf…
 ```
+
+预览来自当前 Revision 的 Segment 内容、语言与顺序号，Bookmark canonical data 仍只保存稳定锚点和可选 label，不复制正文。Segment Merge 将被吸收 Segment 的书签迁移到保留首项；Split 使书签继续锚定第一 part；Group/Ungroup/Unlink 无法唯一映射关系时清除可选 AlignmentId，但绝不丢失 Segment 锚点。
 
 点击书签：
 
@@ -899,11 +875,13 @@ EditSegment
 MoveSegment
 Link
 Unlink
-MergeAlignment
-SplitAlignment
+MergeSegments
+SplitSegment
+GroupAlignment
+UngroupAlignment
 ```
 
-复杂 Git-like History Trace 放到后续版本。
+复杂 Git-like History Trace 放到后续版本。History 必须把内容结构操作与关系操作分开呈现，显示 Segment/Alignment ID 迁移、正文与顺序变化，以及书签/批注迁移摘要；弃用的 `MergeAlignment` / `SplitAlignment` 不得出现在新 UI 或 Revision 摘要。
 
 ---
 
@@ -1015,8 +993,10 @@ Jueming Eye Care
 | 取消编辑 | Esc |
 | Move Up | Alt+↑ |
 | Move Down | Alt+↓ |
-| Merge | Ctrl+M |
-| Split | Ctrl+Shift+M |
+| Merge 内容 | Ctrl+M |
+| Split 内容 | Ctrl+Shift+M |
+| Group Alignment | Ctrl+Alt+M |
+| Ungroup Alignment | Ctrl+Alt+Shift+M |
 | Bookmark | Ctrl+B（可配置） |
 
 ---
@@ -1213,8 +1193,10 @@ EditSegment
 MoveSegment
 CreateAlignment
 DeleteAlignment
-MergeAlignment
-SplitAlignment
+MergeSegments
+SplitSegment
+GroupAlignment
+UngroupAlignment
 ```
 
 ---
@@ -1368,8 +1350,8 @@ time-based alignment
 ## 29.3 Alignment
 
 - 可以建立 1:1；
-- 可以 Merge；
-- 可以 Split；
+- 可以 Group / Ungroup Alignment；
+- 可以 Merge 内容 / Split 内容；
 - 可以 Link；
 - 可以 Unlink；
 - 可以处理 1:2 / 2:1；
@@ -1407,6 +1389,7 @@ time-based alignment
 - 可以添加；
 - 可以删除；
 - 可以从 Bookmark Panel 跳转。
+- Bookmark Panel 显示正文预览而不只显示编号。
 
 ## 29.9 导出
 
@@ -1427,7 +1410,7 @@ Phase 2
 Parallel View + Manual Alignment
 
 Phase 3
-Merge / Split / Link / Unlink
+Link / Unlink / Group / Ungroup + Segment Merge / Split
 
 Phase 4
 Order Mode + Segment Edit
@@ -1458,8 +1441,9 @@ TXT / Paste
 规则分段
 双栏显示
 人工对齐
-Merge / Split
+Merge 内容 / Split 内容
 Link / Unlink
+Group / Ungroup
 编辑
 重排
 Review
