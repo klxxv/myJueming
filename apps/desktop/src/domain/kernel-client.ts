@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
+import { fallbackLanguages } from "./languages";
 
 export type LanguageSide = "source" | "target";
 export type WorkspaceMode = "review" | "edit" | "order" | "history";
+export type AlignmentGapEdge = "before" | "after";
 export type Encoding = "utf8" | "utf8-bom" | "gb18030";
 export type SegmentationMode = "non_empty_line" | "sentence_rules" | "legacy_tagged_line";
 
@@ -140,6 +142,14 @@ export interface BookmarkDto {
   created_at: string;
   updated_at: string;
 }
+export interface BookmarkPreviewDto extends BookmarkDto {
+  document_title: string;
+  language_id: string;
+  segment_content: string;
+  before_context: string | null;
+  after_context: string | null;
+}
+export interface SupportedLanguageDto { language_id: string; native_name: string; english_name: string }
 
 export type AnnotationStatusDto = "draft" | "in_progress" | "resolved";
 export interface HumanAnnotationDto {
@@ -249,15 +259,19 @@ export interface KernelClient {
   openProject(projectPath: string): Promise<ProjectSnapshot>;
   getCurrentProject(): Promise<ProjectSnapshot>;
   getProjectSummary(): Promise<ProjectSummaryDto>;
+  listSupportedLanguages(): Promise<SupportedLanguageDto[]>;
   flushProject(): Promise<void>;
   clearCache(): Promise<number>;
   updateSegment(segmentId: string, content: string): Promise<void>;
   moveSegment(segmentId: string, beforeSegmentId?: string, afterSegmentId?: string): Promise<void>;
   reorderSegments(orderedSegmentIds: string[]): Promise<ProjectSnapshot>;
+  insertAlignmentGap(segmentId: string, edge: AlignmentGapEdge): Promise<ProjectSnapshot>;
   linkSegments(sourceSegmentIds: string[], targetSegmentIds: string[], replaceExisting: boolean): Promise<ProjectSnapshot>;
   unlinkAlignment(alignmentId: string): Promise<ProjectSnapshot>;
-  mergeAlignments(alignmentIds: string[]): Promise<ProjectSnapshot>;
-  splitAlignment(alignmentId: string, sourceGroups: string[][], targetGroups: string[][]): Promise<ProjectSnapshot>;
+  mergeSegments(segmentIds: string[], mergedContent: string): Promise<ProjectSnapshot>;
+  splitSegment(segmentId: string, parts: string[]): Promise<ProjectSnapshot>;
+  groupAlignments(alignmentIds: string[], unlinkedSegmentIds: string[]): Promise<ProjectSnapshot>;
+  ungroupAlignment(alignmentId: string, sourceGroups: string[][], targetGroups: string[][]): Promise<ProjectSnapshot>;
   listRevisions(): Promise<RevisionListResponse>;
   compareRevision(fromRevisionId: string, toRevisionId: string): Promise<RevisionComparison>;
   undo(): Promise<ProjectSnapshot>;
@@ -267,6 +281,7 @@ export interface KernelClient {
   previewReplace(request: ReplacePreviewRequest): Promise<ReplacePreviewResponse>;
   applyReplace(preview: ReplacePreviewRequest, selectedSegmentIds: string[]): Promise<ProjectSnapshot>;
   createBookmark(segmentId: string, alignmentId: string | null, label: string): Promise<ProjectSnapshot>;
+  listBookmarks(): Promise<BookmarkPreviewDto[]>;
   deleteBookmark(bookmarkId: string): Promise<ProjectSnapshot>;
   createAnnotation(request: AnnotationDraftRequest): Promise<ProjectSnapshot>;
   updateAnnotation(annotationId: string, request: AnnotationDraftRequest): Promise<ProjectSnapshot>;
@@ -345,6 +360,14 @@ export const createKernelClient = (): KernelClient => ({
     if (!inTauri()) throw new Error("浏览器预览不支持持久化排序，请在 Tauri 中操作");
     return invoke<ProjectSnapshot>("reorder_segments", { orderedSegmentIds });
   },
+  async listSupportedLanguages() {
+    if (!inTauri()) return fallbackLanguages;
+    return invoke<SupportedLanguageDto[]>("list_supported_languages");
+  },
+  async insertAlignmentGap(segmentId, edge) {
+    if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
+    return invoke<ProjectSnapshot>("insert_alignment_gap", { segmentId, edge });
+  },
   async linkSegments(sourceSegmentIds, targetSegmentIds, replaceExisting) {
     if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
     return invoke<ProjectSnapshot>("link_segments", { sourceSegmentIds, targetSegmentIds, replaceExisting });
@@ -353,13 +376,21 @@ export const createKernelClient = (): KernelClient => ({
     if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
     return invoke<ProjectSnapshot>("unlink_alignment", { alignmentId });
   },
-  async mergeAlignments(alignmentIds) {
-    if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
-    return invoke<ProjectSnapshot>("merge_alignments", { alignmentIds });
+  async mergeSegments(segmentIds, mergedContent) {
+    if (!inTauri()) throw new Error("浏览器预览不支持修改 Segment 内容，请在 Tauri 中操作");
+    return invoke<ProjectSnapshot>("merge_segments", { segmentIds, mergedContent });
   },
-  async splitAlignment(alignmentId, sourceGroups, targetGroups) {
+  async splitSegment(segmentId, parts) {
+    if (!inTauri()) throw new Error("浏览器预览不支持修改 Segment 内容，请在 Tauri 中操作");
+    return invoke<ProjectSnapshot>("split_segment", { segmentId, parts });
+  },
+  async groupAlignments(alignmentIds, unlinkedSegmentIds) {
     if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
-    return invoke<ProjectSnapshot>("split_alignment", { alignmentId, sourceGroups, targetGroups });
+    return invoke<ProjectSnapshot>("group_alignment", { alignmentIds, unlinkedSegmentIds });
+  },
+  async ungroupAlignment(alignmentId, sourceGroups, targetGroups) {
+    if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
+    return invoke<ProjectSnapshot>("ungroup_alignment", { alignmentId, sourceGroups, targetGroups });
   },
   async listRevisions() {
     if (!inTauri()) return { project_id: "fixture-project", current_revision_id: "0", revisions: [] };
@@ -375,6 +406,7 @@ export const createKernelClient = (): KernelClient => ({
   async previewReplace(request) { return invoke<ReplacePreviewResponse>("preview_replace", { request }); },
   async applyReplace(preview, selectedSegmentIds) { return invoke<ProjectSnapshot>("apply_replace", { request: { preview, selected_segment_ids: selectedSegmentIds } }); },
   async createBookmark(segmentId, alignmentId, label) { return invoke<ProjectSnapshot>("create_bookmark", { request: { segment_id: segmentId, alignment_id: alignmentId, label } }); },
+  async listBookmarks() { return invoke<BookmarkPreviewDto[]>("list_bookmarks"); },
   async deleteBookmark(bookmarkId) { return invoke<ProjectSnapshot>("delete_bookmark", { bookmarkId }); },
   async createAnnotation(request) { return invoke<ProjectSnapshot>("create_annotation", { request: { ...request, local_author_label: request.local_author_label ?? "本地用户" } }); },
   async updateAnnotation(annotationId, request) { const { local_author_label: _author, ...rest } = request; return invoke<ProjectSnapshot>("update_annotation", { request: { annotation_id: annotationId, ...rest } }); },

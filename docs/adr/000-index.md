@@ -1,6 +1,6 @@
 # Jueming Aligner MVP ADR index
 
-_Phase 0 的 12 项架构决策索引；状态以本地单机 MVP 的合同冻结为准。_
+_Phase 0 的 14 项架构决策索引；状态以本地单机 MVP 的合同冻结为准。_
 
 ---
 
@@ -20,6 +20,8 @@ _Phase 0 的 12 项架构决策索引；状态以本地单机 MVP 的合同冻�
 | [ADR-010](ADR-010-unbound-slot.md) | UNBOUND Slot 是合法运行时状态 | Accepted | 延期能力不做假按钮 |
 | [ADR-011](ADR-011-parallel-workspace-modes.md) | ParallelWorkspace 共享四种模式 | Accepted | Review/Edit/Order/History 不复制数据 |
 | [ADR-012](ADR-012-find-search-separation.md) | View Find 与 Project Search 分离 | Accepted | `Ctrl+F` 不扫描全工程 |
+| [ADR-013](ADR-013-order-alignment-gap.md) | Order 空位使用原子关系重建 | Accepted | 不创建假 Segment/空 Alignment |
+| [ADR-014](ADR-014-segment-structure-and-alignment-groups.md) | Segment 内容结构与 Alignment 分组解耦 | Accepted | Merge/Split 改内容；Group/Ungroup 改关系 |
 
 ### 决策依赖
 
@@ -39,6 +41,12 @@ flowchart LR
     adr_008 --> adr_012["ADR-012 search split"]
     adr_009 --> adr_012
     adr_010["ADR-010 UNBOUND"] --> adr_011
+    adr_004 --> adr_013["ADR-013 alignment gap"]
+    adr_005 --> adr_013
+    adr_003 --> adr_014["ADR-014 Segment structure"]
+    adr_005 --> adr_014
+    adr_006 --> adr_014
+    adr_007 --> adr_014
 ```
 
 ## 🔗 使用说明
@@ -49,4 +57,4 @@ flowchart LR
 
 ---
 
-_Last updated: 2026-08-27_
+_Last updated: 2026-08-29_

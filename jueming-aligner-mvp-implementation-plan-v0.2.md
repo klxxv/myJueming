@@ -18,7 +18,7 @@
   → 导入双语普通 / 旧版标注 TXT（Kernel 保留 Paste 输入合同）
   → 规则分句并预览
   → 生成初始平行布局
-  → 人工 Link / Unlink / Merge / Split
+  → 人工 Link / Unlink / Segment Merge / Split / Alignment Group / Ungroup
   → 平行阅读、单句编辑、语句重排
   → 搜索与批量替换
   → 书签与单机批注
@@ -85,7 +85,7 @@ MVP 不实现自动 NLP 或云能力。完整架构中相关能力只注册稳�
 1. 以“双栏文本 → 人工句级关系 → 保存/重开 → 导出”为最短产品主链，避免先做完整语料分析平台；
 2. 首版只绑定内置 TXT/Paste、规则分段、人工 Alignment、基础字符串索引和 TXT/JSON/XML Exporter，Tauri 内全部走 in-process `KernelClient`；
 3. 底层继续使用稳定 `Segment`、`SegmentOrder` 与 `Alignment`，不因界面看似“文本行”而退回数组下标身份；
-4. SISU 的剪切粘贴式调整提升为显式 `Link / Unlink / Merge / Split / MoveSegment`，每次操作形成 ChangeSet 与 Revision；
+4. SISU 的剪切粘贴式调整提升为显式 `Link / Unlink / MergeSegments / SplitSegment / GroupAlignment / UngroupAlignment / MoveSegment`，每次操作形成 ChangeSet 与 Revision；
 5. 保留 Order Mode，因为它成本低、直接改善人工对齐；编辑保持单 Segment 轻量控件，不引入整篇富文本；
 6. POS、Lemma、自动语义对齐、Embedding、OCR、云协作和外部插件加载保持 `UNBOUND` / 延期，不进入 MVP 主链。
 
@@ -100,16 +100,16 @@ MVP 不实现自动 NLP 或云能力。完整架构中相关能力只注册稳�
 | Epic | MVP 能力 | 完成判据 |
 |---|---|---|
 | 工程管理 | 新建、打开、最近工程、保存、另存为、关闭恢复 | 关闭应用后重新打开，文本、顺序、对齐、书签、批注和版本均一致 |
-| 双语导入 | 粘贴、选择左右 TXT、语言设置、UTF-8 / UTF-8 BOM、显式 GB18030 | 左右文本可独立导入；解码候选有明确预览和来源，失败时不产生半成品工程 |
+| 双语导入 | 粘贴、选择左右 TXT、十种 curated LTR 语言选择、UTF-8 / UTF-8 BOM、显式 GB18030 | 语言代码来自 BCP-47 LTR 白名单；左右文本可独立导入，解码候选有明确预览和来源，RTL 被拒绝，失败时不产生半成品工程 |
 | 分段 | 非空行即 Segment、中文/英文规则分句、旧版 `<seg>` 标注行预处理、规则编辑、预览、应用 | 可保留已对齐 TXT 的行边界，可对连续正文分句，也可在预览中剔除旧版包装/POS 后缀；应用后每个 Segment 有稳定 ID |
 | 初始布局 | 按左右顺序形成暂定 1:1 配对，多余项保持未对齐 | 不宣称语义自动对齐；用户可清楚识别 provisional 与 unlinked 状态 |
 | 平行阅读 | 双栏虚拟列表、当前 Alignment 高亮、双向定位、Context Lens | 点击任一侧 Segment 能定位另一侧；上下文扩展不丢失当前 Alignment anchor |
-| 人工对齐 | 多选、Link、Unlink、Merge、Split，支持 1:1、1:n、n:1、n:m | 所有操作可撤销、持久化；未对齐 Segment 可筛出 |
+| 人工对齐与内容结构 | 同侧 Merge 内容 / Split 内容；Link、Unlink、Group、Ungroup，支持 1:1、1:n、n:1、n:m | 内容结构与关系操作视觉、命令和历史分离；所有操作可撤销、持久化；未对齐 Segment 可筛出 |
 | 单句编辑 | 双击或 Enter 编辑，保存、取消、字数、脏状态 | 编辑不改变 SegmentId；已有 AlignmentId 默认保持 |
-| 语句重排 | 上移、下移、拖拽；MVP 先实现中文源侧排序并保留英文关系提示 | 重排只改变 `PositionKey` / 顺序，不改变 SegmentId 或 AlignmentId |
+| 语句重排 | 上移、下移、拖拽；MVP 先实现中文源侧排序并保留英文关系提示 | 可跨 Alignment Block；重排只改变 `PositionKey` / 顺序，不改变 SegmentId 或 AlignmentId，连线按稳定 SegmentId 跟随 Overlay |
 | 搜索 | Review View Find 与 Kernel Project Search、语言范围、普通文本、大小写、基础正则、结果跳转 | `Ctrl+F` 只查当前打开的平行工作区并按 stable ID 跳转；Project Search 结果以 SegmentId 锚定并可跳回平行视图 |
 | 替换 | 单个替换、全部替换、范围选择、变更预览 | 批量替换作为一个 ChangeSet 提交，可一次撤销，不允许静默部分成功 |
-| 书签 | 添加、删除、列表、跳转 | 书签按 SegmentId 锚定，重排后仍可正确跳转 |
+| 书签 | 添加、删除、列表、跳转、内容预览 | 书签按 SegmentId 锚定，列表显示当前正文预览；结构操作原子迁移锚点，重排后仍可正确跳转 |
 | 单机批注 | 新建、编辑、删除、状态、筛选、关联左右 Segment / Alignment | 支持 Draft、In Progress、Resolved；无账号和协作依赖 |
 | 自动保存 | 操作日志写入、延迟刷盘、崩溃恢复、手动保存 | 正常编辑无需频繁手动保存；异常退出后可恢复到最后成功落盘版本 |
 | 历史 | Undo、Redo、持久版本列表、版本差异、恢复 | 恢复旧版本会创建新 Revision，不覆盖或删除既有历史 |
@@ -182,7 +182,7 @@ MVP 不实现自动 NLP 或云能力。完整架构中相关能力只注册稳�
 步骤：
 
 1. 输入工程名与保存目录；
-2. 选择源语言、目标语言；
+2. 从 curated top-ten LTR 白名单选择源语言、目标语言：`en`、`zh`、`hi`、`es`、`fr`、`bn`、`pt`、`ru`、`id`、`de`；语言方向依据 Unicode CLDR，RTL 不在本 MVP 支持范围；
 3. 两侧分别粘贴文本或选择 TXT；
 4. 校验编码并显示字符数、行数、文件名；
 5. 选择“保留非空行”或“规则分句”；规则分句时配置标点规则；
@@ -225,10 +225,14 @@ P0 不因 Dockview 或多窗口延期而阻塞；inline expand 是完整可用�
 - 支持拖动、上移、下移、恢复进入模式前的顺序；
 - 拖拽层输出 stable SegmentId 的完整排列，Kernel 负责把它转换为 canonical order；上移/下移仍使用 stable ID 邻接关系，不把可见数组 index 当身份；
 - 拖动过程中显示插入位置；
-- 发生 crossing alignment 时只提示，不自动改变 Alignment；
+- 允许跨 Alignment Block；发生 crossing、interleaved 或 non-contiguous Alignment 时只提示，不自动改变 Alignment；Block 不是 canonical entity；
+- `DragOverlay` 使用稳定 `SegmentId` 注册的实时端口坐标，原位保留固定高度占位；连线、端口、投放线与普通项之上由 Overlay 承担，drop 后虚拟列表重新测量完成才移除，绝不依赖旧行坐标；
+- 选中任一真实已对齐 Segment 后可在上方/下方插入同侧视觉空位；该显式命令不改变 SegmentOrder，而是原子打断边界关系并按当前顺序重建后续 1:1 manual Alignment；
 - 一次拖拽产生一个 ChangeSet。
 
-拖拽输入使用 `@atlaskit/pragmatic-drag-and-drop` 的 element adapter，并由决明自研 domain command adapter 把拖放结果解释为 stable SegmentId 排列；不把库内部 index 直接提交给 Kernel。拖拽手柄必须有上移/下移等价键盘操作，并与 `@tanstack/vue-virtual` 的虚拟行挂载/卸载生命周期绑定。
+拖拽输入使用 `@atlaskit/pragmatic-drag-and-drop` 的 element adapter，并由决明自研 domain command adapter 把拖放结果解释为 stable SegmentId 排列；不把库内部 index 直接提交给 Kernel。最新官方 PDD 文档将 `onDrag` 定义为节流高频回调；虚拟化中原 draggable 可卸载，因此须用 monitor/稳定 target 以 ID 接续。拖动手柄至少 24px，原项 opacity 约 .4；Windows 原生 preview 超过 280px 会显著变淡时使用受控 Overlay。TanStack Virtual 3.x 动态高度用默认 `measureElement`（`getBoundingClientRect` + `ResizeObserver`），不得对同一 index 同时使用 `resizeItem`。Overlay 以 Vue 3.5 `Teleport` 脱离父级 DOM/stacking context。拖拽手柄必须有上移/下移等价键盘操作，并与虚拟行挂载/卸载生命周期绑定。
+
+Drag 的自动化 E2E 与视觉回归暂缓；本次仍测试 stable-ID 顺序命令、端点跟随和 drop 后重测量的契约，不将暂缓标为已通过。
 
 ### 4.7 Alignment 操作
 
@@ -237,9 +241,11 @@ P0 不因 Dockview 或多窗口延期而阻塞；inline expand 是完整可用�
 - 左右两侧分别维护有序 selection；
 - `Link` 用所选 Segment 创建一个 Alignment；
 - 已属于其他 Alignment 的 Segment 不能被静默抢占，必须提示“替换现有关系”或先 Unlink；
-- `Merge` 合并选中的相邻 Alignment / unlinked Segment 为一个新关系；
+- `Group` 合并选中的完整 Alignment / unlinked Segment 为一个新关系；
 - `Unlink` 删除关系但保留 Segment；
-- `Split` 必须明确给出分组结果；左右数量相等时可建议 1:1，数量不等时默认拆成未对齐并让用户重新 Link，Kernel 不猜语义。
+- `Ungroup` 必须明确给出分组结果；左右数量相等时可建议 1:1，数量不等时默认拆成未对齐并让用户重新 Link，Kernel 不猜语义；
+- 同侧 `Merge 内容` 只允许连续且全部 unlinked 或同一 Alignment 的 Segment；跨 Block 内容 Merge 必须先显式 Group，不允许隐式变更关系；
+- `Split 内容` 无损创建后续 Segment IDs，所有 results 先继承原 Alignment；用户需分别对齐时再 Ungroup。
 
 ### 4.8 Search / Replace
 
@@ -270,7 +276,8 @@ P0 不因 Dockview 或多窗口延期而阻塞；inline expand 是完整可用�
 
 - 默认锚定一个 Segment；
 - 可选记录 AlignmentId，便于从复杂对齐组恢复上下文；
-- 删除 Segment 等未来结构操作发生时，书签进入 orphaned 状态而不是静默丢失；
+- `BookmarkView` 显示当前 Revision 派生的正文截断预览、语言、顺序号和关系摘要，不只显示 BookmarkId；canonical Bookmark 不复制正文；
+- Segment Merge 将被吸收 Segment 的书签迁到保留首项；Split 后书签留在第一 part；Group/Ungroup/Unlink 仅在可唯一确定时更新 Alignment 导航 hint，否则清空 hint，Segment anchor 永不静默丢失；
 - MVP 不强制实现 tags。
 
 ### 4.10 本地批注
@@ -310,7 +317,7 @@ revision
 History 在产品上区分三种投影，但共享同一 `RevisionId`：
 
 - Text History：一个 Segment 在不同 Revision 的文本变化；
-- Alignment History：Link / Unlink / Merge / Split 关系变化；
+- Alignment History：Link / Unlink / Group / Ungroup 关系变化；Text History 同时记录 Merge Segments / Split Segment 的内容和身份迁移；
 - Project Operation Trace：Edit、Move、Bookmark、Annotation 等工程级操作时间线。
 
 ### 4.12 Parallel History Mode
@@ -340,10 +347,10 @@ History 在产品上区分三种投影，但共享同一 `RevisionId`：
 |---|---|---|
 | Project | ProjectId、名称、语言、设置引用 | 双语是产品限制，不是 Core 数据模型限制 |
 | Document | DocumentId、ProjectId、LanguageId、SourceAssetRef | 每个 Segment 归属一个 Document |
-| Segment | SegmentId、DocumentId、kind、content、revision | ID 不等于顺序或存储位置；编辑不换 ID |
+| Segment | SegmentId、DocumentId、kind、content、revision | ID 不等于顺序或存储位置；Merge 保留有序首项，Split 保留第一 part 的原 ID |
 | SegmentOrder | DocumentId、SegmentId、PositionKey | 重排只改顺序对象 |
 | Alignment | AlignmentId、source refs、target refs、status | 引用至少一侧有 Segment；同一 Segment 默认最多属于一个 active Alignment |
-| Bookmark | BookmarkId、SegmentId、可选 AlignmentId | 通过稳定 ID 锚定 |
+| Bookmark | BookmarkId、SegmentId、可选 AlignmentId、label | 通过稳定 ID 锚定；内容预览是当前 Revision 的 derived view |
 | HumanAnnotation | AnnotationId、正文、状态、links、revision | 是 sidecar layer，不嵌入 Segment struct |
 | Revision | RevisionId、parent、ChangeSet、时间、摘要 | append-only；恢复也是新 Revision |
 | SourceAsset | AssetId、路径/副本、编码、hash | 原始导入材料可追溯 |
@@ -450,7 +457,8 @@ SQLite Catalog + Operation Log + Chunk/Slice Storage + Rebuildable Index
 | `ViewModeController` | mode 进入/退出守卫、草稿处理、可用 command 与焦点策略 |
 | `ContextLensController` | inline expand、Context Pane、新窗口三级上下文的统一 query 语义 |
 | `CorpusQueryView` | Project Search 结果、平行上下文、HitSet 分页与跳转 |
-| `AlignmentCommandBar` | Link、Unlink、Merge、Split 的 selection 解释与命令提交 |
+| `AlignmentCommandBar` | Link、Unlink、Group、Ungroup 的 Alignment selection 解释与命令提交 |
+| `SegmentStructureCommandBar` | 同侧 Merge 内容 / Split 内容的 Segment selection、无损预览与命令提交；不得复用 Alignment selection |
 | `HumanAnnotationLayer` | gutter 标记、关联关系、批注侧栏与正文定位 |
 | `HistoryWorkspace` | Revision 选择、Text/Alignment/Operation 三种历史投影 |
 
@@ -662,10 +670,12 @@ ImportTextAsset
 ApplySegmentation
 UpdateSegment
 MoveSegment
+MergeSegments
+SplitSegment
 CreateAlignment
 DeleteAlignment
-MergeAlignment
-SplitAlignment
+GroupAlignment
+UngroupAlignment
 AddBookmark
 RemoveBookmark
 CreateHumanAnnotation
@@ -750,7 +760,9 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 9. in-process Operation/Data contract；
 10. UNBOUND Slot 是合法状态；
 11. ParallelWorkspace 四模式共享数据与控制器；
-12. View Find 与 Kernel Project Search 分离。
+12. View Find 与 Kernel Project Search 分离；
+13. Order 空位使用原子关系重建；
+14. Segment 内容结构与 Alignment 分组解耦。
 
 ### Phase 1：Project、Import、Segmentation、Persistence
 
@@ -764,33 +776,33 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 ### Phase 2：Parallel Review 与人工 Alignment
 
-实现状态（2026-08-28）：已实现 Alignment-centric 双栏 ViewModel、TanStack 可变高度虚拟列表、稳定 ID 选中/跳转、未对齐行以及 Link / Unlink / Merge / Split。Rust 测试覆盖 1:1、1:n、n:1、n:m、显式替换占用、非法选择回滚及重开一致性；Windows UI 已验证 307×308 虚拟列表首尾滚动、Unlink 和 Undo 恢复，不 materialize 全量 DOM。
+实现状态（2026-08-29）：既有 Link / Unlink 与复杂关系已实现；本迭代已冻结 `Group / Ungroup` 取代旧 Alignment Merge/Split 的合同，Segment Merge/Split 作为独立内容结构线进入实现。必须为旧工程和历史提供兼容读取/显示迁移，不能把旧名称继续作为新写入语义。
 
-实现：`ParallelWorkspace`、`ParallelViewport`、`AlignmentViewportController`、双栏 Slice 加载、可变高度虚拟滚动、selection、AlignmentId 双向定位、inline Context Lens、未对齐状态、Link / Unlink / Merge / Split、对齐校验。
+实现：`ParallelWorkspace`、`ParallelViewport`、`AlignmentViewportController`、双栏 Slice 加载、可变高度虚拟滚动、独立 Segment/Alignment selection、AlignmentId 双向定位、inline Context Lens、未对齐状态、Link / Unlink / Group / Ungroup、对齐校验。
 
 依赖：Phase 1。
 
-退出条件：1:1、1:2、2:1、2:2、n:m 均可创建、显示、保存、重开；非法重复占用被拒绝且不污染 Revision。
+退出条件：1:1、1:2、2:1、2:2、n:m 均可创建、显示、保存、重开；Group/Ungroup 旧 ID 失活和新 ID 分配可追溯；非法重复占用被拒绝且不污染 Revision。
 
 ### Phase 3：Edit、Order、Undo / Redo
 
-实现状态（2026-08-28）：已实现显式 `ViewModeController` 状态机，覆盖 Review / Edit / Order / History、clean / dirty / saving / error 编辑会话以及保存 / 放弃 / 继续编辑离开守卫。Review 可双击任一句段进入 Edit，`Esc` 与 `Ctrl/⌘+Enter` 可保存并快速退出；当前 Alignment 在保存后的 snapshot 刷新中保持稳定。Order 使用 `@atlaskit/pragmatic-drag-and-drop` 绑定 TanStack Virtual 的虚拟行，支持插入边反馈、stable SegmentId 重排、上移/下移和进入模式时基线恢复；拖拽限定由卡片手柄发起，避免 macOS 触控板滚动或轻触误拖。持久 Undo / Redo 已接通，macOS 使用 `⌘Z / ⇧⌘Z`，Windows / Linux 使用 `Ctrl+Z / Ctrl+Y`，文本输入焦点保留系统原生撤销栈。编辑控件当前使用原生 `textarea`，因 MVP 只编辑单个 Segment，未引入 CodeMirror，这不改变 Segment/Revision 合同。
+实现状态（2026-08-29）：既有显式 `ViewModeController`、编辑会话、稳定 ID 重排、上移/下移与持久 Undo/Redo 已实现。新增 Segment Merge/Split 需实现无损 part 校验、首项身份保留、Order 插入与 sidecar 迁移；Order Overlay 连线跟随和 z-index 规范已冻结。自动 drag E2E/视觉回归按本迭代决定暂缓，不能误报为已完成。
 
-实现：原生 `textarea` 单句编辑、自动保存、保存退出、放弃退出、Review `Ctrl+F` 当前 View Find、stable ID 虚拟定位与 highlight 动画、上移/下移/拖拽/基线恢复、`ViewModeController`、Command 逆操作、会话撤销重做。
+实现：原生 `textarea` 单句编辑、自动保存、保存退出、放弃退出、Review `Ctrl+F` 当前 View Find、stable ID 虚拟定位与 highlight 动画、MergeSegments/SplitSegment、上移/下移/拖拽/基线恢复、`ViewModeController`、Command 逆操作、会话撤销重做。
 
 依赖：Phase 2。
 
-退出条件：连续执行编辑、移动、合并、拆分后可逐步 Undo 到初态并 Redo 到末态；所有稳定 ID 不变。
+退出条件：连续执行编辑、移动、Segment Merge/Split、Group/Ungroup 后可逐步 Undo 到初态并 Redo 到末态；保留/新建/失活 ID 及 sidecar 迁移均可在历史中验证。
 
 ### Phase 4：Search / Replace、Bookmark、单机批注
 
-实现状态（2026-08-28）：Rust Kernel 已实现普通/大小写/正则/语言侧 Project Search、带 base revision 的替换预览与一次 Revision 原子提交、Bookmark CRUD、HumanAnnotation CRUD/Resolve；Vue 已接入结果跳转、替换预览、书签页和批注 Rail。Review 新增独立 `Ctrl/⌘+F` 快速查找条，支持中英文匹配、计数、`Ctrl/⌘+G` 下一处、`Ctrl/⌘+Shift+G` 上一处、虚拟滚动 smooth jump 与短暂 highlight；`Ctrl/⌘+Shift+F` 仍只进入 Kernel Project Search。大文档查找增加 120 ms 输入防抖和文本预归一化索引，不再随每次按键重复小写转换全文。Windows UI 已验证 `Ctrl+F` 搜索“接生”跳至第 000010 组、`Ctrl+Shift+F` 的 82 个 Akhu 命中、结果跳转、书签重开、批注创建与关联片段；展示层统一使用六位人类可读编号，稳定 UUID 仅作为底层锚点和 tooltip。
+实现状态（2026-08-29）：搜索、替换、Bookmark CRUD 与 HumanAnnotation CRUD/Resolve 已实现。本迭代增加 BookmarkView 内容预览和 Segment/Alignment 结构操作的锚点迁移要求；在迁移和历史测试完成前，不宣称结构操作下的书签/批注维护已完成。
 
-实现：`Ctrl+Shift+F` Kernel Project Search、基础索引、普通/大小写/正则搜索、`CorpusQueryView`、平行上下文跳转、替换预览与原子提交、书签、批注 gutter 和侧栏。
+实现：`Ctrl+Shift+F` Kernel Project Search、基础索引、普通/大小写/正则搜索、`CorpusQueryView`、平行上下文跳转、替换预览与原子提交、含内容预览的书签、批注 gutter 和侧栏、结构操作 sidecar migration。
 
 依赖：Phase 3 的 ChangeSet 和 Slice。
 
-退出条件：替换、书签、批注均可持久化和撤销；重排后所有锚点仍定位正确。
+退出条件：替换、书签、批注均可持久化和撤销；重排、Segment Merge/Split、Group/Ungroup 后所有锚点仍定位正确，书签预览与请求 Revision 一致。
 
 ### Phase 5：Autosave 与持久 History
 
@@ -827,12 +839,15 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 ### 9.1 Core 单元与性质测试
 
 - 稳定 ID 不随编辑、移动变化；
-- Alignment merge/split/link/unlink 的前后不变量；
+- Segment Merge/Split 的无损文本、首项 ID 保留、后续 ID 生成、Order 与 sidecar 迁移不变量；
+- Alignment Group/Ungroup/Link/Unlink 的前后不变量、旧 ID 失活与新 ID 不复用；
+- 跨 Alignment Block Move 只改顺序，跨关系内容 Merge 被拒绝或显式 Group 后原子完成；
 - PositionKey 在大量插入和重排下保持有序；
 - ChangeSet inverse 正确；
 - RestoreRevision 只追加、不回写旧 Revision；
 - 批量替换全成或全败；
-- HumanAnnotation 与 Bookmark 的锚点有效性。
+- HumanAnnotation 与 Bookmark 的锚点有效性、结构迁移和 BookmarkView 内容预览。
+- 十种 LTR 语言白名单、BCP-47 代码和 RTL 拒绝；语言默认分句提示不改变编码/分段 profile 真值。
 
 ### 9.2 Storage / Recovery
 
@@ -850,7 +865,7 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 - 复杂 1:n 与 n:m 对齐；
 - 双向定位、可变高度虚拟滚动、inline Context prepend/append、anchor 与焦点恢复；
 - Review/Edit/Order/History 切换不丢 selection、anchor 或未提交草稿提示；
-- 编辑取消/保存、拖拽、搜索跳转；
+- 编辑取消/保存、搜索跳转；drag 自动化 E2E/视觉测试暂缓，另以 stable-ID 端点/Overlay/drop 重测量集成契约覆盖；
 - `Ctrl+F` 不触发 Project Search，`Ctrl+Shift+F` 不扫描 DOM；
 - 正则错误、无结果、过期替换预览；
 - 批注筛选与版本恢复；
@@ -910,7 +925,7 @@ Phase 0 记录基准机器配置后冻结具体数值。建议初始目标：
 | 风险 | 早期信号 | 控制方式 |
 |---|---|---|
 | 把完整平台架构一次性实现 | Phase 1 出现插件、云、NLP crate | 只实现本地合同和 Registry；按 MVP Slot Profile 审查 |
-| UI 行号成为数据身份 | 重排后批注/书签错位 | API 只接受 stable ID 和 before/after 关系 |
+| UI 行号成为数据身份 | 重排后批注/书签错位或拖动连线错位 | API、端点注册与 Overlay 只接受 stable ID 和 before/after 关系 |
 | Alignment 规则分散在前端 | UI 与重开结果不一致 | 所有校验和提交集中在 Kernel |
 | 自动保存导致历史噪声 | 每个字符一个 Revision | 编辑会话合并为语义 Command；持久版本按 ChangeSet 聚合 |
 | 历史恢复破坏未来版本 | 直接覆盖数据库状态 | Restore 永远创建新 Revision |
@@ -975,8 +990,10 @@ MVP 只有在以下条件全部满足时才算完成：
 - [Vue 3 TypeScript Composition API](https://vuejs.org/guide/typescript/composition-api)：固定 `<script setup lang="ts">` 与严格类型组件路线；
 - [Pinia](https://pinia.vuejs.org/introduction.html)：用于跨组件 UI / workspace state，不承担 canonical data；
 - [Vue Router](https://router.vuejs.org/introduction.html)：只管理顶层工作区，Parallel mode 留在工作区内部；
-- [TanStack Virtual Vue adapter](https://tanstack.com/virtual/latest/docs/installation)：用于可变高度正文和长结果列表；
-- [Pragmatic drag and drop](https://github.com/atlassian/pragmatic-drag-and-drop)：用于虚拟行的轻量拖动源与 drop target；[Virtualization recipe](https://atlassian.design/components/pragmatic-drag-and-drop/core-package/recipes/virtualization)规定与虚拟列表挂载生命周期配合；
+- [TanStack Virtual Vue adapter](https://tanstack.com/virtual/latest/docs/installation)：用于可变高度正文和长结果列表；[Virtualizer API](https://tanstack.com/virtual/latest/docs/api/virtualizer)规定动态尺寸优先 `measureElement` 与 `ResizeObserver`，同一 index 不混用 `resizeItem`；
+- [Pragmatic drag and drop core](https://atlassian.design/components/pragmatic-drag-and-drop/core-package/)：用于虚拟行的轻量拖动源、drop target 与 monitor；[Virtualization recipe](https://atlassian.design/components/pragmatic-drag-and-drop/core-package/recipes/virtualization)规定原 draggable 卸载后的稳定接续；[Design guidelines](https://atlassian.design/components/pragmatic-drag-and-drop/design-guidelines)给出至少 24px handle 等交互约束；
+- [Vue Teleport](https://vuejs.org/guide/built-ins/teleport)：将 DragOverlay 放到 workspace 根层，避开父级 overflow/transform 的 stacking context；
+- [Unicode CLDR](https://cldr.unicode.org/)：维护 MVP curated top-ten LTR 语言的语言/书写系统/方向依据；实际写入使用 BCP-47 基础代码。
 - [CodeMirror Reference](https://codemirror.net/docs/ref/)：保留为复杂多行编辑、编辑器内替换或 MergeView 的升级路径；MVP 单句编辑不强制引入；
 - [Reka UI](https://reka-ui.com/docs/overview/introduction)：提供无样式、accessibility-first 的 Vue primitives；
 - [Dockview Vue](https://dockview.dev/docs/overview/introduction/)：P1 Context Pane 的 Dock、布局序列化与 Vue 3 adapter；

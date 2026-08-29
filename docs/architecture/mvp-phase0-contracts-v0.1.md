@@ -40,7 +40,7 @@ flowchart LR
 | 对象 ID | UUIDv7 字符串，统一小写、带连字符 |
 | `RevisionId` | 十进制无符号整数字符串，避免 JavaScript 精度问题 |
 | 时间 | RFC 3339 UTC 字符串 |
-| 语言 | BCP 47 字符串；MVP 工程固定一个 source 和一个 target |
+| 语言 | BCP 47 字符串；MVP 工程固定一个 source 和一个 target，二者均须来自本合同的 LTR 语言表 |
 | 空值 | 可选字段省略或使用 `null`，同一字段不可混用两种语义 |
 | 文本 | 跨层一律为 Unicode 字符串；导入边界支持 UTF-8/UTF-8 BOM 和显式 GB18030，前端收到的正文已解码 |
 | 版本 | 合同版本使用 `major.minor`；不兼容变更递增 major |
@@ -70,6 +70,25 @@ Project {
 ```
 
 约束：MVP 必须恰好有 source/target 两种语言和至少一个对应 Document；Core 不把双语限制写死为只能有两个 Document。`document_ids` 是工程目录索引，不用于表达段落顺序。
+
+### MVP LTR 语言表
+
+新建工程的语言选择必须只呈现下表十种常用左到右书写语言；显示名可以本地化，但写入工程的 `LanguageId` 必须为表中 BCP 47 值。该表依据 Unicode CLDR 的语言/书写系统资料维护，不以 UI 文案、浏览器 locale 或文件编码推断语言。阿拉伯语、波斯语、希伯来语、乌尔都语等 RTL 语言在本版本明确不支持，不能伪装成 LTR 工程打开或导入。
+
+| LanguageId | 默认显示名 | Script / 方向 | 分句与分词提示 |
+|---|---|---|---|
+| `zh` | 中文（普通话，横排） | Han / LTR | 按 `。！？` 等句末标点分句；没有空格时不得以空白切词 |
+| `en` | English | Latin / LTR | 空白词界；常见句末 `.?!`，需处理缩写 |
+| `hi` | हिन्दी | Devanagari / LTR | 识别 `।` 与 `? !`；空白词界 |
+| `es` | Español | Latin / LTR | 空白词界；识别 `¿ ¡` 与 `.?!` |
+| `fr` | Français | Latin / LTR | 空白词界；保留撇号与窄不换行空格语义 |
+| `bn` | বাংলা | Bengali / LTR | 识别 `।` 与 `? !`；空白词界 |
+| `pt` | Português | Latin / LTR | 空白词界；识别 `.?!` |
+| `ru` | Русский | Cyrillic / LTR | 空白词界；识别 `.?!` |
+| `id` | Bahasa Indonesia | Latin / LTR | 空白词界；识别 `.?!` |
+| `de` | Deutsch | Latin / LTR | 空白词界；识别 `.?!`，保留复合词 |
+
+这些是导入预览的默认提示而非 NLP 分词功能；用户仍可选择非空行或明确的规则分句。语言选择、实际编码和分段 profile 是三项独立事实。
 
 ### Document
 
@@ -154,16 +173,39 @@ Cardinality = "1:1" | "1:n" | "n:1" | "n:m"
 
 每个 active Alignment 至少引用一条 source 和一条 target Segment；数组内部按各自 `SegmentOrder` 排序，不允许重复 ID。`cardinality` 由引用数量派生，不能由 UI 任意填写。未对齐 Segment 通过“不存在 active Alignment 引用”表达，不创建空 Alignment。
 
-关系操作的身份语义如下：
+`Alignment Block` 是按当前两侧 `SegmentOrder` 从一个 Alignment 的 refs 派生出的 UI 投影，不是 canonical 对象，没有 `BlockId`，也不能作为 Command payload。一个关系的任一侧成员不连续、与其他关系穿插或左右相对顺序反转时，投影分别显示为 non-contiguous、interleaved 或 crossed；这些状态不改变 Alignment 真值。
+
+关系和内容/结构操作的身份语义如下：
 
 | 操作 | 当前关系 | 提交后的关系 | ID 规则 |
 |---|---|---|---|
 | Link | 选中未占用 Segment | 一个新 Alignment | 新建 `AlignmentId` |
 | Unlink | 一个 active Alignment | 无 active 关系 | 原关系只留在历史 |
-| Merge | 多个合法关系/未对齐 Segment | 一个新关系 | 旧 ID 失活，新 ID 不复用 |
-| Split | 一个复杂关系 | 一个或多个新关系，或全部未对齐 | 原 ID 失活，新 ID 不复用 |
+| Group Alignment | 多个完整 Alignment，或一个完整 Alignment 加未对齐 Segment | 一个新 Alignment | 被 Group 的旧 `AlignmentId` 失活；新 ID 不复用 |
+| Ungroup Alignment | 一个复杂 Alignment | 两个或多个新 Alignment，或全部 Unlink | 原 `AlignmentId` 失活；新 ID 不复用 |
+| Merge Segments | 同一 Document 中连续的 Segment | 一个内容已合并的 Segment | 当前顺序首项保留 `SegmentId`；其余 active Segment 被吸收 |
+| Split Segment | 一个 Segment 与无损切分 parts | 原 Segment 加后续新 Segment | 原 `SegmentId` 保留第一部分；后续 parts 新建 ID |
 | Edit Segment | 内容变化 | 关系保持 | `AlignmentId` 不变 |
 | Move Segment | 顺序变化 | 关系保持 | `AlignmentId` 不变 |
+| Insert Alignment Gap | 所选句段一侧插入视觉空位 | 另一侧边界句段未对齐，后续按顺序重建 1:1 | 受影响旧 ID 失活，新关系使用新 ID |
+
+`merge_segments` 的选择必须属于同一 Document、在该 Document 的 `SegmentOrder` 中连续，且要么全部未对齐、要么全部属于同一 active Alignment；不得隐式跨越多个 Alignment。跨 Alignment Block 合并文本时，用户必须先显式 `group_alignment`，或以一个明确展示 Group 后再 Merge 的复合 ChangeSet 提交。`split_segment` 的 `parts` 必须全部非空且按顺序拼接为操作前的原始 content；如原 Segment 已对齐，所有结果先继承同一 `AlignmentId`。需要把这些结果分别对齐时，必须再显式 `ungroup_alignment`，Kernel 不猜测对应关系。
+
+`move_segment` 可以跨 Alignment Block，也可以产生 crossed/non-contiguous 投影，但只改变 `SegmentOrder`，绝不转移 Segment 的 Alignment 成员或关系 ID。拖放连线锚点以 `SegmentId` 对应的实时端口坐标计算；浮动 Overlay 接管端点时，原位置保留占位，drop 后完成虚拟列表重新测量再移除 Overlay。UI 不得以显示行、virtual index 或旧 DOM 坐标推断连接目标。
+
+跨 Alignment Block 的统一处理如下。这里的“跨 Block”只描述当前投影，不会生成额外领域对象：
+
+| 用户动作 | 是否允许 | Canonical 变化 | UI / 校验要求 |
+|---|---|---|---|
+| Move / Drag 一个 Segment 穿过其他 Block | 允许 | 只写该 Document 的 `SegmentOrder`；所有 Alignment refs/ID 原样保留 | drop 前显示插入线；drop 后按 stable `SegmentId` 重新测量端口。若产生 crossed/interleaved 投影，显示关系状态提示，不自动修复 |
+| 选择同一复杂 Alignment 内的连续 Segment 做 Merge 内容 | 允许 | Segment content/active IDs 改变；该 Alignment 只收缩 refs，ID 保留 | 预览合并正文并列出被吸收 ID |
+| 直接 Merge 分属多个 active Alignment/Block 的 Segment | 拒绝 | 不产生 Revision | 提示“先 Group，再 Merge 内容”；不得把一次内容操作伪装成关系猜测 |
+| Group 多个完整 Alignment，或一个完整 Alignment 加未对齐 Segment | 允许 | 旧 Alignment 失活，新建一个 Alignment；content/order 不变 | 必须选择完整关系。非相邻选择不能仅因跨 Block 被拒绝，但提交前须展示可能产生的 crossed/non-contiguous 结果 |
+| Ungroup 一个跨行或 crossed 的复杂 Alignment | 允许 | 原 Alignment 失活，按显式双侧非空 partitions 新建关系；content/order 不变 | 必须展示每个 source/target group；不能按显示行自动猜测，也不能静默留下成员 |
+| Link 跨 Block 选中的未对齐 Segment | 允许 | 新建 Alignment | 只接受两侧至少各一条未占用 Segment；已占用项必须先 Unlink 或显式替换 |
+| Unlink / Insert Alignment Gap 位于 Block 边界 | 允许 | 明确删除/重建受影响关系；Segment 与 order 不变 | 预览受影响范围；书签/批注仍以 Segment anchor 为真值并刷新可选关系 hint |
+
+因此，跨 Block 本身不是拒绝条件；真正的判断依据始终是操作会修改 `SegmentOrder`、Segment 内容，还是 Alignment 关系。只有跨多个 active Alignment 的内容 Merge 必须先处理关系层。
 
 ### HumanAnnotation
 
@@ -184,6 +226,40 @@ HumanAnnotation {
 ```
 
 HumanAnnotation 是人工审校的 sidecar layer，不嵌入 Segment，也不等同于 POS/Lemma/NER 等机器 Annotation Layer。至少关联一个当前 Segment；`alignment_id` 仅是导航提示，不能替代 `linked_segment_ids`。MVP 状态只允许三值枚举。
+
+### Bookmark 与结构迁移
+
+```text
+Bookmark {
+  bookmark_id: BookmarkId
+  project_id: ProjectId
+  segment_id: SegmentId
+  alignment_id: AlignmentId | null
+  label: string
+  created_revision_id: RevisionId
+  updated_revision_id: RevisionId
+}
+
+BookmarkView extends Bookmark {
+  content_preview: string
+  language_id: LanguageId
+  order_label: string
+  alignment_summary: string | null
+}
+```
+
+Bookmark 的真值始终是稳定锚点，不复制正文；`BookmarkView.content_preview` 由所请求 Revision 的当前 Segment content 派生并截断，供书签列表/悬浮预览显示，不能只显示书签号。内容或关系结构 Command 必须在同一原子 ChangeSet 中维护 Bookmark 与 HumanAnnotation：
+
+| 操作 | Bookmark 迁移 | HumanAnnotation 迁移 |
+|---|---|---|
+| Move | 不变 | 不变 |
+| Merge Segments | 指向被吸收 Segment 的书签改指向保留首项 | 被吸收 ID 替换为保留 ID 后去重 |
+| Split Segment | 原书签仍指向保留第一 part | 原 Segment link 扩展为全部新 parts，顺序去重 |
+| Unlink | `alignment_id` 置空，Segment anchor 保留 | `alignment_id` 置空，Segment links 保留 |
+| Group Alignment | 若书签/批注的全部 linked Segment 都落入新关系，导航 hint 改为新 ID；否则置空 | 同左 |
+| Ungroup Alignment | 若全部 linked Segment 落在唯一子关系，导航 hint 改为该子 ID；否则置空 | 同左 |
+
+任何迁移校验失败必须使整项 Command 回滚，不能写出内容已变但 sidecar 锚点悬空的 Revision。
 
 ### Revision
 
@@ -231,10 +307,13 @@ Command 是唯一的 canonical 写入入口。每个 Command 必须携带 `comma
 | `apply_segmentation` | document_id, preview_token, mode, rules | 将预览确认的句段写入 Segment/Order；`mode` 为 `non_empty_line`、`sentence_rules` 或 `legacy_tagged_line` |
 | `update_segment` | segment_id, content | 更新文本，保留 SegmentId 和 active Alignment |
 | `move_segment` | segment_id, before/after_segment_id | 改变 SegmentOrder，不改 SegmentId |
+| `merge_segments` | ordered_segment_ids[], merged_content | 同一 Document 的连续 Segment 内容合并；首项保留 ID，吸收其余 ID，并原子迁移 sidecar |
+| `split_segment` | segment_id, parts[] | 无损拆分；原 ID 保存第一 part，后续 part 创建新 ID、插入相邻顺序，并原子迁移 sidecar |
+| `insert_alignment_gap` | segment_id, edge (`before`/`after`) | 不创建空 Segment；打断边界关系并按当前顺序原子重建后续 1:1 Alignment |
 | `create_alignment` | source_ids, target_ids | 创建手工 Alignment |
 | `delete_alignment` | alignment_id | Unlink 当前关系 |
-| `merge_alignment` | alignment_ids, unlinked_ids | 合并为新 Alignment |
-| `split_alignment` | alignment_id, groups | 按明确分组拆分；不猜语义 |
+| `group_alignment` | alignment_ids, unlinked_segment_ids | 合并完整关系/未对齐 Segment 为新 Alignment；旧关系失活 |
+| `ungroup_alignment` | alignment_id, groups | 按明确的双侧非空 groups 拆分；不猜语义 |
 | `add_bookmark` | segment_id | 创建稳定 ID 书签 |
 | `remove_bookmark` | bookmark_id | 删除书签 |
 | `create_human_annotation` | body, links, optional alignment_id | 创建 Draft 批注 |
@@ -247,7 +326,7 @@ Command 是唯一的 canonical 写入入口。每个 Command 必须携带 `comma
 | `flush_project` | — | 刷盘日志、manifest 和必要数据 |
 | `restore_revision` | revision_id | 恢复为新 Revision，保留历史 |
 
-`kind` 只表达领域语义，不暴露 SQL 或文件路径。批量替换、Merge、Split 和恢复必须全成或全败；任意校验错误不得留下部分写入。
+`kind` 只表达领域语义，不暴露 SQL 或文件路径。`merge_alignment` / `split_alignment` 是弃用的 IPC 兼容别名，只能映射到 `group_alignment` / `ungroup_alignment`，不得出现在新的 Revision summary、历史 UI 或新客户端。批量替换、Group/Ungroup、Segment Merge/Split 和恢复必须全成或全败；任意校验错误不得留下部分写入。
 
 ### Result 和错误
 
@@ -299,7 +378,7 @@ QueryEnvelope {
 | `list_unlinked_segments` | 分页 SegmentView | 以 stable ID 游标分页 |
 | `search_segments` | HitSet | 返回 SegmentId、语言、上下文、Alignment 状态 |
 | `preview_replace` | ReplacePreview | 固定 base revision；只读，不写入 |
-| `list_bookmarks` | BookmarkView[] | 按 SegmentId 定位 |
+| `list_bookmarks` | BookmarkView[] | 按 SegmentId 定位，并返回当前 Revision 的内容预览、语言与顺序标签 |
 | `list_human_annotations` | AnnotationView[] | 支持状态筛选和关联 ID |
 | `list_revisions` | RevisionSummary[] | append-only 顺序，分页 |
 | `diff_revisions` | StructuredDiff + TextDiff | 只比较明确的两个 Revision |
@@ -417,7 +496,7 @@ project-name.jm/
   "format_version": "1.0",
   "project_id": "018f7b1a-2c40-7e33-9a11-1e3a98d0f022",
   "name": "2024政府工作报告_中英对齐",
-  "source_language": "zh-CN",
+  "source_language": "zh",
   "target_language": "en",
   "document_ids": [
     "018f7b1a-2c40-7e33-9a11-1e3a98d0f023",
@@ -479,6 +558,8 @@ Kernel 按以下顺序提交，不完整事务对打开流程不可见：
 | I-08 | 一个 Segment 默认最多属于一个 active Alignment；替换占用必须显式 Command |
 | I-09 | Alignment refs 可按当前 SegmentOrder 解释；Segment 重排不改变 AlignmentId |
 | I-10 | 未对齐状态由无 active relation 表达，不创建空关系或伪造 1:1 |
+| I-10a | Alignment Block、连线路径、显示行和虚拟索引均为投影；它们不能成为 Command 身份或关系真值 |
+| I-10b | Segment Merge/Split 必须保持同一 Document 内 content/parts 和 order 的无损、连续语义；跨 active Alignment 的内容 Merge 只能在显式 Group 后发生 |
 
 ### 批注、Revision 和事务
 
@@ -489,6 +570,8 @@ Kernel 按以下顺序提交，不完整事务对打开流程不可见：
 | I-13 | Restore、Undo、Redo 都创建新 Revision，既有 Revision 不被覆盖或删除 |
 | I-14 | Command 事务全成或全败；失败 Command 不发送 canonical changed event |
 | I-15 | Derived/index/cache 带输入 Revision/hash，可删除重建，不成为 canonical 历史 |
+| I-15a | Segment 内容/结构与关系操作在同一 ChangeSet 内迁移 Bookmark、HumanAnnotation 及其 Alignment hint；不得留下被吸收 Segment 的 active sidecar 锚点 |
+| I-15b | BookmarkView 的 content preview 只由已请求 Revision 的 Segment 正文派生，不成为第二份 canonical content |
 | I-16 | 同一个 command_id 幂等；过期 base_revision 不得静默覆盖当前数据 |
 
 ### 跨层和 Slot
@@ -501,7 +584,7 @@ Kernel 按以下顺序提交，不完整事务对打开流程不可见：
 | I-20 | 未绑定能力保持正式 Slot 的 `UNBOUND` 状态，不创建不可用的假 Provider |
 | I-21 | 导入预览所确认的 encoding/profile 与提交完全一致；失败解码或清理不得暴露半工程，原始 Asset 不得被覆写 |
 
-Phase 0 测试至少覆盖：ID 在编辑/移动/合并/拆分后的稳定性；四种 cardinality；重复占用拒绝；SegmentOrder 覆盖性；Annotation 锚定；command 幂等；stale revision；Restore 历史保留；崩溃点不可见半提交；UTF-8/GB18030 与 `legacy_tagged_line` 预览/提交一致性；`.jm` round-trip 和 cache 重建。
+Phase 0 测试至少覆盖：ID 在编辑/移动/Segment Merge/Split/Group/Ungroup 后的稳定性；四种 cardinality；重复占用拒绝；SegmentOrder 覆盖性；跨 Block Move 不改关系；跨 Alignment 内容 Merge 拒绝或显式 Group 后原子完成；Split parts 无损；Bookmark/Annotation 的迁移和内容预览；command 幂等；stale revision；Restore 历史保留；崩溃点不可见半提交；十种 LTR 语言白名单与 RTL 拒绝；UTF-8/GB18030 与 `legacy_tagged_line` 预览/提交一致性；`.jm` round-trip 和 cache 重建。Drag 的端到端/视觉测试暂缓，但端点以 SegmentId 跟随 Overlay、drop 后重新测量的集成契约仍须覆盖。
 
 ---
 
@@ -512,6 +595,7 @@ Phase 0 测试至少覆盖：ID 在编辑/移动/合并/拆分后的稳定性；
 - [ADR-003 Segment canonical unit](../adr/ADR-003-segment-canonical-unit.md)
 - [ADR-004 SegmentOrder 独立](../adr/ADR-004-segment-order.md)
 - [ADR-005 Alignment 只引用 Segment](../adr/ADR-005-alignment-segment-refs.md)
+- [ADR-014 Segment 内容结构与 Alignment 分组解耦](../adr/ADR-014-segment-structure-and-alignment-groups.md)
 - [ADR-006 HumanAnnotation sidecar](../adr/ADR-006-human-annotation-sidecar.md)
 - [ADR-007 Append-only Revision](../adr/ADR-007-append-only-revision.md)
 - [ADR-008 Chunk/Slice 存储边界](../adr/ADR-008-chunk-slice-storage.md)

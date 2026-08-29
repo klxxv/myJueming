@@ -10,7 +10,7 @@ _Status: Accepted · Date: 2026-08-27 · Scope: manual alignment_
 
 ## 🎯 Decision
 
-Alignment 保存有序的 `source_segment_ids[]` 和 `target_segment_ids[]`，两侧均非空；cardinality 由数量派生。一个 Segment 默认最多属于一个 active Alignment。Merge/Split 产生新 AlignmentId，Unlink 仅使关系离开 active 集合。
+Alignment 保存有序的 `source_segment_ids[]` 和 `target_segment_ids[]`，两侧均非空；cardinality 由数量派生。一个 Segment 默认最多属于一个 active Alignment。`Group` / `Ungroup` 产生新 AlignmentId，Unlink 仅使关系离开 active 集合；Segment 的 `Merge 内容` / `Split 内容` 属于另一条内容结构操作线，详见 ADR-014。
 
 ## ⚡ Consequences
 
