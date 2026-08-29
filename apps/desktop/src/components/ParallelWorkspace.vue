@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
-import { ArrowDown, ArrowUp, Check, GripVertical, Link2, Link2Off, LockKeyhole, Merge, Plus, RotateCcw, Scissors, Search, Star, X } from "@lucide/vue";
+import { ArrowDown, ArrowUp, GripVertical, Link2, Link2Off, LockKeyhole, Merge, RotateCcw, Scissors, Search, X } from "@lucide/vue";
 import type { EditSession } from "../composables/useViewModeController";
 import type { AlignmentDto, AlignmentGapEdge, LanguageSide, SegmentDto, WorkspaceMode } from "../domain/kernel-client";
+import { buildAlignmentBlocks, type AlignmentBlockView, type OrderSelection } from "../domain/workspace-projection";
 import SegmentContentDialog, { type ContentOperationRequest } from "./SegmentContentDialog.vue";
 import AlignmentUngroupDialog from "./AlignmentUngroupDialog.vue";
+import AlignmentBlock from "./AlignmentBlock.vue";
 import OrderDragOverlay from "./OrderDragOverlay.vue";
 import { useOrderDragAndDrop } from "../composables/useOrderDragAndDrop";
 
@@ -28,8 +30,8 @@ const emit = defineEmits<{
   commitEdit: [exitAfterSave: boolean];
   cancelEdit: [];
   escapeEdit: [];
-  move: [id: string, direction: "up" | "down"];
-  reorder: [orderedSegmentIds: string[]];
+  move: [side: LanguageSide, segmentId: string, direction: "up" | "down"];
+  reorder: [side: LanguageSide, orderedSegmentIds: string[]];
   insertGap: [segmentId: string, edge: AlignmentGapEdge];
   resetOrder: [];
   link: [sourceIds: string[], targetIds: string[]];
@@ -41,9 +43,6 @@ const emit = defineEmits<{
   bookmark: [segmentId: string, alignmentId: string];
   status: [message: string];
 }>();
-
-type WorkspaceRow = { sources: SegmentDto[]; targets: SegmentDto[]; alignmentId: string; index: number; linked: boolean };
-type OrderSelection = { side: LanguageSide; segmentId: string };
 
 const bookmarked = computed(() => new Set(props.bookmarkedAlignmentIds));
 const selectedSourceIds = ref(new Set<string>());
@@ -68,102 +67,11 @@ let resolveScrollAnimation: (() => void) | null = null;
 let findDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let listResizeObserver: ResizeObserver | null = null;
 
-const orderWorkspaceRows = (unorderedRows: WorkspaceRow[]) => {
-  const rowIndexBySegmentId = new Map<string, number>();
-  unorderedRows.forEach((row, rowIndex) => {
-    [...row.sources, ...row.targets].forEach((segment) => rowIndexBySegmentId.set(segment.id, rowIndex));
-  });
-  const outgoing = unorderedRows.map(() => new Set<number>());
-  const indegree = unorderedRows.map(() => 0);
-  const addSideConstraints = (segments: SegmentDto[]) => {
-    const ordered = [...segments].sort((a, b) => a.order - b.order);
-    let previousRowIndex: number | undefined;
-    for (const segment of ordered) {
-      const rowIndex = rowIndexBySegmentId.get(segment.id);
-      if (rowIndex === undefined) continue;
-      if (previousRowIndex !== undefined && previousRowIndex !== rowIndex && !outgoing[previousRowIndex].has(rowIndex)) {
-        outgoing[previousRowIndex].add(rowIndex);
-        indegree[rowIndex] += 1;
-      }
-      previousRowIndex = rowIndex;
-    }
-  };
-  addSideConstraints(props.sourceSegments);
-  addSideConstraints(props.targetSegments);
-  const rowScore = (rowIndex: number) => {
-    const row = unorderedRows[rowIndex];
-    const ranks = [...row.sources, ...row.targets].map((segment) => segment.order);
-    return ranks.length ? Math.min(...ranks) : Number.MAX_SAFE_INTEGER;
-  };
-  const compareRows = (a: number, b: number) => rowScore(a) - rowScore(b)
-    || Number(unorderedRows[b].linked) - Number(unorderedRows[a].linked)
-    || unorderedRows[a].alignmentId.localeCompare(unorderedRows[b].alignmentId);
-  const ready = indegree.map((degree, rowIndex) => ({ degree, rowIndex }))
-    .filter(({ degree }) => degree === 0)
-    .map(({ rowIndex }) => rowIndex)
-    .sort(compareRows);
-  const orderedIndexes: number[] = [];
-  while (ready.length) {
-    const rowIndex = ready.shift()!;
-    orderedIndexes.push(rowIndex);
-    for (const nextIndex of outgoing[rowIndex]) {
-      indegree[nextIndex] -= 1;
-      if (indegree[nextIndex] === 0) {
-        ready.push(nextIndex);
-        ready.sort(compareRows);
-      }
-    }
-  }
-  if (orderedIndexes.length !== unorderedRows.length) {
-    const emitted = new Set(orderedIndexes);
-    orderedIndexes.push(...unorderedRows.map((_, index) => index).filter((index) => !emitted.has(index)).sort(compareRows));
-  }
-  return orderedIndexes.map((rowIndex, index) => ({ ...unorderedRows[rowIndex], index }));
-};
-
-const rows = computed<WorkspaceRow[]>(() => {
-  const sourceById = new Map(props.sourceSegments.map((segment) => [segment.id, segment]));
-  const targetById = new Map(props.targetSegments.map((segment) => [segment.id, segment]));
-  const usedSources = new Set<string>();
-  const usedTargets = new Set<string>();
-  const result: WorkspaceRow[] = [];
-  for (const alignment of props.alignments) {
-    const sources = alignment.sourceIds.map((id) => sourceById.get(id)).filter(Boolean) as SegmentDto[];
-    const targets = alignment.targetIds.map((id) => targetById.get(id)).filter(Boolean) as SegmentDto[];
-    sources.forEach((segment) => usedSources.add(segment.id));
-    targets.forEach((segment) => usedTargets.add(segment.id));
-    result.push({ sources, targets, alignmentId: alignment.id, index: 0, linked: true });
-  }
-
-  // Unlink removes the canonical relation, but it should not make either text
-  // jump to the end of the viewport. Keep same-position unlinked segments in
-  // one visual row and distinguish the missing relation with a broken-link icon.
-  const unlinkedTargets = props.targetSegments
-    .filter((segment) => !usedTargets.has(segment.id))
-    .sort((a, b) => a.order - b.order);
-  const targetByOrder = new Map(unlinkedTargets.map((segment) => [segment.order, segment]));
-  const pairedTargets = new Set<string>();
-  for (const source of props.sourceSegments.filter((segment) => !usedSources.has(segment.id)).sort((a, b) => a.order - b.order)) {
-    const target = targetByOrder.get(source.order);
-    if (target) pairedTargets.add(target.id);
-    result.push({
-      sources: [source],
-      targets: target ? [target] : [],
-      alignmentId: `unlinked-${source.id}-${target?.id ?? "empty"}`,
-      index: 0,
-      linked: false,
-    });
-  }
-  for (const target of unlinkedTargets.filter((segment) => !pairedTargets.has(segment.id))) {
-    result.push({ sources: [], targets: [target], alignmentId: `unlinked-empty-${target.id}`, index: 0, linked: false });
-  }
-
-  return orderWorkspaceRows(result);
-});
+const rows = computed(() => buildAlignmentBlocks(props.sourceSegments, props.targetSegments, props.alignments));
 
 const rowBySegmentId = computed(() => {
-  const result = new Map<string, WorkspaceRow>();
-  for (const row of rows.value) [...row.sources, ...row.targets].forEach((segment) => result.set(segment.id, row));
+  const result = new Map<string, AlignmentBlockView>();
+  for (const row of rows.value) [...row.sourceSegments, ...row.targetSegments].forEach((segment) => result.set(segment.id, row));
   return result;
 });
 
@@ -284,17 +192,19 @@ const focusSegment = (segmentId: string) => {
 };
 defineExpose({ openFind, closeFind, navigateFind, clearSelection, focusSegment });
 
-const requestEdit = (segment: SegmentDto, alignmentId: string) => {
+const requestEdit = (segmentId: string, alignmentId: string) => {
+  const segment = [...props.sourceSegments, ...props.targetSegments].find((candidate) => candidate.id === segmentId);
+  if (!segment) return;
   if (!props.writable) { emit("status", "当前为演示预览，请先新建或打开工程"); return; }
   // A browser double-click dispatches two click events first. Those clicks are
   // valid for alignment operations in Review, but must not leak into Edit.
   clearSelection();
   emit("select", alignmentId);
-  emit("requestEdit", segment.id, alignmentId);
+  emit("requestEdit", segmentId, alignmentId);
 };
-const toggleBookmark = (row: WorkspaceRow) => {
+const toggleBookmark = (row: AlignmentBlockView) => {
   if (!props.writable) { emit("status", "当前为演示预览，请先新建或打开工程"); return; }
-  const segmentId = row.sources[0]?.id ?? row.targets[0]?.id;
+  const segmentId = row.sourceSegments[0]?.id ?? row.targetSegments[0]?.id;
   if (segmentId) emit("bookmark", segmentId, row.alignmentId);
 };
 const toggleSegment = (side: "source" | "target", id: string, alignmentId: string, event: MouseEvent) => {
@@ -318,10 +228,7 @@ const selectSegment = (side: LanguageSide, segmentId: string, alignmentId: strin
   }
   toggleSegment(side, segmentId, alignmentId, event);
 };
-const isOrderSegmentSelected = (side: LanguageSide, segmentId: string) => props.mode === "order"
-  && orderSelection.value?.side === side
-  && orderSelection.value.segmentId === segmentId;
-const canInsertGap = (side: LanguageSide, segmentId: string, rowOrEdge: WorkspaceRow | AlignmentGapEdge, possibleEdge?: AlignmentGapEdge) => {
+const canInsertGap = (side: LanguageSide, segmentId: string, rowOrEdge: AlignmentBlockView | AlignmentGapEdge, possibleEdge?: AlignmentGapEdge) => {
   const row = typeof rowOrEdge === "string" ? rowBySegmentId.value.get(segmentId) : rowOrEdge;
   const edge = typeof rowOrEdge === "string" ? rowOrEdge : possibleEdge;
   if (!row || !edge) return false;
@@ -340,13 +247,13 @@ const canInsertGap = (side: LanguageSide, segmentId: string, rowOrEdge: Workspac
   const gapRank = edge === "before" ? Math.min(...oppositeRanks) : Math.max(...oppositeRanks) + 1;
   return ownPairStart < ownSegments.length && gapRank + 1 < oppositeSegments.length;
 };
-const selectRow = (row: WorkspaceRow, event: MouseEvent) => {
+const selectRow = (row: AlignmentBlockView, event: MouseEvent) => {
   if (props.mode === "order") orderSelection.value = null;
   const additive = event.metaKey || event.ctrlKey;
   if (!row.linked) {
     if (!additive) clearSelection();
-    const sourceIds = row.sources.map((segment) => segment.id);
-    const targetIds = row.targets.map((segment) => segment.id);
+    const sourceIds = row.sourceSegments.map((segment) => segment.id);
+    const targetIds = row.targetSegments.map((segment) => segment.id);
     const allSelected = sourceIds.every((id) => selectedSourceIds.value.has(id))
       && targetIds.every((id) => selectedTargetIds.value.has(id));
     const nextSources = new Set(selectedSourceIds.value);
@@ -394,7 +301,7 @@ const selectedUnlinkableId = computed(() => !hasSegmentSelection.value && select
 const selectedGroupRowIndexes = computed(() => rows.value
   .filter((row) => row.linked
     ? selectedAlignmentIds.value.has(row.alignmentId)
-    : [...row.sources, ...row.targets].some((segment) => selectedSourceIds.value.has(segment.id) || selectedTargetIds.value.has(segment.id)))
+    : [...row.sourceSegments, ...row.targetSegments].some((segment) => selectedSourceIds.value.has(segment.id) || selectedTargetIds.value.has(segment.id)))
   .map((row) => row.index));
 const groupSourceIds = computed(() => new Set([
   ...selectedGroupable.value.flatMap((id) => props.alignments.find((alignment) => alignment.id === id)?.sourceIds ?? []),
@@ -501,14 +408,11 @@ const confirmUngroup = (alignmentId: string, sourceGroups: string[][], targetGro
   clearSelection();
 };
 
-const { draggedId, dropTargetId, dropEdge, dragPointer, draggedSegment, vOrderDnd, vOrderDropZone } = useOrderDragAndDrop({
-  getSourceSegments: () => props.sourceSegments,
-  onReorder: (orderedSegmentIds) => emit("reorder", orderedSegmentIds),
+const { draggedId, dropTargetId, dropEdge, dragPointer, draggedSegment, registerOrderSegment } = useOrderDragAndDrop({
+  getSegments: (side) => side === "source" ? props.sourceSegments : props.targetSegments,
+  onReorder: (side, orderedSegmentIds) => emit("reorder", side, orderedSegmentIds),
   afterReorderApplied: () => { virtualizer.value.measure(); },
 });
-
-const alignmentKind = (row: WorkspaceRow) => !row.linked ? "未对齐" : `${row.sources.length}:${row.targets.length}`;
-const segmentOrderLabel = (segment: SegmentDto) => String(segment.order + 1).padStart(6, "0");
 const measureListScrollbar = () => {
   const list = listRef.value;
   listScrollbarWidth.value = list ? Math.max(0, list.offsetWidth - list.clientWidth) : 0;
@@ -534,10 +438,10 @@ onBeforeUnmount(() => {
     <div v-if="mode === 'order'" class="order-toolbar">
       <div class="order-label"><GripVertical :size="16" /><span>排序工具：</span></div>
       <button class="tool-button tool-button--active" type="button"><GripVertical :size="15" />拖动卡片</button>
-      <button class="tool-button" type="button" :disabled="!writable || !selectedAlignmentId" @click="emit('move', selectedAlignmentId, 'up')"><ArrowUp :size="15" />上移</button>
-      <button class="tool-button" type="button" :disabled="!writable || !selectedAlignmentId" @click="emit('move', selectedAlignmentId, 'down')"><ArrowDown :size="15" />下移</button>
+      <button class="tool-button" type="button" :disabled="!writable || !orderSelection" @click="orderSelection && emit('move', orderSelection.side, orderSelection.segmentId, 'up')"><ArrowUp :size="15" />上移</button>
+      <button class="tool-button" type="button" :disabled="!writable || !orderSelection" @click="orderSelection && emit('move', orderSelection.side, orderSelection.segmentId, 'down')"><ArrowDown :size="15" />下移</button>
       <button class="tool-button" type="button" :disabled="!writable" @click="emit('resetOrder')"><RotateCcw :size="15" />恢复顺序</button>
-      <span class="order-hint">{{ writable ? `共 ${rows.length} 行 · 拖动中文手柄，整行空白区均可放置；选中句段可在上下插入空位` : '演示预览 · 打开工程后可排序' }}</span>
+      <span class="order-hint">{{ writable ? `共 ${rows.length} 个 Alignment Block · 从中文编号手柄开始拖拽；选中两侧句段均可插入空位` : '演示预览 · 打开工程后可排序' }}</span>
     </div>
     <div v-if="findOpen && mode === 'review'" class="view-find" role="search" aria-label="审阅模式快速查找">
       <Search :size="16" /><input ref="findInputRef" v-model="findQuery" aria-label="查找当前平行视图" placeholder="查找中文或英文…" @keydown.enter.prevent="activateFindMatch(findCursor + ($event.shiftKey ? -1 : 1))" @keydown.esc.prevent="closeFind" />
@@ -562,18 +466,44 @@ onBeforeUnmount(() => {
       <button v-if="hasOperationSelection" class="selection-clear" type="button" @click="clearSelection">清除选择</button>
     </div>
     <div class="column-headings" :style="{ paddingRight: `${listScrollbarWidth}px` }"><h2>中文 <span>（原文）</span></h2><div class="heading-divider" aria-hidden="true"></div><h2>English <span>（译文）</span></h2></div>
-    <div ref="listRef" v-order-drop-zone="{ mode, writable }" class="parallel-list" :class="{ 'parallel-list--order': mode === 'order' }" tabindex="-1" @wheel.passive="cancelScrollAnimation" @touchstart.passive="cancelScrollAnimation"><div class="parallel-list-inner" :style="{ height: `${totalSize}px` }">
-      <article v-for="virtualRow in virtualRows" :key="rows[virtualRow.index].alignmentId" :ref="measureRow" :data-index="virtualRow.index" :data-alignment-id="rows[virtualRow.index].alignmentId" class="alignment-row" :class="{ 'alignment-row--selected': mode !== 'order' && (selectedAlignmentIds.has(rows[virtualRow.index].alignmentId) || (!hasOperationSelection && rows[virtualRow.index].alignmentId === selectedAlignmentId)), 'alignment-row--operation-selected': selectedAlignmentIds.has(rows[virtualRow.index].alignmentId), 'alignment-row--order-anchor': orderSelection && [...rows[virtualRow.index].sources, ...rows[virtualRow.index].targets].some(segment => segment.id === orderSelection?.segmentId), 'alignment-row--highlight': rows[virtualRow.index].alignmentId === transientHighlightId, 'alignment-row--empty': !rows[virtualRow.index].linked, 'alignment-row--dragging': rows[virtualRow.index].sources.some(source => source.id === draggedId), 'alignment-row--drop-before': rows[virtualRow.index].sources.some(source => source.id === dropTargetId) && dropEdge === 'before', 'alignment-row--drop-after': rows[virtualRow.index].sources.some(source => source.id === dropTargetId) && dropEdge === 'after' }" :style="{ transform: `translateY(${virtualRow.start}px)` }" @click="selectRow(rows[virtualRow.index], $event)">
-        <div class="segment-cell segment-cell--source" :class="{ 'segment-cell--selected': mode !== 'order' && !hasOperationSelection && rows[virtualRow.index].alignmentId === selectedAlignmentId, 'segment-cell--order-selected': rows[virtualRow.index].sources.some(source => isOrderSegmentSelected('source', source.id)), 'segment-cell--multi-selected': rows[virtualRow.index].sources.some(source => selectedSourceIds.has(source.id)) }" @click.stop="rows[virtualRow.index].sources[0] && selectSegment('source', rows[virtualRow.index].sources[0].id, rows[virtualRow.index].alignmentId, $event)"><button v-if="orderSelection?.side === 'source' && rows[virtualRow.index].sources.some(source => source.id === orderSelection?.segmentId)" class="order-gap-button order-gap-button--before" type="button" :disabled="!canInsertGap('source', orderSelection.segmentId, rows[virtualRow.index], 'before')" aria-label="在所选中文句段上方插入空位" title="在上方插入空位，并自动重建后续 1:1 对齐" @click.stop="emit('insertGap', orderSelection.segmentId, 'before')"><Plus :size="15" :stroke-width="2.6" /></button><button v-if="orderSelection?.side === 'source' && rows[virtualRow.index].sources.some(source => source.id === orderSelection?.segmentId)" class="order-gap-button order-gap-button--after" type="button" :disabled="!canInsertGap('source', orderSelection.segmentId, rows[virtualRow.index], 'after')" aria-label="在所选中文句段下方插入空位" title="在下方插入空位，并自动重建后续 1:1 对齐" @click.stop="emit('insertGap', orderSelection.segmentId, 'after')"><Plus :size="15" :stroke-width="2.6" /></button><div v-for="source in rows[virtualRow.index].sources" :key="source.id" v-order-dnd="{ mode, segmentId: source.id, writable }" class="segment-stack segment-stack--source" :data-segment-port="source.id"><button v-if="mode === 'order'" class="drag-handle" type="button" :disabled="!writable" title="拖动此中文 Segment；也可用上移和下移按钮" @click.stop="selectOrderSegment('source', source.id, rows[virtualRow.index].alignmentId)"><GripVertical :size="18" /><span>{{ source.order + 1 }}</span></button><span v-if="mode !== 'order'" class="segment-id" :title="source.id">{{ segmentOrderLabel(source) }}</span>
-          <div v-if="mode === 'edit' && editSession?.segmentId === source.id" class="edit-card"><textarea :value="editSession.draft" autofocus aria-label="编辑中文原文" @click.stop @input="emit('editDraft', ($event.target as HTMLTextAreaElement).value)" @keydown.esc.stop.prevent="emit('escapeEdit')" @keydown.ctrl.enter.stop.prevent="emit('commitEdit', true)" @keydown.meta.enter.stop.prevent="emit('commitEdit', true)"></textarea><div class="edit-meta"><span>字数: {{ editSession.draft.length }}</span><span class="spell-status"><Check :size="15" />{{ editSession.status === 'saving' ? '保存中' : editSession.status === 'error' ? '保存失败' : editSession.status === 'dirty' ? '待保存' : '已保存' }}</span><Link2 :size="17" /></div><p v-if="editSession.error" class="edit-error">{{ editSession.error }}</p><div class="edit-actions"><button type="button" @click.stop="emit('cancelEdit')"><X :size="14" />放弃并退出</button><button class="primary-button" type="button" :disabled="editSession.status === 'saving'" @click.stop="emit('commitEdit', true)"><Check :size="14" />保存并退出</button></div></div>
-          <button v-else class="segment-text" type="button" @click.stop="selectSegment('source', source.id, rows[virtualRow.index].alignmentId, $event)" @dblclick.stop="requestEdit(source, rows[virtualRow.index].alignmentId)">{{ source.text }}</button>
-        </div><button v-if="props.alignments.some(alignment => alignment.id === rows[virtualRow.index].alignmentId)" class="bookmark-button" :class="{ 'bookmark-button--on': bookmarked.has(rows[virtualRow.index].alignmentId) }" type="button" :disabled="!writable" :aria-label="bookmarked.has(rows[virtualRow.index].alignmentId) ? '移除书签' : '添加书签'" @click.stop="toggleBookmark(rows[virtualRow.index])"><Star :size="18" :fill="bookmarked.has(rows[virtualRow.index].alignmentId) ? 'currentColor' : 'none'" /></button></div>
-        <div class="link-cell" :class="{ 'link-cell--active': selectedAlignmentIds.has(rows[virtualRow.index].alignmentId) || (!hasOperationSelection && rows[virtualRow.index].alignmentId === selectedAlignmentId), 'link-cell--unlinked': !rows[virtualRow.index].linked }" :title="rows[virtualRow.index].linked ? '选择 Alignment；按 Ctrl/⌘ 多选后 Group' : '未对齐；点击选择两侧 Segment，按 Ctrl/⌘ 加入 Group'" @click.stop="selectRow(rows[virtualRow.index], $event)"><Link2 v-if="rows[virtualRow.index].linked" :size="23" /><Link2Off v-else :size="23" /><span v-if="mode === 'order'" class="order-index">{{ String(rows[virtualRow.index].index + 1).padStart(2, '0') }}</span></div>
-        <div class="segment-cell segment-cell--target" :class="{ 'segment-cell--selected': mode !== 'order' && !hasOperationSelection && rows[virtualRow.index].alignmentId === selectedAlignmentId, 'segment-cell--order-selected': rows[virtualRow.index].targets.some(target => isOrderSegmentSelected('target', target.id)), 'segment-cell--multi-selected': rows[virtualRow.index].targets.some(target => selectedTargetIds.has(target.id)) }" @click.stop="rows[virtualRow.index].targets[0] && selectSegment('target', rows[virtualRow.index].targets[0].id, rows[virtualRow.index].alignmentId, $event)"><button v-if="orderSelection?.side === 'target' && rows[virtualRow.index].targets.some(target => target.id === orderSelection?.segmentId)" class="order-gap-button order-gap-button--before" type="button" :disabled="!canInsertGap('target', orderSelection.segmentId, rows[virtualRow.index], 'before')" aria-label="在所选英文句段上方插入空位" title="在上方插入空位，并自动重建后续 1:1 对齐" @click.stop="emit('insertGap', orderSelection.segmentId, 'before')"><Plus :size="15" :stroke-width="2.6" /></button><button v-if="orderSelection?.side === 'target' && rows[virtualRow.index].targets.some(target => target.id === orderSelection?.segmentId)" class="order-gap-button order-gap-button--after" type="button" :disabled="!canInsertGap('target', orderSelection.segmentId, 'after')" aria-label="在所选英文句段下方插入空位" title="在下方插入空位，并自动重建后续 1:1 对齐" @click.stop="emit('insertGap', orderSelection.segmentId, 'after')"><Plus :size="15" :stroke-width="2.6" /></button><div v-for="target in rows[virtualRow.index].targets" :key="target.id" class="segment-stack" :data-segment-port="target.id"><span class="segment-id" :title="target.id">{{ segmentOrderLabel(target) }}</span>
-          <div v-if="mode === 'edit' && editSession?.segmentId === target.id" class="edit-card"><textarea :value="editSession.draft" autofocus aria-label="编辑英文译文" @click.stop @input="emit('editDraft', ($event.target as HTMLTextAreaElement).value)" @keydown.esc.stop.prevent="emit('escapeEdit')" @keydown.ctrl.enter.stop.prevent="emit('commitEdit', true)" @keydown.meta.enter.stop.prevent="emit('commitEdit', true)"></textarea><div class="edit-meta"><span>Words: {{ editSession.draft.trim().split(/\s+/).filter(Boolean).length }}</span><span class="spell-status"><Check :size="15" />{{ editSession.status === 'saving' ? 'Saving' : editSession.status === 'error' ? 'Failed' : editSession.status === 'dirty' ? 'Pending' : 'Saved' }}</span><Link2 :size="17" /></div><p v-if="editSession.error" class="edit-error">{{ editSession.error }}</p><div class="edit-actions"><button type="button" @click.stop="emit('cancelEdit')"><X :size="14" />放弃并退出</button><button class="primary-button" type="button" :disabled="editSession.status === 'saving'" @click.stop="emit('commitEdit', true)"><Check :size="14" />保存并退出</button></div></div>
-          <button v-else class="segment-text segment-text--target" type="button" @click.stop="selectSegment('target', target.id, rows[virtualRow.index].alignmentId, $event)" @dblclick.stop="requestEdit(target, rows[virtualRow.index].alignmentId)">{{ target.text }}</button>
-        </div><span class="alignment-kind" :class="{ 'alignment-kind--empty': !rows[virtualRow.index].linked }">{{ alignmentKind(rows[virtualRow.index]) }}</span></div>
-      </article>
+    <div ref="listRef" class="parallel-list" :class="{ 'parallel-list--order': mode === 'order' }" tabindex="-1" @wheel.passive="cancelScrollAnimation" @touchstart.passive="cancelScrollAnimation"><div class="parallel-list-inner" :style="{ height: `${totalSize}px` }">
+      <div
+        v-for="virtualRow in virtualRows"
+        :key="rows[virtualRow.index].alignmentId"
+        :ref="measureRow"
+        :data-index="virtualRow.index"
+        class="virtual-alignment-block"
+        :style="{ transform: `translateY(${virtualRow.start}px)` }"
+      >
+        <AlignmentBlock
+          :block="rows[virtualRow.index]"
+          :mode="mode"
+          :writable="writable"
+          :alignment-active="mode !== 'order' && (selectedAlignmentIds.has(rows[virtualRow.index].alignmentId) || (!hasOperationSelection && rows[virtualRow.index].alignmentId === selectedAlignmentId))"
+          :alignment-operation-selected="selectedAlignmentIds.has(rows[virtualRow.index].alignmentId)"
+          :order-selection="orderSelection"
+          :selected-source-ids="selectedSourceIds"
+          :selected-target-ids="selectedTargetIds"
+          :edit-session="editSession"
+          :bookmarked="bookmarked.has(rows[virtualRow.index].alignmentId)"
+          :highlighted="rows[virtualRow.index].alignmentId === transientHighlightId"
+          :dragged-id="draggedId"
+          :drop-target-id="dropTargetId"
+          :drop-edge="dropEdge"
+          :register-order-segment="registerOrderSegment"
+          :can-insert-gap="canInsertGap"
+          @select-alignment="selectRow(rows[virtualRow.index], $event)"
+          @select-segment="(side, segmentId, event) => selectSegment(side, segmentId, rows[virtualRow.index].alignmentId, event)"
+          @select-order-segment="(side, segmentId) => selectOrderSegment(side, segmentId, rows[virtualRow.index].alignmentId)"
+          @request-edit="requestEdit($event, rows[virtualRow.index].alignmentId)"
+          @insert-gap="(segmentId, edge) => emit('insertGap', segmentId, edge)"
+          @bookmark="toggleBookmark(rows[virtualRow.index])"
+          @edit-draft="emit('editDraft', $event)"
+          @commit-edit="emit('commitEdit', $event)"
+          @cancel-edit="emit('cancelEdit')"
+          @escape-edit="emit('escapeEdit')"
+        />
+      </div>
     </div></div>
     <div v-if="mode === 'edit' && !editSession" class="edit-tip"><LockKeyhole :size="15" />双击任意句子进入编辑；Esc 保存并退出，Ctrl/⌘+Enter 保存并退出。</div>
     <OrderDragOverlay :dragged-segment="draggedSegment" :drag-pointer="dragPointer" />
@@ -583,9 +513,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.virtual-alignment-block { position: absolute; z-index: 10; right: 0; left: 0; width: 100%; }
 .operation-toolbar { display: flex; align-items: stretch; min-height: 58px; padding: 0 28px; border-bottom: 1px solid var(--line); background: var(--surface-muted); }.operation-group { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 7px 16px 7px 0; }.operation-group + .operation-group { padding-left: 16px; border-left: 1px solid var(--line); }.operation-group__heading { display: grid; min-width: 73px; gap: 1px; line-height: 1.05; }.operation-group__heading span { color: var(--green-700); font-size: 9px; font-weight: 750; letter-spacing: .08em; }.operation-group__heading b { color: var(--ink-900); font-size: 12px; }.operation-group__heading small { color: var(--ink-500); font-size: 10px; }.operation-toolbar .tool-button { height: 32px; white-space: nowrap; }.operation-note { max-width: 220px; color: var(--ink-500); font-size: 10px; line-height: 1.35; }.operation-note--warning { color: #916714; }.tool-button--link:not(:disabled) { border-color: #a8d0ad; color: var(--green-900); background: var(--surface-green-soft); }.selection-clear { margin: auto 0 auto auto; padding: 5px 9px; border: 0; color: var(--ink-500); background: transparent; font-size: 12px; cursor: pointer; }
 .view-find { display: flex; align-items: center; gap: 7px; min-height: 45px; padding: 0 18px; border-bottom: 1px solid #b8d5bb; color: var(--green-900); background: #f4faf2; }.view-find input { flex: 1; min-width: 140px; height: 31px; padding: 0 10px; border: 1px solid #b8cdb9; border-radius: 5px; outline: none; background: #fff; }.view-find input:focus { border-color: var(--green-700); box-shadow: 0 0 0 2px rgb(55 127 66 / 14%); }.view-find span { min-width: 70px; color: var(--ink-500); font-size: 11px; text-align: right; }.view-find button { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid transparent; border-radius: 5px; color: var(--ink-700); background: transparent; cursor: pointer; }.view-find button:hover:not(:disabled) { border-color: #bad2bd; background: #fff; }
-.parallel-list { position: relative; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }.workspace--trackpad .parallel-list { overscroll-behavior-x: none; overscroll-behavior-y: contain; scroll-behavior: auto; }.parallel-list-inner { position: relative; width: 100%; }.alignment-row { position: absolute; z-index: 10; left: 0; display: grid; grid-template-columns: minmax(0, 1fr) 66px minmax(0, 1fr); width: 100%; min-height: 106px; border-bottom: 1px solid var(--line); cursor: pointer; transition: background-color 180ms ease, box-shadow 180ms ease, opacity 160ms ease; }.alignment-row--operation-selected { box-shadow: inset 0 0 0 2px #80b686; }.alignment-row--order-anchor { z-index: 15; }.alignment-row--highlight { animation: alignment-highlight 820ms ease-out; }.alignment-row--dragging { opacity: .42; }.alignment-row--drop-before::before, .alignment-row--drop-after::after { position: absolute; z-index: 30; right: 10px; left: 10px; height: 3px; border-radius: 3px; background: var(--green-700); box-shadow: 0 0 0 3px rgb(55 127 66 / 14%); content: ""; }.alignment-row--drop-before::before { top: -1px; }.alignment-row--drop-after::after { bottom: -2px; }.workspace--order .alignment-row { cursor: default; user-select: none; }.workspace--order .segment-cell--source { padding-left: 104px; }.workspace--order .segment-stack--source { min-height: 76px; }.workspace--order .segment-cell--order-selected { background: var(--surface-green-selected); box-shadow: inset 0 0 0 2px var(--green-700); }.workspace--order .drag-handle { cursor: grab; }.workspace--order .drag-handle:active { cursor: grabbing; }.segment-stack + .segment-stack { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--line); }.drag-handle { position: absolute; z-index: 16; top: 0; bottom: 0; left: -104px; display: flex; width: 78px; align-items: center; justify-content: center; gap: 5px; border: 0; border-right: 1px solid var(--line); color: var(--ink-500); background: var(--surface-muted); font: inherit; }.drag-handle:disabled { cursor: not-allowed; opacity: .5; }.order-gap-button { position: absolute; z-index: 30; left: 50%; display: grid; width: 34px; height: 24px; padding: 0; transform: translateX(-50%); place-items: center; border: 1px solid #8cbe92; border-radius: 999px; color: var(--green-900); background: var(--surface-raised); box-shadow: 0 2px 7px rgb(31 53 34 / 14%); cursor: pointer; }.order-gap-button--before { top: -12px; }.order-gap-button--after { bottom: -12px; }.order-gap-button:hover:not(:disabled) { border-color: var(--green-700); background: var(--surface-green-soft); transform: translateX(-50%) scale(1.06); }.order-gap-button:disabled { cursor: not-allowed; opacity: .35; }.link-cell--unlinked { color: var(--ink-500); background: var(--surface-muted); }.segment-cell--multi-selected { outline: 2px solid #80b686; outline-offset: -3px; background: var(--surface-green-selected); }.edit-error { margin: 0; padding: 6px 12px; color: #a24c4c; background: var(--surface-danger-soft); font-size: 11px; }
-@keyframes alignment-highlight { 0% { box-shadow: inset 0 0 0 3px rgb(77 155 83 / 45%), 0 0 0 0 rgb(77 155 83 / 24%); } 45% { box-shadow: inset 0 0 0 2px rgb(77 155 83 / 26%), 0 0 0 8px rgb(77 155 83 / 0%); } 100% { box-shadow: inset 0 0 0 0 rgb(77 155 83 / 0%); } }
-@media (prefers-reduced-motion: reduce) { .alignment-row { transition: none; } .alignment-row--highlight { animation: none; } }
+.parallel-list { position: relative; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.workspace--trackpad .parallel-list { overscroll-behavior-x: none; overscroll-behavior-y: contain; scroll-behavior: auto; }
+.parallel-list-inner { position: relative; width: 100%; }
 </style>
