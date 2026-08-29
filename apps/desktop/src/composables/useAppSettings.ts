@@ -17,6 +17,7 @@ const SHORTCUT_PROFILES: ShortcutProfile[] = ["auto", "macos", "windows"];
 export function useAppSettings(options: UseAppSettingsOptions) {
   const theme = ref<AppTheme>("light");
   const fontScale = ref(100);
+  const uiScale = ref(100);
   const autoSaveDelayMs = ref(3000);
   const cacheCleanupPolicy = ref<CacheCleanupPolicy>("weekly");
   const cacheCleaning = ref(false);
@@ -58,9 +59,16 @@ export function useAppSettings(options: UseAppSettingsOptions) {
 
   function applyUiSettings() {
     document.documentElement.dataset.theme = theme.value;
-    document.documentElement.style.fontSize = `${fontScale.value}%`;
+    document.documentElement.style.setProperty("--reading-font-scale", String(fontScale.value / 100));
+    const appRoot = document.querySelector<HTMLElement>("#app");
+    if (appRoot) {
+      appRoot.style.zoom = String(uiScale.value / 100);
+      appRoot.style.width = `${10000 / uiScale.value}%`;
+      appRoot.style.height = `${10000 / uiScale.value}%`;
+    }
     localStorage.setItem("jueming-theme", theme.value);
     localStorage.setItem("jueming-font-scale", String(fontScale.value));
+    localStorage.setItem("jueming-ui-scale", String(uiScale.value));
   }
 
   function applyInteractionSettings(notifyUser = true) {
@@ -82,6 +90,7 @@ export function useAppSettings(options: UseAppSettingsOptions) {
   function initializeSettings() {
     const savedTheme = localStorage.getItem("jueming-theme");
     const savedScale = Number(localStorage.getItem("jueming-font-scale"));
+    const savedUiScale = Number(localStorage.getItem("jueming-ui-scale"));
     const savedAutosaveDelay = Number(localStorage.getItem("jueming-autosave-delay-ms"));
     const savedCleanupPolicy = localStorage.getItem("jueming-cache-cleanup-policy") as CacheCleanupPolicy | null;
     const savedCleanupAt = Number(localStorage.getItem("jueming-cache-cleanup-at"));
@@ -90,6 +99,7 @@ export function useAppSettings(options: UseAppSettingsOptions) {
 
     if (savedTheme === "eye") theme.value = savedTheme;
     if (savedScale >= 85 && savedScale <= 130) fontScale.value = savedScale;
+    if (savedUiScale >= 85 && savedUiScale <= 115) uiScale.value = savedUiScale;
     if (AUTOSAVE_DELAYS.includes(savedAutosaveDelay)) autoSaveDelayMs.value = savedAutosaveDelay;
     if (savedCleanupPolicy && CACHE_POLICIES.includes(savedCleanupPolicy)) cacheCleanupPolicy.value = savedCleanupPolicy;
     if (Number.isFinite(savedCleanupAt) && savedCleanupAt > 0) lastCacheCleanupAt.value = savedCleanupAt;
@@ -130,6 +140,7 @@ export function useAppSettings(options: UseAppSettingsOptions) {
   return {
     theme,
     fontScale,
+    uiScale,
     autoSaveDelayMs,
     cacheCleanupPolicy,
     cacheCleaning,

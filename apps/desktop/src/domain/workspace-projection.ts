@@ -11,7 +11,18 @@ export interface AlignmentBlockView {
   alignmentId: string;
   index: number;
   linked: boolean;
+  sourceFragmented: boolean;
+  targetFragmented: boolean;
 }
+
+const sideIsFragmented = (segmentIds: string[], segments: SegmentDto[]) => {
+  const orderById = new Map(segments.map((segment) => [segment.id, segment.order]));
+  const orders = segmentIds
+    .map((segmentId) => orderById.get(segmentId))
+    .filter((order): order is number => order !== undefined)
+    .sort((a, b) => a - b);
+  return orders.length > 1 && orders[orders.length - 1] - orders[0] + 1 !== orders.length;
+};
 
 const orderAlignmentBlocks = (
   unorderedBlocks: AlignmentBlockView[],
@@ -117,6 +128,8 @@ export const buildAlignmentBlocks = (
       alignmentId: alignment.id,
       index: 0,
       linked: true,
+      sourceFragmented: sideIsFragmented(alignment.sourceIds, sourceSegments),
+      targetFragmented: sideIsFragmented(alignment.targetIds, targetSegments),
     });
   }
 
@@ -136,6 +149,8 @@ export const buildAlignmentBlocks = (
       alignmentId: `unlinked-${source.id}-${target?.id ?? "empty"}`,
       index: 0,
       linked: false,
+      sourceFragmented: false,
+      targetFragmented: false,
     });
   }
   for (const target of unlinkedTargets.filter((segment) => !pairedTargets.has(segment.id))) {
@@ -145,6 +160,8 @@ export const buildAlignmentBlocks = (
       alignmentId: `unlinked-empty-${target.id}`,
       index: 0,
       linked: false,
+      sourceFragmented: false,
+      targetFragmented: false,
     });
   }
 
