@@ -180,7 +180,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "${app_dirs[0]}" "$assets/Jueming-Aligner_${tag}_macos-arm64-portable.zip"
 
       - name: Upload staged release assets
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: ${{ matrix.artifact_name }}
           path: release-assets/*
@@ -197,7 +197,7 @@ jobs:
       contents: write
     steps:
       - name: Download all platform assets
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           path: release-assets
           merge-multiple: true
@@ -224,6 +224,7 @@ jobs:
       - name: Create release and upload downloads
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail

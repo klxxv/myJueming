@@ -1,7 +1,7 @@
 {
   "name": "jueming-aligner",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "packageManager": "pnpm@11.19.0",
   "engines": {
     "node": ">=24.14.0"
