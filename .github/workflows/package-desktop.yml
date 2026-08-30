@@ -1,7 +1,6 @@
 name: Package desktop
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
@@ -49,6 +48,16 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify release tag matches application version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = (Get-Content "apps/desktop/src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json).version
+          $expectedTag = "v$version"
+          if ("${{ github.ref_name }}" -ne $expectedTag) {
+            throw "Release tag ${{ github.ref_name }} does not match application version $expectedTag."
+          }
+
       - name: Verify TypeScript and frontend production build
         run: pnpm build
 
@@ -64,21 +73,23 @@ jobs:
   package:
     name: ${{ matrix.name }}
     needs: quality
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Windows x64 installers
+          - name: Windows x64 installers and portable
             platform: windows-latest
             rust_targets: ""
             tauri_args: --bundles nsis,msi
-          - name: macOS Universal app and DMG
+            artifact_name: jueming-windows-x64
+          - name: macOS ARM64 DMG and portable ZIP
             platform: macos-latest
-            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
-            tauri_args: --target universal-apple-darwin --bundles app,dmg
+            rust_targets: aarch64-apple-darwin
+            tauri_args: --target aarch64-apple-darwin --bundles app,dmg
+            artifact_name: jueming-macos-arm64
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -106,6 +117,16 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build and stage Windows portable executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          pnpm --dir apps/desktop tauri build --no-bundle
+          $assets = Join-Path $PWD "release-assets"
+          New-Item -ItemType Directory -Path $assets -Force | Out-Null
+          Copy-Item "target/release/jueming-desktop.exe" (Join-Path $assets "Jueming-Aligner_${{ github.ref_name }}_windows-x64-portable.exe")
+
       - name: Build platform packages
         id: tauri
         uses: tauri-apps/tauri-action@944946e3e4cac6603d1fe8f514171e9ecd3c78aa # v1
@@ -118,5 +139,99 @@ jobs:
           tauriScript: pnpm tauri
           args: ${{ matrix.tauri_args }}
           retryAttempts: 1
-          uploadWorkflowArtifacts: true
-          workflowArtifactNamePattern: "jueming-[platform]-[arch]-[bundle]"
+
+      - name: Stage Windows release assets
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = "${{ github.ref_name }}"
+          $assets = Join-Path $PWD "release-assets"
+          New-Item -ItemType Directory -Path $assets -Force | Out-Null
+
+          $nsis = @(Get-ChildItem "target/release/bundle/nsis" -Filter "*.exe" -File)
+          $msi = @(Get-ChildItem "target/release/bundle/msi" -Filter "*.msi" -File)
+          if ($nsis.Count -ne 1 -or $msi.Count -ne 1) {
+            throw "Expected exactly one NSIS installer and one MSI installer."
+          }
+
+          Copy-Item $nsis[0].FullName (Join-Path $assets "Jueming-Aligner_${tag}_windows-x64-setup.exe")
+          Copy-Item $msi[0].FullName (Join-Path $assets "Jueming-Aligner_${tag}_windows-x64.msi")
+
+      - name: Stage macOS ARM64 release assets
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          tag="${{ github.ref_name }}"
+          assets="$PWD/release-assets"
+          bundle_root="target/aarch64-apple-darwin/release/bundle"
+          mkdir -p "$assets"
+
+          dmg_files=("$bundle_root"/dmg/*.dmg)
+          app_dirs=("$bundle_root"/macos/*.app)
+          if [[ ${#dmg_files[@]} -ne 1 || ${#app_dirs[@]} -ne 1 ]]; then
+            echo "Expected exactly one ARM64 DMG and one application bundle." >&2
+            exit 1
+          fi
+
+          cp "${dmg_files[0]}" "$assets/Jueming-Aligner_${tag}_macos-arm64.dmg"
+          ditto -c -k --sequesterRsrc --keepParent "${app_dirs[0]}" "$assets/Jueming-Aligner_${tag}_macos-arm64-portable.zip"
+
+      - name: Upload staged release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download all platform assets
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify release asset set
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=(
+            "Jueming-Aligner_${GITHUB_REF_NAME}_windows-x64-setup.exe"
+            "Jueming-Aligner_${GITHUB_REF_NAME}_windows-x64.msi"
+            "Jueming-Aligner_${GITHUB_REF_NAME}_windows-x64-portable.exe"
+            "Jueming-Aligner_${GITHUB_REF_NAME}_macos-arm64.dmg"
+            "Jueming-Aligner_${GITHUB_REF_NAME}_macos-arm64-portable.zip"
+          )
+          for asset in "${expected[@]}"; do
+            test -s "release-assets/$asset" || {
+              echo "Missing or empty release asset: $asset" >&2
+              exit 1
+            }
+          done
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq "${#expected[@]}"
+
+      - name: Create release and upload downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/* \
+              --verify-tag \
+              --generate-notes \
+              --title "Jueming Aligner $GITHUB_REF_NAME"
+          fi
