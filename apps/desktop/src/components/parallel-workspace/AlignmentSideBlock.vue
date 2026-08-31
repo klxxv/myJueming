@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../../i18n';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import type { EditSession } from "../../composables/useViewModeController";
 import type { DropEdge, RegisterOrderSegment } from "../../composables/useOrderDragAndDrop";
@@ -128,7 +129,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
       @cancel-edit="emit('cancelEdit')"
       @escape-edit="emit('escapeEdit')"
     />
-    <span v-if="!block.linked" class="alignment-side-block__pending">待匹配</span>
+    <span v-if="!block.linked" class="alignment-side-block__pending">{{ t('pendingMatch') }}</span>
   </article>
 </template>
 

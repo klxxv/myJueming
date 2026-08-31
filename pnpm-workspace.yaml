@@ -1,6 +1,8 @@
 packages:
   - "apps/*"
   - "packages/*"
+allowBuilds:
+  esbuild: true
 minimumReleaseAgeExclude:
   - '@vue/compiler-core@3.5.42'
   - '@vue/compiler-dom@3.5.42'

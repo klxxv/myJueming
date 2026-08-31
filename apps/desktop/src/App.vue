@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { t, formatDate, formatNumber, uiLocale, type LocalizedMessage } from './i18n';
+import { formatError, rawErrorMessage, revisionAction, revisionSummary } from './i18n/kernel-messages';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { confirm, open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Check, ChevronDown, Download, Eye, FilePlus2, Folder, FolderOpen, History, Link2, Maximize2, MessageSquareText, Minimize2, Monitor, PanelLeft, Pencil, Redo2, Save, Search, Settings2, Star, Undo2, X } from "@lucide/vue";
@@ -35,7 +37,8 @@ const kernelClient = createKernelClient();
 const activeNav = ref<NavId>("parallel");
 const selectedAlignmentId = ref("alignment-000004");
 const busy = ref(false);
-const statusMessage = ref(isTauriRuntime ? "尚未打开工程" : "演示预览 · 浏览器模式");
+const statusMessage = ref<LocalizedMessage>(() => isTauriRuntime ? t('projectNone') : t('demoPreview'));
+const displayedStatus = computed(() => typeof statusMessage.value === 'function' ? statusMessage.value() : statusMessage.value);
 const exportOpen = ref(false);
 const annotationOpen = ref(false);
 const annotationWidth = ref(355);
@@ -52,7 +55,8 @@ const annotationFilter = ref<AnnotationFilter>("all");
 const selectedAnnotationId = ref<string | null>(null);
 const selectedRevisionId = ref<string | null>(null);
 const baseRevisionId = ref<string | null>(null);
-const historyDiff = ref<HistoryDiff | null>(null);
+const historyComparison = ref<RevisionComparison | null>(null);
+const historyDiff = computed(() => historyComparison.value ? comparisonToDiff(historyComparison.value) : null);
 const orderBaseline = ref<Record<LanguageSide, string[]>>({ source: [], target: [] });
 const pendingNav = ref<NavId | null>(null);
 const parallelWorkspaceRef = ref<ParallelWorkspaceExposed | null>(null);
@@ -63,32 +67,33 @@ const targetRows = ref<SegmentDto[]>(targetSegments.map((segment) => ({ ...segme
 const alignmentRows = ref<AlignmentDto[]>(fixtureAlignments.map((alignment) => ({ ...alignment })));
 const projectSnapshot = ref<ProjectSnapshot | null>(null);
 const workspaceWritable = computed(() => projectSnapshot.value !== null || !isTauriRuntime);
-const projectSummary = ref<ProjectSummaryDto>({ project_id: "fixture-project", name: "2024政府工作报告_中英对齐", source_label: "report_zh.txt", target_label: "report_en.txt", source_count: 8, target_count: 8, alignment_count: 8, source_unlinked_count: 0, target_unlinked_count: 0, revision_id: "0" });
+const projectSummary = ref<ProjectSummaryDto>({ project_id: "fixture-project", name: t('demoName'), source_label: "report_zh.txt", target_label: "report_en.txt", source_count: 8, target_count: 8, alignment_count: 8, source_unlinked_count: 0, target_unlinked_count: 0, revision_id: "0" });
 
-const modeItems: Array<{ id: WorkspaceMode; label: string; hint: string; icon: typeof Eye }> = [
-  { id: "review", label: "审阅排序", hint: "Review + Order", icon: Eye },
-  { id: "edit", label: "编辑模式", hint: "Edit", icon: Pencil },
-  { id: "history", label: "历史模式", hint: "History", icon: History },
-];
-const annotationModeItem: { id: "annotation"; label: string; hint: string; icon: typeof Eye } = {
+const displayedProjectName = computed(() => projectSnapshot.value ? projectSummary.value.name : t('demoName'));
+const modeItems = computed<Array<{ id: WorkspaceMode; label: string; hint: string; icon: typeof Eye }>>(() => [
+  { id: "review", label: t('modeReview'), hint: t('modeReviewHint'), icon: Eye },
+  { id: "edit", label: t('modeEdit'), hint: t('modeEditHint'), icon: Pencil },
+  { id: "history", label: t('modeHistory'), hint: t('modeHistoryHint'), icon: History },
+]);
+const annotationModeItem = computed<{ id: "annotation"; label: string; hint: string; icon: typeof Eye }>(() => ({
   id: "annotation",
-  label: "批注模式",
-  hint: "Annotation",
+  label: t('modeAnnotation'),
+  hint: t('modeAnnotationHint'),
   icon: MessageSquareText,
-};
-const modeMenuItems: Array<{ id: ModeMenuId; label: string; hint: string; icon: typeof Eye }> = [
-  ...modeItems,
-  annotationModeItem,
-];
-const navItems: Array<{ id: NavId; label: string; hint?: string; icon: typeof Folder }> = [
-  { id: "project", label: "项目", icon: Folder }, { id: "parallel", label: "平行视图", icon: PanelLeft },
-  { id: "search", label: "搜索", icon: Search }, { id: "bookmarks", label: "书签", icon: Star },
-  { id: "history", label: "历史", icon: History }, { id: "settings", label: "设置", icon: Settings2 },
-];
+}));
+const modeMenuItems = computed<Array<{ id: ModeMenuId; label: string; hint: string; icon: typeof Eye }>>(() => [
+  ...modeItems.value,
+  annotationModeItem.value,
+]);
+const navItems = computed<Array<{ id: NavId; label: string; hint?: string; icon: typeof Folder }>>(() => [
+  { id: "project", label: t('navProject'), icon: Folder }, { id: "parallel", label: t('navParallel'), icon: PanelLeft },
+  { id: "search", label: t('navSearch'), icon: Search }, { id: "bookmarks", label: t('navBookmarks'), icon: Star },
+  { id: "history", label: t('navHistory'), icon: History }, { id: "settings", label: t('navSettings'), icon: Settings2 },
+]);
 const currentMode = computed(() => {
-  if (annotationOpen.value) return annotationModeItem;
-  if (activeNav.value === "search") return { id: activeMode.value, label: "搜索", hint: "Search", icon: Search };
-  return modeItems.find((item) => item.id === activeMode.value) ?? modeItems[0];
+  if (annotationOpen.value) return annotationModeItem.value;
+  if (activeNav.value === "search") return { id: activeMode.value, label: t('navSearch'), hint: t('modeSearchHint'), icon: Search };
+  return modeItems.value.find((item) => item.id === activeMode.value) ?? modeItems.value[0];
 });
 const segmentLabels = computed(() => new Map([...sourceRows.value, ...targetRows.value].map((segment) => [segment.id, String(segment.order + 1).padStart(6, "0")])));
 const alignmentLabels = computed(() => new Map(alignmentRows.value.map((alignment) => [alignment.id, segmentLabels.value.get(alignment.sourceIds[0] ?? alignment.targetIds[0] ?? "") ?? alignment.id.slice(0, 8)])));
@@ -98,13 +103,13 @@ const alignmentLabel = (alignmentId: string | null | undefined) => {
   return alignment ? segmentLabel(alignment.sourceIds[0] ?? alignment.targetIds[0] ?? alignment.id) : "—";
 };
 const humanizeSummary = (summary: string) => summary.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, (id) => segmentLabels.value.get(id) ?? alignmentLabels.value.get(id) ?? id.slice(0, 8));
-const revisionItems = computed<RevisionItem[]>(() => [...(projectSnapshot.value?.revisions ?? [])].reverse().map((revision) => ({ id: revision.revision_id, label: `R${revision.revision_id}`, timestamp: new Date(revision.created_at).toLocaleString("zh-CN", { hour12: false }), action: revision.change_set.operation.replace(/_/g, " "), summary: humanizeSummary(revision.summary), current: revision.revision_id === projectSummary.value.revision_id })));
+const revisionItems = computed<RevisionItem[]>(() => [...(projectSnapshot.value?.revisions ?? [])].reverse().map((revision) => ({ id: revision.revision_id, label: `R${revision.revision_id}`, timestamp: formatDate(revision.created_at), action: revisionAction(revision.change_set.operation), summary: humanizeSummary(revisionSummary(revision.summary)), current: revision.revision_id === projectSummary.value.revision_id })));
 const canUndo = computed(() => (projectSnapshot.value?.revisions.length ?? 0) > 1);
 const canRedo = computed(() => { const revisions = projectSnapshot.value?.revisions ?? []; return revisions[revisions.length - 1]?.change_set.operation.startsWith("undo:") ?? false; });
-const annotations = computed<AnnotationItem[]>(() => (projectSnapshot.value?.annotations ?? []).map((annotation, index) => ({ id: annotation.annotation_id, number: index + 1, status: annotation.status, title: annotation.title, body: annotation.body, createdAt: new Date(annotation.updated_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }), links: annotation.linked_segment_ids.map((segmentId) => { const segment = [...sourceRows.value, ...targetRows.value].find((candidate) => candidate.id === segmentId); return { side: segment?.side ?? "source", segmentId, label: segmentLabel(segmentId), text: segment?.text }; }) })));
+const annotations = computed<AnnotationItem[]>(() => (projectSnapshot.value?.annotations ?? []).map((annotation, index) => ({ id: annotation.annotation_id, number: index + 1, status: annotation.status, title: annotation.title, body: annotation.body, createdAt: formatDate(annotation.updated_at, true), links: annotation.linked_segment_ids.map((segmentId) => { const segment = [...sourceRows.value, ...targetRows.value].find((candidate) => candidate.id === segmentId); return { side: segment?.side ?? "source", segmentId, label: segmentLabel(segmentId), text: segment?.text }; }) })));
 const bookmarkedSegmentIds = computed(() => (projectSnapshot.value?.bookmarks ?? []).map((bookmark) => bookmark.segment_id));
 const annotatedSegmentIds = computed(() => [...new Set((projectSnapshot.value?.annotations ?? []).flatMap((annotation) => annotation.linked_segment_ids))]);
-const notify = (message: string) => { statusMessage.value = message; };
+const notify = (message: LocalizedMessage) => { statusMessage.value = message; };
 const {
   theme,
   fontScale,
@@ -131,7 +136,7 @@ const {
 });
 const requireOpenProject = () => {
   if (projectSnapshot.value) return true;
-  notify("当前是演示预览，请先新建或打开本地 .jm 工程");
+  notify(() => t('demoReadOnly'));
   if (isTauriRuntime) activeNav.value = "project";
   return false;
 };
@@ -158,12 +163,15 @@ const {
 });
 const dirty = computed(() => hasDirtyDraft.value || isSavingDraft.value);
 let unlistenClose: (() => void) | null = null;
+watch(uiLocale, () => {
+  if (isTauriRuntime) void getCurrentWindow().setTitle(t("appName")).catch((error: unknown) => notify(() => formatError(error)));
+}, { immediate: true });
 
 const closeWindowSafely = async () => {
   const saved = await persistDraft(true, "close");
   if (!saved) return;
   if (projectSnapshot.value) {
-    try { await kernelClient.flushProject(); } catch (error) { notify(`关闭前保存失败：${errorMessage(error)}`); return; }
+    try { await kernelClient.flushProject(); } catch (error) { notify(() => t('closeSaveFailed', { p0: errorMessage(error) })); return; }
   }
   const currentWindow = getCurrentWindow();
   unlistenClose?.();
@@ -178,7 +186,7 @@ const windowAction = async (action: "minimize" | "maximize" | "close") => {
   else if (action === "maximize") await currentWindow.toggleMaximize();
   else await closeWindowSafely();
 };
-const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+const errorMessage = formatError;
 const closeAnnotationPanel = () => {
   annotationOpen.value = false;
   annotationContextSegmentId.value = null;
@@ -224,7 +232,7 @@ onMounted(async () => {
     if (recentProjectPath) {
       try {
         await applySnapshot(await kernelClient.openProject(recentProjectPath), true);
-        notify(`已重新打开 ${projectSummary.value.name}`);
+        notify(() => t('projectReopened', { p0: projectSummary.value.name }));
       } catch {
         localStorage.removeItem("jueming-last-project-path");
       }
@@ -234,7 +242,7 @@ onMounted(async () => {
   else if (isTauriRuntime) {
     activeNav.value = "project";
     selectedAlignmentId.value = "";
-    notify("尚未打开工程，请新建或打开本地 .jm 工程");
+    notify(() => t('projectOpenPrompt'));
   }
   if (isTauriRuntime) {
     unlistenClose = await getCurrentWindow().onCloseRequested((event) => { event.preventDefault(); void closeWindowSafely(); });
@@ -278,33 +286,33 @@ const openAnnotationPanel = (segmentId?: string, alignmentId?: string | null) =>
 };
 const openNewProject = () => { void newProjectDialogRef.value?.open(); };
 const openProject = async () => {
-  const selected = await open({ directory: true, multiple: false, title: "打开决明工程（.jm 文件夹）" });
+  const selected = await open({ directory: true, multiple: false, title: t('projectOpenDialog') });
   if (!selected) return;
   busy.value = true;
-  try { await applySnapshot(await kernelClient.openProject(selected), true); localStorage.setItem("jueming-last-project-path", selected); notify(`已打开 ${projectSummary.value.name}`); }
-  catch (error) { notify(`打开失败：${errorMessage(error)}`); }
+  try { await applySnapshot(await kernelClient.openProject(selected), true); localStorage.setItem("jueming-last-project-path", selected); notify(() => t('projectOpened', { p0: projectSummary.value.name })); }
+  catch (error) { notify(() => t('projectOpenFailed', { p0: errorMessage(error) })); }
   finally { busy.value = false; }
 };
 const handleProjectCreated = async (snapshot: ProjectSnapshot, createdProjectPath: string) => {
   localStorage.setItem("jueming-last-project-path", createdProjectPath);
   try {
     await applySnapshot(snapshot, true);
-    notify(`已创建并保存 ${projectSummary.value.name}`);
+    notify(() => t('projectCreated', { p0: projectSummary.value.name }));
   } catch (error) {
-    notify(`工程已创建，但加载工作区失败：${errorMessage(error)}`);
+    notify(() => t('projectLoadFailed', { p0: errorMessage(error) }));
   }
 };
 const saveProject = async () => {
   if (!(await persistDraft(false, "manual"))) return;
-  try { await kernelClient.flushProject(); notify("本地存储 · 已保存"); }
-  catch (error) { notify(`保存失败：${errorMessage(error)}`); }
+  try { await kernelClient.flushProject(); notify(() => t('savedLocally')); }
+  catch (error) { notify(() => t('saveFailedDetail', { p0: errorMessage(error) })); }
 };
 async function persistSegment(id: string, text: string) {
   const segment = [...sourceRows.value, ...targetRows.value].find((item) => item.id === id);
   if (!segment || segment.text === text) return;
   await kernelClient.updateSegment(id, text);
   await applySnapshot(await kernelClient.getCurrentProject());
-  notify("句段已自动保存并写入本地历史");
+  notify(() => t('segmentAutosaved'));
 }
 const requestSegmentEdit = (segmentId: string, alignmentId: string) => {
   const segment = [...sourceRows.value, ...targetRows.value].find((item) => item.id === segmentId);
@@ -329,7 +337,7 @@ const moveSegment = async (side: LanguageSide, segmentId: string, direction: "up
   const index = rows.value.findIndex((item) => item.id === segmentId);
   const targetIndex = direction === "up" ? index - 1 : index + 1;
   if (index < 0 || targetIndex < 0 || targetIndex >= rows.value.length) {
-    notify(direction === "up" ? "已经是第一句" : "已经是最后一句");
+    notify(() => direction === "up" ? t('firstSegment') : t('lastSegment'));
     return;
   }
   const targetSegment = rows.value[targetIndex];
@@ -338,7 +346,7 @@ const moveSegment = async (side: LanguageSide, segmentId: string, direction: "up
     targetId: targetSegment.id,
     edge: direction === "up" ? "before" : "after",
   }))) {
-    notify("已取消跨 Alignment 排序");
+    notify(() => t('reorderCancelled'));
     return;
   }
   const previous = rows.value.map((segment) => ({ ...segment }));
@@ -350,10 +358,10 @@ const moveSegment = async (side: LanguageSide, segmentId: string, direction: "up
     const after = next[targetIndex + 1]?.id;
     await kernelClient.moveSegment(segmentId, before, after);
     await applySnapshot(await kernelClient.getCurrentProject());
-    notify(`${side === "source" ? "中文" : "英文"} Segment 已${direction === "up" ? "上移" : "下移"}，Alignment 关系保持稳定`);
+    notify(() => t('segmentMoved', { p0: side === "source" ? t('sourceSide') : t('targetSide'), p1: direction === "up" ? t('moveUp') : t('moveDown') }));
   } catch (error) {
     rows.value = previous;
-    notify(`排序失败：${errorMessage(error)}`);
+    notify(() => t('reorderFailed', { p0: errorMessage(error) }));
   }
 };
 const alignmentIdForSegment = (segmentId: string) => alignmentRows.value.find(
@@ -361,7 +369,7 @@ const alignmentIdForSegment = (segmentId: string) => alignmentRows.value.find(
 )?.id ?? null;
 const describeAlignmentForSegment = (segmentId: string) => {
   const alignmentId = alignmentIdForSegment(segmentId);
-  return alignmentId ? `Alignment ${alignmentLabel(alignmentId)}` : "未对齐区域";
+  return alignmentId ? `Alignment ${alignmentLabel(alignmentId)}` : t('unalignedArea');
 };
 const confirmCrossAlignmentReorder = async (side: LanguageSide, intent: ReorderIntent) => {
   const sourceAlignmentId = alignmentIdForSegment(intent.segmentId);
@@ -375,25 +383,25 @@ const confirmCrossAlignmentReorder = async (side: LanguageSide, intent: ReorderI
     targetAlignmentId,
     edge: intent.edge,
   })}`);
-  const message = `把${side === "source" ? "中文" : "英文"} Segment ${segmentLabel(intent.segmentId)} 从${describeAlignmentForSegment(intent.segmentId)}拖到${describeAlignmentForSegment(intent.targetId)}附近，会打断当前对齐块的连续顺序。Alignment 关系不会删除，但阅读顺序可能交叉。是否继续？`;
+  const message = t('crossAlignmentWarning', { p0: side === "source" ? t('sourceSide') : t('targetSide'), p1: segmentLabel(intent.segmentId), p2: describeAlignmentForSegment(intent.segmentId), p3: describeAlignmentForSegment(intent.targetId) });
   return isTauriRuntime
-    ? confirm(message, { title: "即将打断对齐块", kind: "warning" })
-    : window.confirm(`即将打断对齐块\n\n${message}`);
+    ? confirm(message, { title: t('crossAlignmentTitle'), kind: "warning", okLabel: t("confirm"), cancelLabel: t("cancel") })
+    : window.confirm(t('crossAlignmentConfirm', { p0: message }));
 };
 const reorderSegment = async (side: LanguageSide, orderedSegmentIds: string[], intent: ReorderIntent) => {
   if (!requireOpenProject()) return;
   if (!(await confirmCrossAlignmentReorder(side, intent))) {
-    notify("已取消跨 Alignment 排序");
+    notify(() => t('reorderCancelled'));
     return;
   }
   busy.value = true;
-  try { await applySnapshot(await kernelClient.reorderSegments(orderedSegmentIds)); clearWorkspaceSelection(); notify(`${side === "source" ? "中文" : "英文"}列拖拽排序已自动保存，Alignment 关系保持稳定`); }
-  catch (error) { notify(`拖拽排序失败：${errorMessage(error)}`); }
+  try { await applySnapshot(await kernelClient.reorderSegments(orderedSegmentIds)); clearWorkspaceSelection(); notify(() => t('dragSaved', { p0: side === "source" ? t('sourceSide') : t('targetSide') })); }
+  catch (error) { notify(() => t('dragFailed', { p0: errorMessage(error) })); }
   finally { busy.value = false; }
 };
 const resetOrder = async () => {
   if (!requireOpenProject()) return;
-  if (!orderBaseline.value.source.length && !orderBaseline.value.target.length) { notify("当前会话没有可恢复的排序基线"); return; }
+  if (!orderBaseline.value.source.length && !orderBaseline.value.target.length) { notify(() => t('noOrderBaseline')); return; }
   busy.value = true;
   try {
     let snapshot: ProjectSnapshot | null = null;
@@ -409,10 +417,10 @@ const resetOrder = async () => {
     }
     if (snapshot) await applySnapshot(snapshot);
     clearWorkspaceSelection();
-    notify("已恢复进入当前审阅排序工作区时的句段顺序");
+    notify(() => t('orderRestored'));
   } catch (error) {
     await applySnapshot(await kernelClient.getCurrentProject());
-    notify(`恢复顺序失败：${errorMessage(error)}`);
+    notify(() => t('orderRestoreFailed', { p0: errorMessage(error) }));
   }
   finally { busy.value = false; }
 };
@@ -424,19 +432,19 @@ const linkSegments = async (sourceSegmentIds: string[], targetSegmentIds: string
     try {
       snapshot = await kernelClient.linkSegments(sourceSegmentIds, targetSegmentIds, false);
     } catch (error) {
-      const message = errorMessage(error);
+      const message = rawErrorMessage(error);
       if (!message.includes("confirm replacement before linking") && !message.includes("AlignmentSelectionConflict")) throw error;
       const approved = "__TAURI_INTERNALS__" in window
-        ? await confirm("部分句段已经属于 Alignment。替换现有关系会创建新的 Revision。", { title: "替换现有 Alignment？", kind: "warning" })
-        : window.confirm("部分句段已经属于 Alignment，是否替换现有关系？");
+        ? await confirm(t('replaceAlignmentWarning'), { title: t('replaceAlignmentTitle'), kind: "warning", okLabel: t("confirm"), cancelLabel: t("cancel") })
+        : window.confirm(t('replaceAlignmentConfirm'));
       if (!approved) return;
       snapshot = await kernelClient.linkSegments(sourceSegmentIds, targetSegmentIds, true);
     }
     await applySnapshot(snapshot);
     clearWorkspaceSelection();
     selectedAlignmentId.value = alignmentRows.value.find((alignment) => sourceSegmentIds.every((id) => alignment.sourceIds.includes(id)) && targetSegmentIds.every((id) => alignment.targetIds.includes(id)))?.id ?? selectedAlignmentId.value;
-    notify(`已建立 ${sourceSegmentIds.length}:${targetSegmentIds.length} Alignment`);
-  } catch (error) { notify(`Link 失败：${errorMessage(error)}`); }
+    notify(() => t('alignmentCreated', { p0: sourceSegmentIds.length, p1: targetSegmentIds.length }));
+  } catch (error) { notify(() => t('linkFailed', { p0: errorMessage(error) })); }
   finally { busy.value = false; }
 };
 const unlinkAlignment = async (alignmentId: string) => {
@@ -453,9 +461,9 @@ const unlinkAlignment = async (alignmentId: string) => {
         unlinkedAlignment.targetIds,
       );
     }
-    notify("已解除 Alignment，句段保持未对齐");
+    notify(() => t('alignmentRemoved'));
   }
-  catch (error) { notify(`Unlink 失败：${errorMessage(error)}`); }
+  catch (error) { notify(() => t('unlinkFailed', { p0: errorMessage(error) })); }
   finally { busy.value = false; }
 };
 const {
@@ -476,27 +484,27 @@ const {
   notify,
   errorMessage,
 });
-const performUndo = async () => { busy.value = true; try { await applySnapshot(await kernelClient.undo()); notify("已撤销并保存为新的 Revision"); } catch (error) { notify(`撤销失败：${errorMessage(error)}`); } finally { busy.value = false; } };
-const performRedo = async () => { busy.value = true; try { await applySnapshot(await kernelClient.redo()); notify("已重做并保存为新的 Revision"); } catch (error) { notify(`重做失败：${errorMessage(error)}`); } finally { busy.value = false; } };
+const performUndo = async () => { busy.value = true; try { await applySnapshot(await kernelClient.undo()); notify(() => t('undoSaved')); } catch (error) { notify(() => t('undoFailed', { p0: errorMessage(error) })); } finally { busy.value = false; } };
+const performRedo = async () => { busy.value = true; try { await applySnapshot(await kernelClient.redo()); notify(() => t('redoSaved')); } catch (error) { notify(() => t('redoFailed', { p0: errorMessage(error) })); } finally { busy.value = false; } };
 const comparisonToDiff = (comparison: RevisionComparison): HistoryDiff => {
   const sourceDocumentId = projectSnapshot.value?.documents[0]?.document_id;
   const targetDocumentId = projectSnapshot.value?.documents[1]?.document_id;
   const sourceChange = comparison.segment_changes.find((change) => (change.before ?? change.after)?.document_id === sourceDocumentId);
   const targetChange = comparison.segment_changes.find((change) => (change.before ?? change.after)?.document_id === targetDocumentId);
   return {
-    segmentId: (sourceChange ?? targetChange) ? segmentLabel((sourceChange ?? targetChange)!.segment_id) : "结构变更",
+    segmentId: (sourceChange ?? targetChange) ? segmentLabel((sourceChange ?? targetChange)!.segment_id) : t('structureChange'),
     sourceOld: sourceChange?.before?.content ?? "", sourceNew: sourceChange?.after?.content ?? "",
     targetOld: targetChange?.before?.content ?? "", targetNew: targetChange?.after?.content ?? "",
     deletedLines: comparison.segment_changes.filter((change) => change.before).length,
     addedLines: comparison.segment_changes.filter((change) => change.after).length,
-    summary: `文本 ${comparison.segment_changes.length} 项、顺序 ${comparison.order_changes.length} 项、Alignment ${comparison.alignment_changes.length} 项变更。`,
+    summary: t('diffSummary', { p0: comparison.segment_changes.length, p1: comparison.order_changes.length, p2: comparison.alignment_changes.length }),
   };
 };
 const compareHistory = async (fromRevisionId: string, toRevisionId: string) => {
   if (fromRevisionId === toRevisionId) return;
   busy.value = true;
-  try { baseRevisionId.value = fromRevisionId; selectedRevisionId.value = toRevisionId; historyDiff.value = comparisonToDiff(await kernelClient.compareRevision(fromRevisionId, toRevisionId)); }
-  catch (error) { notify(`版本比较失败：${errorMessage(error)}`); }
+  try { baseRevisionId.value = fromRevisionId; selectedRevisionId.value = toRevisionId; historyComparison.value = await kernelClient.compareRevision(fromRevisionId, toRevisionId); }
+  catch (error) { notify(() => t('compareFailed', { p0: errorMessage(error) })); }
   finally { busy.value = false; }
 };
 const selectHistoryRevision = async (revisionId: string) => {
@@ -506,16 +514,16 @@ const selectHistoryRevision = async (revisionId: string) => {
   await compareHistory(revisionId === current ? (fallback ?? current) : revisionId, current);
 };
 const restoreHistory = async (revisionId: string) => {
-  const approved = "__TAURI_INTERNALS__" in window ? await confirm("恢复会追加一个新 Revision，现有历史不会删除。", { title: `恢复 R${revisionId}？`, kind: "warning" }) : window.confirm(`恢复 R${revisionId}？`);
+  const approved = "__TAURI_INTERNALS__" in window ? await confirm(t('restoreWarning'), { title: t('restoreConfirm', { p0: revisionId }), kind: "warning", okLabel: t("confirm"), cancelLabel: t("cancel") }) : window.confirm(t('restoreConfirm', { p0: revisionId }));
   if (!approved) return;
   busy.value = true;
-  try { await applySnapshot(await kernelClient.restoreRevision(revisionId)); notify(`已将 R${revisionId} 恢复为新版本`); await selectHistoryRevision(revisionId); }
-  catch (error) { notify(`恢复失败：${errorMessage(error)}`); }
+  try { await applySnapshot(await kernelClient.restoreRevision(revisionId)); notify(() => t('revisionRestored', { p0: revisionId })); await selectHistoryRevision(revisionId); }
+  catch (error) { notify(() => t('restoreFailed', { p0: errorMessage(error) })); }
   finally { busy.value = false; }
 };
 const makeSearchRequest = (options: SearchQueryOptions) => {
   const snapshot = projectSnapshot.value;
-  if (!snapshot) throw new Error("请先新建或打开本地工程");
+  if (!snapshot) throw new Error(t('openProjectFirst'));
   return { project_id: snapshot.project.project_id, query: options.query, regex: options.regex, case_sensitive: options.caseSensitive, language_id: options.side === "source" ? snapshot.project.source_language : options.side === "target" ? snapshot.project.target_language : null, base_revision_id: snapshot.project.current_revision_id };
 };
 const runSearch = async (options: SearchQueryOptions) => {
@@ -530,13 +538,13 @@ const runSearch = async (options: SearchQueryOptions) => {
       const targetId = hit.language_id === projectSnapshot.value?.project.target_language ? hit.segment_id : alignment?.targetIds[0] ?? null;
       return { id: hit.segment_id, label: segmentLabel(hit.segment_id), sourceId, targetId, sourceText: sourceId ? sourceById.get(sourceId) ?? "" : "", targetText: targetId ? targetById.get(targetId) ?? "" : "", alignmentId: hit.alignment_id, alignmentLabel: alignmentLabel(hit.alignment_id) };
     });
-    notify(`找到 ${response.hits.length} 条结果`);
-  } catch (error) { searchResults.value = []; notify(`搜索失败：${errorMessage(error)}`); }
+    notify(() => t('searchFound', { p0: response.hits.length }));
+  } catch (error) { searchResults.value = []; notify(() => t('searchFailed', { p0: errorMessage(error) })); }
   finally { busy.value = false; }
 };
 const currentReplaceRequest = (): ReplacePreviewRequest => ({ ...makeSearchRequest({ query: searchQuery.value, side: searchSide.value, regex: searchRegex.value, caseSensitive: searchCaseSensitive.value }), replacement: replacement.value });
-const previewReplacement = async () => { try { const response = await kernelClient.previewReplace(currentReplaceRequest()); notify(`替换预览包含 ${response.items.length} 个句段`); } catch (error) { notify(`替换预览失败：${errorMessage(error)}`); } };
-const applyReplacement = async (preview: UiReplacePreview) => { busy.value = true; try { await applySnapshot(await kernelClient.applyReplace(currentReplaceRequest(), preview.resultIds)); notify(`已原子替换 ${preview.resultIds.length} 个句段`); await runSearch({ query: searchQuery.value, side: searchSide.value, regex: searchRegex.value, caseSensitive: searchCaseSensitive.value }); } catch (error) { notify(`替换失败：${errorMessage(error)}`); } finally { busy.value = false; } };
+const previewReplacement = async () => { try { const response = await kernelClient.previewReplace(currentReplaceRequest()); notify(() => t('replacePreviewCount', { p0: response.items.length })); } catch (error) { notify(() => t('replacePreviewFailed', { p0: errorMessage(error) })); } };
+const applyReplacement = async (preview: UiReplacePreview) => { busy.value = true; try { await applySnapshot(await kernelClient.applyReplace(currentReplaceRequest(), preview.resultIds)); notify(() => t('replaceApplied', { p0: preview.resultIds.length })); await runSearch({ query: searchQuery.value, side: searchSide.value, regex: searchRegex.value, caseSensitive: searchCaseSensitive.value }); } catch (error) { notify(() => t('replaceFailed', { p0: errorMessage(error) })); } finally { busy.value = false; } };
 const jumpToSegment = async (segmentId: string, alignmentId: string | null = null) => {
   const resolvedAlignmentId = alignmentId ?? alignmentRows.value.find((alignment) => [...alignment.sourceIds, ...alignment.targetIds].includes(segmentId))?.id ?? "";
   selectedAlignmentId.value = resolvedAlignmentId;
@@ -550,15 +558,15 @@ const selectSearchResult = (result: SearchResult) => { void jumpToSegment(result
 const toggleBookmark = async (segmentId: string, alignmentId: string | null) => {
   const existing = projectSnapshot.value?.bookmarks.find((bookmark) => bookmark.segment_id === segmentId);
   const segment = [...sourceRows.value, ...targetRows.value].find((candidate) => candidate.id === segmentId);
-  const content = segment?.text.replace(/\s+/g, " ").trim() ?? "当前句段";
-  try { await applySnapshot(existing ? await kernelClient.deleteBookmark(existing.bookmark_id) : await kernelClient.createBookmark(segmentId, alignmentId, `书签 ${segmentLabel(segmentId)} · ${content.slice(0, 48)}`)); notify(existing ? "已移除书签" : "已添加书签"); }
-  catch (error) { notify(`书签操作失败：${errorMessage(error)}`); }
+  const content = segment?.text.replace(/\s+/g, " ").trim() ?? t('currentSegment');
+  try { await applySnapshot(existing ? await kernelClient.deleteBookmark(existing.bookmark_id) : await kernelClient.createBookmark(segmentId, alignmentId, t('bookmarkDefaultLabel', { p0: segmentLabel(segmentId), p1: content.slice(0, 48) }))); notify(() => existing ? t('bookmarkRemoved') : t('bookmarkAdded')); }
+  catch (error) { notify(() => t('bookmarkFailed', { p0: errorMessage(error) })); }
 };
 const openBookmark = (segmentId: string, alignmentId: string | null) => { void jumpToSegment(segmentId, alignmentId); };
 const openAnnotationLink = (segmentId: string) => { void jumpToSegment(segmentId); };
-const removeBookmark = async (bookmarkId: string) => { try { await applySnapshot(await kernelClient.deleteBookmark(bookmarkId)); notify("已移除书签"); } catch (error) { notify(`移除书签失败：${errorMessage(error)}`); } };
+const removeBookmark = async (bookmarkId: string) => { try { await applySnapshot(await kernelClient.deleteBookmark(bookmarkId)); notify(() => t('bookmarkRemoved')); } catch (error) { notify(() => t('bookmarkRemoveFailed', { p0: errorMessage(error) })); } };
 const resetSearch = () => { searchQuery.value = ""; replacement.value = ""; searchResults.value = []; };
-const copyHistoryValue = async (value: string) => { try { await navigator.clipboard.writeText(value); notify("已复制到剪贴板"); } catch { notify("复制失败：系统剪贴板不可用"); } };
+const copyHistoryValue = async (value: string) => { try { await navigator.clipboard.writeText(value); notify(() => t('copied')); } catch { notify(() => t('clipboardUnavailable')); } };
 const toggleSideNav = () => { sideNavCollapsed.value = !sideNavCollapsed.value; localStorage.setItem("jueming-nav-collapsed", String(sideNavCollapsed.value)); };
 const annotationRequest = (draft: AnnotationDraft) => ({ title: draft.title, body: draft.body, status: draft.status, linked_segment_ids: draft.links.map((link) => link.segmentId), alignment_id: selectedAlignmentId.value || null });
 const createAnnotation = async (draft: AnnotationDraft) => {
@@ -570,13 +578,13 @@ const createAnnotation = async (draft: AnnotationDraft) => {
     ? [{ side: contextSegment.side, segmentId: contextSegment.id }]
     : [...(alignment?.sourceIds ?? []).map((segmentId) => ({ side: "source" as const, segmentId })), ...(alignment?.targetIds ?? []).map((segmentId) => ({ side: "target" as const, segmentId }))];
   const linked = draft.links.length ? draft : { ...draft, links: fallbackLinks };
-  try { await applySnapshot(await kernelClient.createAnnotation(annotationRequest(linked))); notify("批注已创建并自动保存"); }
-  catch (error) { notify(`新建批注失败：${errorMessage(error)}`); }
+  try { await applySnapshot(await kernelClient.createAnnotation(annotationRequest(linked))); notify(() => t('annotationCreated')); }
+  catch (error) { notify(() => t('annotationCreateFailed', { p0: errorMessage(error) })); }
 };
-const editAnnotation = async (annotationId: string, draft: AnnotationDraft) => { try { await applySnapshot(await kernelClient.updateAnnotation(annotationId, annotationRequest(draft))); notify("批注已更新"); } catch (error) { notify(`更新批注失败：${errorMessage(error)}`); } };
-const deleteAnnotation = async (annotationId: string) => { const approved = "__TAURI_INTERNALS__" in window ? await confirm("删除批注会保留在 Revision 历史中。", { title: "删除批注？", kind: "warning" }) : window.confirm("删除批注？"); if (!approved) return; try { await applySnapshot(await kernelClient.deleteAnnotation(annotationId)); notify("批注已删除"); } catch (error) { notify(`删除批注失败：${errorMessage(error)}`); } };
-const resolveAnnotation = async (annotationId: string) => { try { await applySnapshot(await kernelClient.resolveAnnotation(annotationId)); notify("批注已标记为解决"); } catch (error) { notify(`解决批注失败：${errorMessage(error)}`); } };
-const exportProject = async (format: ExportFormat) => { exportOpen.value = false; const outputPath = await saveDialog({ title: `导出 ${format.toUpperCase()}`, defaultPath: `${projectSummary.value.name}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] }); if (!outputPath) return; busy.value = true; try { await kernelClient.exportProject(format, outputPath); notify(`已导出 ${outputPath}`); } catch (error) { notify(`导出失败：${errorMessage(error)}`); } finally { busy.value = false; } };
+const editAnnotation = async (annotationId: string, draft: AnnotationDraft) => { try { await applySnapshot(await kernelClient.updateAnnotation(annotationId, annotationRequest(draft))); notify(() => t('annotationUpdated')); } catch (error) { notify(() => t('annotationUpdateFailed', { p0: errorMessage(error) })); } };
+const deleteAnnotation = async (annotationId: string) => { const approved = "__TAURI_INTERNALS__" in window ? await confirm(t('annotationDeleteWarning'), { title: t('annotationDeleteConfirm'), kind: "warning", okLabel: t("confirm"), cancelLabel: t("cancel") }) : window.confirm(t('annotationDeleteConfirm')); if (!approved) return; try { await applySnapshot(await kernelClient.deleteAnnotation(annotationId)); notify(() => t('annotationDeleted')); } catch (error) { notify(() => t('annotationDeleteFailed', { p0: errorMessage(error) })); } };
+const resolveAnnotation = async (annotationId: string) => { try { await applySnapshot(await kernelClient.resolveAnnotation(annotationId)); notify(() => t('annotationResolved')); } catch (error) { notify(() => t('annotationResolveFailed', { p0: errorMessage(error) })); } };
+const exportProject = async (format: ExportFormat) => { exportOpen.value = false; const outputPath = await saveDialog({ title: t('exportDialog', { p0: format.toUpperCase() }), defaultPath: `${projectSummary.value.name}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] }); if (!outputPath) return; busy.value = true; try { await kernelClient.exportProject(format, outputPath); notify(() => t('exported', { p0: outputPath })); } catch (error) { notify(() => t('exportFailed', { p0: errorMessage(error) })); } finally { busy.value = false; } };
 const finishPendingTransition = (mode: WorkspaceMode | undefined, nav: NavId | null) => {
   pendingNav.value = null;
   if (nav) applyNavContext(nav);
@@ -660,25 +668,25 @@ onBeforeUnmount(() => { window.removeEventListener("keydown", handleShortcut); s
 
 <template>
   <div class="app-shell" :class="{ 'app-shell--macos': detectedMacOS }">
-    <header class="window-chrome" data-tauri-drag-region><div class="brand-lockup" data-tauri-drag-region><img :src="brandIcon" alt="" /><span class="brand-title" data-tauri-drag-region>决明对齐器 <em data-tauri-drag-region>Jueming Aligner</em></span></div><div class="window-actions"><button type="button" title="最小化" @click="windowAction('minimize')"><Minimize2 :size="16" /></button><button type="button" title="最大化" @click="windowAction('maximize')"><Maximize2 :size="15" /></button><button type="button" title="关闭" @click="windowAction('close')"><X :size="18" /></button></div></header>
-    <header class="app-toolbar"><div class="toolbar-left"><button class="toolbar-button" type="button" :title="`新建工程（${shortcutLabels.newProject}）`" @click="openNewProject"><FilePlus2 :size="19" />新建</button><button class="toolbar-button" type="button" :title="`打开本地工程（${shortcutLabels.openProject}）`" @click="openProject"><FolderOpen :size="19" />打开</button><button class="toolbar-button" type="button" :title="`保存工程（${shortcutLabels.save}）`" @click="saveProject"><Save :size="19" />保存</button><div class="toolbar-divider"></div><div class="toolbar-actions"><div class="toolbar-button--export-wrap"><button class="toolbar-button toolbar-button--export" type="button" title="导出工程" @click="exportOpen = !exportOpen"><Download :size="19" />导出<ChevronDown :size="15" /></button><div v-if="exportOpen" class="export-menu"><button type="button" @click="exportProject('txt')">TXT 文本</button><button type="button" @click="exportProject('json')">JSON 工程</button><button type="button" @click="exportProject('xml')">XML 对齐</button></div></div><div class="toolbar-divider"></div><button class="toolbar-button" type="button" :disabled="!canUndo || busy" :title="`撤销（${shortcutLabels.undo}）`" @click="performUndo"><Undo2 :size="19" />撤销</button><button class="toolbar-button" type="button" :disabled="!canRedo || busy" :title="`重做（${shortcutLabels.redo}）`" @click="performRedo"><Redo2 :size="19" />重做</button><div class="toolbar-divider"></div><button class="toolbar-button" type="button" @click="setNav('settings')"><Settings2 :size="19" />设置</button></div></div><div class="mode-control" :class="`mode-control--${annotationOpen ? 'annotation' : activeMode}`"><component :is="currentMode.icon" :size="17" /><span>{{ currentMode.label }} <small>{{ currentMode.hint }}</small></span><ChevronDown :size="15" /><select :value="annotationOpen ? 'annotation' : activeMode" aria-label="切换工作模式" @change="modeSelect"><option v-for="item in modeMenuItems" :key="item.id" :value="item.id">{{ item.label }} {{ item.hint }}</option></select></div></header>
+    <header class="window-chrome" data-tauri-drag-region><div class="brand-lockup" data-tauri-drag-region><img :src="brandIcon" alt="" /><span class="brand-title" data-tauri-drag-region>{{ t('appName') }} <em v-if="uiLocale === 'zh'" data-tauri-drag-region>{{ t('appBrand') }}</em></span></div><div class="window-actions"><button type="button" :title="t('windowMinimize')" @click="windowAction('minimize')"><Minimize2 :size="16" /></button><button type="button" :title="t('windowMaximize')" @click="windowAction('maximize')"><Maximize2 :size="15" /></button><button type="button" :title="t('close')" @click="windowAction('close')"><X :size="18" /></button></div></header>
+    <header class="app-toolbar"><div class="toolbar-left"><button class="toolbar-button" type="button" :title="t('newProjectShortcut', { p0: shortcutLabels.newProject })" @click="openNewProject"><FilePlus2 :size="19" />{{ t('new') }}</button><button class="toolbar-button" type="button" :title="t('openProjectShortcut', { p0: shortcutLabels.openProject })" @click="openProject"><FolderOpen :size="19" />{{ t('open') }}</button><button class="toolbar-button" type="button" :title="t('saveProjectShortcut', { p0: shortcutLabels.save })" @click="saveProject"><Save :size="19" />{{ t('save') }}</button><div class="toolbar-divider"></div><div class="toolbar-actions"><div class="toolbar-button--export-wrap"><button class="toolbar-button toolbar-button--export" type="button" :title="t('exportProject')" @click="exportOpen = !exportOpen"><Download :size="19" />{{ t('export') }}<ChevronDown :size="15" /></button><div v-if="exportOpen" class="export-menu"><button type="button" @click="exportProject('txt')">{{ t('exportTxt') }}</button><button type="button" @click="exportProject('json')">{{ t('exportJson') }}</button><button type="button" @click="exportProject('xml')">{{ t('exportXml') }}</button></div></div><div class="toolbar-divider"></div><button class="toolbar-button" type="button" :disabled="!canUndo || busy" :title="t('undoShortcut', { p0: shortcutLabels.undo })" @click="performUndo"><Undo2 :size="19" />{{ t('undo') }}</button><button class="toolbar-button" type="button" :disabled="!canRedo || busy" :title="t('redoShortcut', { p0: shortcutLabels.redo })" @click="performRedo"><Redo2 :size="19" />{{ t('redo') }}</button><div class="toolbar-divider"></div><button class="toolbar-button" type="button" @click="setNav('settings')"><Settings2 :size="19" />{{ t('navSettings') }}</button></div></div><div class="mode-control" :class="`mode-control--${annotationOpen ? 'annotation' : activeMode}`"><component :is="currentMode.icon" :size="17" /><span>{{ currentMode.label }} <small v-if="uiLocale === 'zh'">{{ currentMode.hint }}</small></span><ChevronDown :size="15" /><select :value="annotationOpen ? 'annotation' : activeMode" :aria-label="t('switchMode')" @change="modeSelect"><option v-for="item in modeMenuItems" :key="item.id" :value="item.id">{{ item.label }}{{ uiLocale === 'zh' ? ` ${item.hint}` : '' }}</option></select></div></header>
     <div class="content-grid" :class="{ 'content-grid--collapsed': sideNavCollapsed, 'content-grid--annotation': annotationOpen, 'content-grid--resizing': annotationResizing }" :style="{ '--annotation-width': `${annotationWidth}px` }">
-      <nav class="side-nav" :class="{ 'side-nav--collapsed': sideNavCollapsed }"><button v-for="item in navItems" :key="item.id" class="nav-item" :class="{ 'nav-item--active': activeNav === item.id }" type="button" :title="item.label" @click="setNav(item.id)"><component :is="item.icon" :size="22" :stroke-width="activeNav === item.id ? 2.2 : 1.8" /><span class="nav-label">{{ item.label }}<small v-if="item.hint">{{ item.hint }}</small></span></button><div class="nav-collapse"><button class="nav-item" type="button" :title="sideNavCollapsed ? '展开侧栏' : '收起侧栏'" @click="toggleSideNav"><ChevronDown :size="21" :style="{ transform: sideNavCollapsed ? 'rotate(-90deg)' : 'rotate(90deg)' }" /><span class="nav-label">{{ sideNavCollapsed ? '展开' : '收起' }}</span></button></div></nav>
+      <nav class="side-nav" :class="{ 'side-nav--collapsed': sideNavCollapsed }"><button v-for="item in navItems" :key="item.id" class="nav-item" :class="{ 'nav-item--active': activeNav === item.id }" type="button" :title="item.label" @click="setNav(item.id)"><component :is="item.icon" :size="22" :stroke-width="activeNav === item.id ? 2.2 : 1.8" /><span class="nav-label">{{ item.label }}<small v-if="item.hint">{{ item.hint }}</small></span></button><div class="nav-collapse"><button class="nav-item" type="button" :title="sideNavCollapsed ? t('expandSidebar') : t('collapseSidebar')" @click="toggleSideNav"><ChevronDown :size="21" :style="{ transform: sideNavCollapsed ? 'rotate(-90deg)' : 'rotate(90deg)' }" /><span class="nav-label">{{ sideNavCollapsed ? t('expand') : t('collapse') }}</span></button></div></nav>
       <main class="main-stage">
-        <ParallelWorkspace ref="parallelWorkspaceRef" v-if="activeNav === 'parallel'" :mode="activeMode" :source-segments="sourceRows" :target-segments="targetRows" :alignments="alignmentRows" :selected-alignment-id="selectedAlignmentId" :bookmarked-segment-ids="bookmarkedSegmentIds" :annotated-segment-ids="annotatedSegmentIds" :edit-session="editSession" :trackpad-optimized="trackpadOptimized" :writable="workspaceWritable" @select="selectedAlignmentId = $event" @request-edit="requestSegmentEdit" @edit-draft="updateDraft" @commit-edit="commitSegmentEdit" @cancel-edit="cancelSegmentEdit" @escape-edit="escapeSegmentEdit" @move="moveSegment" @reorder="reorderSegment" @insert-gap="insertAlignmentGap" @reset-order="resetOrder" @link="linkSegments" @unlink="unlinkAlignment" @merge-segments="mergeSegmentContent" @split-segment="splitSegmentContent" @group="groupAlignments" @ungroup="ungroupAlignment" @bookmark="toggleBookmark" @annotation="openAnnotationPanel" @status="notify" />
-        <SearchReplaceWorkspace v-else-if="activeNav === 'search'" v-model:query="searchQuery" v-model:side="searchSide" v-model:regex="searchRegex" v-model:case-sensitive="searchCaseSensitive" v-model:replacement="replacement" :results="searchResults" :project-label="projectSummary.name" :loading="busy" @search="runSearch" @select-result="selectSearchResult" @replace-preview="previewReplacement" @apply-replace="applyReplacement" @reset="resetSearch" />
+        <ParallelWorkspace ref="parallelWorkspaceRef" v-if="activeNav === 'parallel'" :mode="activeMode" :source-language="projectSnapshot?.project.source_language" :target-language="projectSnapshot?.project.target_language" :source-segments="sourceRows" :target-segments="targetRows" :alignments="alignmentRows" :selected-alignment-id="selectedAlignmentId" :bookmarked-segment-ids="bookmarkedSegmentIds" :annotated-segment-ids="annotatedSegmentIds" :edit-session="editSession" :trackpad-optimized="trackpadOptimized" :writable="workspaceWritable" @select="selectedAlignmentId = $event" @request-edit="requestSegmentEdit" @edit-draft="updateDraft" @commit-edit="commitSegmentEdit" @cancel-edit="cancelSegmentEdit" @escape-edit="escapeSegmentEdit" @move="moveSegment" @reorder="reorderSegment" @insert-gap="insertAlignmentGap" @reset-order="resetOrder" @link="linkSegments" @unlink="unlinkAlignment" @merge-segments="mergeSegmentContent" @split-segment="splitSegmentContent" @group="groupAlignments" @ungroup="ungroupAlignment" @bookmark="toggleBookmark" @annotation="openAnnotationPanel" @status="notify" />
+        <SearchReplaceWorkspace v-else-if="activeNav === 'search'" v-model:query="searchQuery" v-model:side="searchSide" v-model:regex="searchRegex" v-model:case-sensitive="searchCaseSensitive" v-model:replacement="replacement" :results="searchResults" :project-label="displayedProjectName" :loading="busy" @search="runSearch" @select-result="selectSearchResult" @replace-preview="previewReplacement" @apply-replace="applyReplacement" @reset="resetSearch" />
         <HistoryWorkspace v-else-if="activeNav === 'history'" :revisions="revisionItems" :diff="historyDiff" :base-revision-id="baseRevisionId" :selected-revision-id="selectedRevisionId" :current-revision-id="projectSummary.revision_id" :loading="busy" @select-revision="selectHistoryRevision" @compare="compareHistory" @restore="restoreHistory" @copy-value="copyHistoryValue" />
         <SettingsWorkspace v-else-if="activeNav === 'settings'" v-model:theme="theme" v-model:font-scale="fontScale" v-model:ui-scale="uiScale" v-model:shortcut-profile="shortcutProfile" v-model:trackpad-optimized="trackpadOptimized" v-model:auto-save-delay-ms="autoSaveDelayMs" v-model:cache-cleanup-policy="cacheCleanupPolicy" :uses-mac-shortcuts="usesMacShortcuts" :shortcut-rows="shortcutRows" :cache-cleaning="cacheCleaning" :last-cache-cleanup-at="lastCacheCleanupAt" @apply-ui="applyUiSettings" @apply-interaction="applyInteractionSettings" @apply-persistence="applyPersistenceSettings" @clear-cache="clearProjectCache(true)" />
         <BookmarksWorkspace v-else-if="activeNav === 'bookmarks'" :bookmarks="projectSnapshot?.bookmarks ?? []" :previews="bookmarkPreviews" :source-segments="sourceRows" :target-segments="targetRows" :alignments="alignmentRows" :segment-labels="segmentLabels" :alignment-labels="alignmentLabels" @open="openBookmark" @remove="removeBookmark" />
-        <section v-else class="aux-view project-view"><Folder :size="28" /><h2>项目</h2><p>{{ projectSummary.name }}</p><div class="project-summary-card"><span>{{ projectSummary.source_count }}</span><small>中文句段</small><span>{{ projectSummary.target_count }}</span><small>English segments</small><span>{{ projectSummary.alignment_count }}</span><small>Alignment</small></div><div class="project-actions"><button type="button" class="primary-button" @click="openProject">打开工程</button><button type="button" class="secondary-button" @click="openNewProject">新建工程</button></div></section>
+        <section v-else class="aux-view project-view"><Folder :size="28" /><h2>{{ t('navProject') }}</h2><p>{{ displayedProjectName }}</p><div class="project-summary-card"><span>{{ formatNumber(projectSummary.source_count) }}</span><small>{{ t('sourceSegments') }}</small><span>{{ formatNumber(projectSummary.target_count) }}</span><small>{{ t('targetSegments') }}</small><span>{{ formatNumber(projectSummary.alignment_count) }}</span><small>{{ t('alignment') }}</small></div><div class="project-actions"><button type="button" class="primary-button" @click="openProject">{{ t('openProject') }}</button><button type="button" class="secondary-button" @click="openNewProject">{{ t('newProject') }}</button></div></section>
       </main>
       <aside class="annotation-drawer" :class="{ 'annotation-drawer--open': annotationOpen }" :aria-hidden="!annotationOpen" :inert="!annotationOpen">
-        <div class="annotation-resize-handle" role="separator" tabindex="0" aria-label="调整批注面板宽度" aria-orientation="vertical" :aria-valuemin="annotationMinimumWidth" :aria-valuemax="annotationMaximumWidth()" :aria-valuenow="Math.round(annotationWidth)" title="拖动调整宽度，双击恢复默认" @pointerdown="startAnnotationResize" @dblclick="resetAnnotationWidth" @keydown="resizeAnnotationWithKeyboard"></div>
+        <div class="annotation-resize-handle" role="separator" tabindex="0" :aria-label="t('annotationResize')" aria-orientation="vertical" :aria-valuemin="annotationMinimumWidth" :aria-valuemax="annotationMaximumWidth()" :aria-valuenow="Math.round(annotationWidth)" :title="t('resizeHint')" @pointerdown="startAnnotationResize" @dblclick="resetAnnotationWidth" @keydown="resizeAnnotationWithKeyboard"></div>
         <AnnotationPanel v-model:active-filter="annotationFilter" :annotations="annotations" :selected-id="selectedAnnotationId" :readonly="!workspaceWritable" @select="selectedAnnotationId = $event" @open-link="openAnnotationLink" @create="createAnnotation" @edit="editAnnotation" @delete="deleteAnnotation" @resolve="resolveAnnotation" @close="closeAnnotationPanel" />
       </aside>
     </div>
-    <footer class="bottom-status"><div class="footer-left"><div class="footer-project"><strong>项目：</strong>{{ projectSummary.name }}</div><div class="footer-separator"></div><div class="footer-project">文件：<span>{{ projectSummary.source_label }}</span><Link2 :size="14" /><span>{{ projectSummary.target_label }}</span></div><div class="footer-separator"></div><div>对齐状态：<span class="footer-status-pill">{{ projectSummary.source_unlinked_count + projectSummary.target_unlinked_count === 0 ? '1:1' : '待校对' }}</span></div></div><div class="footer-right"><span class="save-state" :class="{ 'save-state--dirty': dirty }"><Monitor :size="14" />{{ busy ? '处理中…' : isSavingDraft ? '自动保存中…' : dirty ? `待自动保存（${autoSaveDelayMs / 1000}s）` : statusMessage }}</span><span>已处理：{{ projectSummary.alignment_count }} / {{ Math.max(projectSummary.source_count, projectSummary.target_count) }}</span><span>进度：</span><div class="progress-track"><span :style="{ width: `${Math.round(100 * projectSummary.alignment_count / Math.max(1, projectSummary.source_count, projectSummary.target_count))}%` }"></span></div><span>{{ Math.round(100 * projectSummary.alignment_count / Math.max(1, projectSummary.source_count, projectSummary.target_count)) }}%</span></div></footer>
-    <div v-if="pendingTransition" class="modal-backdrop mode-guard-backdrop"><section class="mode-guard" role="dialog" aria-modal="true" aria-labelledby="mode-guard-title"><span class="eyebrow">UNSAVED EDIT</span><h2 id="mode-guard-title">当前句段还有未保存编辑</h2><p>保存会创建一个完整 Revision；放弃只撤销最近一次自动保存之后的草稿。</p><div><button class="secondary-button" type="button" @click="stayInEdit">继续编辑</button><button class="secondary-button danger-button" type="button" @click="discardPendingTransition">放弃草稿</button><button class="primary-button" type="button" @click="savePendingTransition"><Check :size="15" />保存并切换</button></div></section></div>
+    <footer class="bottom-status"><div class="footer-left"><div class="footer-project"><strong>{{ t('projectLabel') }}</strong>{{ displayedProjectName }}</div><div class="footer-separator"></div><div class="footer-project">{{ t('filesLabel') }}<span>{{ projectSummary.source_label }}</span><Link2 :size="14" /><span>{{ projectSummary.target_label }}</span></div><div class="footer-separator"></div><div>{{ t('alignmentStatusLabel') }}<span class="footer-status-pill">{{ projectSummary.source_unlinked_count + projectSummary.target_unlinked_count === 0 ? '1:1' : t('needsReview') }}</span></div></div><div class="footer-right"><span class="save-state" :title="displayedStatus" role="status" :class="{ 'save-state--dirty': dirty }"><Monitor :size="14" />{{ busy ? t('processing') : isSavingDraft ? t('autosaving') : dirty ? t('autosavePending', { p0: autoSaveDelayMs / 1000 }) : displayedStatus }}</span><span>{{ t('processedLabel') }}{{ formatNumber(projectSummary.alignment_count) }} / {{ Math.max(projectSummary.source_count, projectSummary.target_count) }}</span><span>{{ t('progressLabel') }}</span><div class="progress-track"><span :style="{ width: `${Math.round(100 * projectSummary.alignment_count / Math.max(1, projectSummary.source_count, projectSummary.target_count))}%` }"></span></div><span>{{ formatNumber(projectSummary.alignment_count / Math.max(1, projectSummary.source_count, projectSummary.target_count), { style: 'percent' }) }}</span></div></footer>
+    <div v-if="pendingTransition" class="modal-backdrop mode-guard-backdrop"><section class="mode-guard" role="dialog" aria-modal="true" aria-labelledby="mode-guard-title"><span class="eyebrow">{{ t('unsavedEyebrow') }}</span><h2 id="mode-guard-title">{{ t('unsavedTitle') }}</h2><p>{{ t('unsavedDescription') }}</p><div><button class="secondary-button" type="button" @click="stayInEdit">{{ t('keepEditing') }}</button><button class="secondary-button danger-button" type="button" @click="discardPendingTransition">{{ t('discardDraft') }}</button><button class="primary-button" type="button" @click="savePendingTransition"><Check :size="15" />{{ t('saveAndSwitch') }}</button></div></section></div>
     <NewProjectDialog ref="newProjectDialogRef" v-model:busy="busy" :kernel-client="kernelClient" @created="handleProjectCreated" @status="notify" />
   </div>
 </template>

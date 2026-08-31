@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t, formatDate } from '../i18n';
+import { languageLabel as localizedLanguageLabel } from '../domain/languages';
 import { ArrowRight, Info, Search, Star, X } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import type { AlignmentDto, BookmarkDto, BookmarkPreviewDto, SegmentDto } from "../domain/kernel-client";
@@ -40,38 +42,42 @@ const selectedAlignment = computed(() => selectedBookmark.value?.alignment_id
 const selectedSource = computed(() => selectedAlignment.value?.sourceIds.map((id) => allSegments.value.get(id)?.text).filter(Boolean).join("\n") ?? "");
 const selectedTarget = computed(() => selectedAlignment.value?.targetIds.map((id) => allSegments.value.get(id)?.text).filter(Boolean).join("\n") ?? "");
 const segmentLabel = (segmentId: string) => props.segmentLabels.get(segmentId) ?? segmentId.slice(0, 8);
-const alignmentLabel = (alignmentId: string | null) => alignmentId ? props.alignmentLabels.get(alignmentId) ?? alignmentId.slice(0, 8) : "未对齐";
-const languageLabel = (bookmark: BookmarkDto) => props.sourceSegments.some((segment) => segment.id === bookmark.segment_id) ? "中文" : "English";
+const alignmentLabel = (alignmentId: string | null) => alignmentId ? props.alignmentLabels.get(alignmentId) ?? alignmentId.slice(0, 8) : t('unaligned');
+const isSourceBookmark = (bookmark: BookmarkDto) => props.sourceSegments.some((segment) => segment.id === bookmark.segment_id);
+const languageLabel = (bookmark: BookmarkDto) => {
+  const languageId = previewsByBookmarkId.value.get(bookmark.bookmark_id)?.language_id;
+  return languageId ? localizedLanguageLabel([], languageId) : isSourceBookmark(bookmark) ? t('source') : t('target');
+};
 const excerpt = (bookmark: BookmarkDto) => previewsByBookmarkId.value.get(bookmark.bookmark_id)?.segment_content ?? bookmark.label;
-const formatDate = (value: string) => new Date(value).toLocaleString("zh-CN", { hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+
 </script>
 
 <template>
   <section class="bookmarks-workspace">
     <aside class="bookmark-index">
-      <header><div><h2>书签</h2><span>{{ bookmarks.length }}</span></div><div class="bookmark-index__tools"><label><Search :size="15" /><input v-model="query" type="search" placeholder="搜索书签内容或段落 ID…" /></label><select v-model="sortMode" aria-label="书签排序方式"><option value="created">创建时间</option><option value="document">文档顺序</option></select></div></header>
+      <header><div><h2>{{ t('navBookmarks') }}</h2><span>{{ bookmarks.length }}</span></div><div class="bookmark-index__tools"><label><Search :size="15" /><input v-model="query" type="search" :placeholder="t('bookmarkSearchPlaceholder')" /></label><select v-model="sortMode" :aria-label="t('bookmarkSort')"><option value="created">{{ t('createdAt') }}</option><option value="document">{{ t('documentOrder') }}</option></select></div></header>
       <div v-if="filteredBookmarks.length" class="bookmark-scroll">
         <article v-for="bookmark in filteredBookmarks" :key="bookmark.bookmark_id" class="bookmark-row" :class="{ active: selectedBookmark?.bookmark_id === bookmark.bookmark_id }">
           <button class="bookmark-row__select" type="button" @click="selectedBookmarkId = bookmark.bookmark_id"><Star :size="18" :fill="selectedBookmark?.bookmark_id === bookmark.bookmark_id ? 'currentColor' : 'none'" /><span><strong>{{ segmentLabel(bookmark.segment_id) }} <i>· {{ languageLabel(bookmark) }}</i></strong><em>{{ excerpt(bookmark) }}</em></span></button>
-          <button class="bookmark-row__remove" type="button" title="移除书签" aria-label="移除书签" @click="emit('remove', bookmark.bookmark_id)"><X :size="14" /></button>
+          <button class="bookmark-row__remove" type="button" :title="t('removeBookmark')" :aria-label="t('removeBookmark')" @click="emit('remove', bookmark.bookmark_id)"><X :size="14" /></button>
         </article>
       </div>
-      <p v-else class="bookmark-empty">{{ bookmarks.length ? '没有匹配的书签。' : '当前工程暂无书签。可在平行视图中点击句段星标。' }}</p>
+      <p v-else class="bookmark-empty">{{ bookmarks.length ? t('bookmarksNoMatch') : t('bookmarksEmptyList') }}</p>
     </aside>
 
     <main v-if="selectedBookmark" class="bookmark-detail">
-      <header><div><h2>书签 {{ segmentLabel(selectedBookmark.segment_id) }}</h2><Star :size="20" fill="currentColor" /></div><dl><div><dt>语言</dt><dd>{{ languageLabel(selectedBookmark) }}</dd></div><div><dt>段落 ID</dt><dd>{{ segmentLabel(selectedBookmark.segment_id) }}</dd></div><div><dt>Alignment</dt><dd>{{ alignmentLabel(selectedBookmark.alignment_id) }}</dd></div><div><dt>创建时间</dt><dd>{{ formatDate(selectedBookmark.created_at) }}</dd></div></dl></header>
-      <button class="bookmark-return" type="button" @click="emit('open', selectedBookmark.segment_id, selectedBookmark.alignment_id)"><ArrowRight :size="16" />回到平行视图</button>
-      <p class="bookmark-note"><Info :size="14" />将按稳定的 Segment ID 定位，并用绿色边框标出准确位置。</p>
+      <header><div><h2>{{ t('navBookmarks') }} {{ segmentLabel(selectedBookmark.segment_id) }}</h2><Star :size="20" fill="currentColor" /></div><dl><div><dt>{{ t('language') }}</dt><dd>{{ languageLabel(selectedBookmark) }}</dd></div><div><dt>{{ t('segmentId') }}</dt><dd>{{ segmentLabel(selectedBookmark.segment_id) }}</dd></div><div><dt>{{ t('alignment') }}</dt><dd>{{ alignmentLabel(selectedBookmark.alignment_id) }}</dd></div><div><dt>{{ t('createdAt') }}</dt><dd>{{ formatDate(selectedBookmark.created_at) }}</dd></div></dl></header>
+      <button class="bookmark-return" type="button" @click="emit('open', selectedBookmark.segment_id, selectedBookmark.alignment_id)"><ArrowRight :size="16" />{{ t('returnParallel') }}</button>
+      <p class="bookmark-note"><Info :size="14" />{{ t('stableJumpHint') }}</p>
 
-      <section class="context-preview"><h3>上下文预览</h3><div>
-        <article><span>中文 <small>zh</small></span><p>{{ selectedSource || (selectedPreview?.language_id === 'zh' ? selectedPreview.segment_content : '此书签当前没有对应的中文 Alignment。') }}</p></article>
-        <article><span>English <small>en</small></span><p>{{ selectedTarget || (selectedPreview?.language_id !== 'zh' ? selectedPreview?.segment_content : 'This bookmark currently has no aligned English segment.') }}</p></article>
+      <section class="context-preview"><h3>{{ t('contextPreview') }}</h3><div>
+        <article><span>{{ t('sourceSide') }} </span><p>{{ selectedSource || (isSourceBookmark(selectedBookmark) ? selectedPreview?.segment_content : t('bookmarkNoSource')) }}</p></article>
+        <article><span>{{ t('targetLanguageHeading') }} </span><p>{{ selectedTarget || (!isSourceBookmark(selectedBookmark) ? selectedPreview?.segment_content : t('bookmarkNoTarget')) }}</p></article>
       </div></section>
 
-      <section class="bookmark-metadata"><h3>书签信息</h3><dl><div><dt>文档</dt><dd>{{ selectedPreview?.document_title || '当前工程' }}</dd></div><div><dt>锚点</dt><dd>{{ selectedBookmark.segment_id }}</dd></div><div><dt>对齐状态</dt><dd>{{ selectedBookmark.alignment_id ? '已关联 Alignment' : '未对齐' }}</dd></div><div><dt>导航依据</dt><dd>稳定 Segment ID</dd></div></dl></section>
+      <section class="bookmark-metadata"><h3>{{ t('bookmarkInfo') }}</h3><dl><div><dt>{{ t('document') }}</dt><dd>{{ selectedPreview?.document_title || t('currentProject') }}</dd></div><div><dt>{{ t('anchor') }}</dt><dd>{{ selectedBookmark.segment_id }}</dd></div><div><dt>{{ t('alignmentStatus') }}</dt><dd>{{ selectedBookmark.alignment_id ? t('linkedAlignment') : t('unaligned') }}</dd></div><div><dt>{{ t('navigationBasis') }}</dt><dd>{{ t('stableSegmentId') }}</dd></div></dl></section>
     </main>
-    <main v-else class="bookmark-detail bookmark-detail--empty"><Star :size="30" /><h2>还没有书签</h2><p>在平行视图中为重要句段添加星标，之后就能从这里快速返回。</p></main>
+    <main v-else class="bookmark-detail bookmark-detail--empty"><Star :size="30" /><h2>{{ t('bookmarksEmptyTitle') }}</h2><p>{{ t('bookmarksEmptyDescription') }}</p></main>
   </section>
 </template>
 

@@ -61,6 +61,9 @@ jobs:
       - name: Verify TypeScript and frontend production build
         run: pnpm build
 
+      - name: Verify localization and frontend behavior
+        run: pnpm test
+
       - name: Verify Rust formatting
         run: cargo fmt --all -- --check
 

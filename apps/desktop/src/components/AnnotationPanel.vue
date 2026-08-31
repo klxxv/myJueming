@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, ref } from "vue";
 import { Check, CornerUpLeft, MessageSquareText, Pencil, Plus, Save, Trash2, X } from "@lucide/vue";
 
@@ -56,11 +57,11 @@ const creating = ref(false);
 const editingId = ref<string | null>(null);
 const draft = ref<AnnotationDraft>({ title: "", body: "", status: "draft", links: [] });
 
-const statusLabels: Record<AnnotationStatus, { zh: string; en: string }> = {
-  draft: { zh: "草稿", en: "Draft" },
-  in_progress: { zh: "进行中", en: "In Progress" },
-  resolved: { zh: "已解决", en: "Resolved" },
-};
+const statusLabels = computed<Record<AnnotationStatus, string>>(() => ({
+  draft: t('annotationDraft'),
+  in_progress: t('annotationInProgress'),
+  resolved: t('annotationResolvedStatus'),
+}));
 const counts = computed(() => ({
   all: props.annotations.length,
   draft: props.annotations.filter((item) => item.status === "draft").length,
@@ -91,35 +92,35 @@ const submitEdit = (annotationId: string) => {
 </script>
 
 <template>
-  <aside class="annotation-workspace" aria-label="批注">
-    <header class="annotation-heading"><div><span class="annotation-eyebrow">ANNOTATIONS</span><h2>批注 / Annotations <small>{{ annotations.length }}</small></h2></div><button type="button" title="关闭批注面板" @click="emit('close')"><X :size="18" /></button></header>
-    <nav class="annotation-filter" aria-label="批注状态筛选">
-      <button v-for="filter in (['all', 'draft', 'in_progress', 'resolved'] as AnnotationFilter[])" :key="filter" :class="{ active: activeFilter === filter }" type="button" @click="setFilter(filter)">{{ filter === "all" ? "全部" : statusLabels[filter].zh }} <span>{{ counts[filter] }}</span></button>
+  <aside class="annotation-workspace" :aria-label="t('annotation')">
+    <header class="annotation-heading"><div><span class="annotation-eyebrow">{{ t('annotationsEyebrow') }}</span><h2>{{ t('annotationsTitle') }} <small>{{ annotations.length }}</small></h2></div><button type="button" :title="t('closeAnnotations')" @click="emit('close')"><X :size="18" /></button></header>
+    <nav class="annotation-filter" :aria-label="t('annotationFilter')">
+      <button v-for="filter in (['all', 'draft', 'in_progress', 'resolved'] as AnnotationFilter[])" :key="filter" :class="{ active: activeFilter === filter }" type="button" @click="setFilter(filter)">{{ filter === "all" ? t('all') : statusLabels[filter] }} <span>{{ counts[filter] }}</span></button>
     </nav>
 
     <form v-if="creating" class="annotation-editor annotation-editor--new" @submit.prevent="submitCreate">
-      <div class="annotation-editor-title"><MessageSquareText :size="16" /><strong>新建批注</strong><button type="button" title="取消新建" @click="cancelCreate"><X :size="15" /></button></div>
-      <label>标题<input v-model="draft.title" placeholder="例如：术语确认" required /></label><label>内容<textarea v-model="draft.body" rows="4" placeholder="描述需要核对或处理的问题" required></textarea></label><label>状态<select v-model="draft.status"><option value="draft">草稿</option><option value="in_progress">进行中</option><option value="resolved">已解决</option></select></label><footer><button class="annotation-secondary" type="button" @click="cancelCreate">取消</button><button class="annotation-primary" type="submit"><Save :size="14" />创建</button></footer>
+      <div class="annotation-editor-title"><MessageSquareText :size="16" /><strong>{{ t('newAnnotation') }}</strong><button type="button" :title="t('cancelCreate')" @click="cancelCreate"><X :size="15" /></button></div>
+      <label>{{ t('title') }}<input v-model="draft.title" :placeholder="t('annotationTitlePlaceholder')" required /></label><label>{{ t('content') }}<textarea v-model="draft.body" rows="4" :placeholder="t('annotationBodyPlaceholder')" required></textarea></label><label>{{ t('status') }}<select v-model="draft.status"><option value="draft">{{ t('annotationDraft') }}</option><option value="in_progress">{{ t('annotationInProgress') }}</option><option value="resolved">{{ t('annotationResolvedStatus') }}</option></select></label><footer><button class="annotation-secondary" type="button" @click="cancelCreate">{{ t('cancel') }}</button><button class="annotation-primary" type="submit"><Save :size="14" />{{ t('create') }}</button></footer>
     </form>
 
     <div class="annotation-list">
       <article v-for="annotation in filtered" :key="annotation.id" class="annotation-card" :class="[{ 'annotation-card--selected': annotation.id === selectedId }, statusClass(annotation.status)]" @click="emit('select', annotation.id)">
         <div class="annotation-number" :class="statusClass(annotation.status)">{{ annotation.number }}</div>
         <div class="annotation-card-body">
-          <div class="annotation-state"><span class="annotation-state-pill" :class="statusClass(annotation.status)">{{ statusLabels[annotation.status].zh }}</span><span>{{ statusLabels[annotation.status].en }}</span><time>{{ annotation.createdAt }}</time></div>
+          <div class="annotation-state"><span class="annotation-state-pill" :class="statusClass(annotation.status)">{{ statusLabels[annotation.status] }}</span><time>{{ annotation.createdAt }}</time></div>
           <template v-if="editingId === annotation.id">
-            <div class="annotation-editor"><label>标题<input v-model="draft.title" /></label><label>内容<textarea v-model="draft.body" rows="4"></textarea></label><label>状态<select v-model="draft.status"><option value="draft">草稿</option><option value="in_progress">进行中</option><option value="resolved">已解决</option></select></label><footer><button class="annotation-secondary" type="button" @click.stop="cancelEdit">取消</button><button class="annotation-primary" type="button" @click.stop="submitEdit(annotation.id)"><Save :size="14" />保存</button></footer></div>
+            <div class="annotation-editor"><label>{{ t('title') }}<input v-model="draft.title" /></label><label>{{ t('content') }}<textarea v-model="draft.body" rows="4"></textarea></label><label>{{ t('status') }}<select v-model="draft.status"><option value="draft">{{ t('annotationDraft') }}</option><option value="in_progress">{{ t('annotationInProgress') }}</option><option value="resolved">{{ t('annotationResolvedStatus') }}</option></select></label><footer><button class="annotation-secondary" type="button" @click.stop="cancelEdit">{{ t('cancel') }}</button><button class="annotation-primary" type="button" @click.stop="submitEdit(annotation.id)"><Save :size="14" />{{ t('save') }}</button></footer></div>
           </template>
           <template v-else>
             <h3>{{ annotation.title }}</h3><p>{{ annotation.body }}</p>
-            <div v-if="annotation.links.length" class="annotation-links"><button v-for="link in annotation.links" :key="`${annotation.id}-${link.side}-${link.segmentId}`" type="button" :title="`回到 ${link.label ?? link.segmentId}`" @click.stop="emit('open-link', link.segmentId)"><span>{{ link.side === "source" ? "中文（原文）" : "English（译文）" }} <b :title="link.segmentId">{{ link.label ?? link.segmentId }}</b><small v-if="link.text">{{ link.text }}</small></span><CornerUpLeft :size="14" /></button></div>
-            <footer class="annotation-card-actions"><button type="button" @click.stop="startEdit(annotation)"><Pencil :size="13" />编辑</button><button type="button" @click.stop="emit('delete', annotation.id)"><Trash2 :size="13" />删除</button><button v-if="annotation.status !== 'resolved'" class="annotation-resolve" type="button" @click.stop="emit('resolve', annotation.id)"><Check :size="13" />标记已解决</button></footer>
+            <div v-if="annotation.links.length" class="annotation-links"><button v-for="link in annotation.links" :key="`${annotation.id}-${link.side}-${link.segmentId}`" type="button" :title="t('returnTo', { p0: link.label ?? link.segmentId })" @click.stop="emit('open-link', link.segmentId)"><span>{{ link.side === "source" ? t('sourceHeading') : t('targetHeading') }} <b :title="link.segmentId">{{ link.label ?? link.segmentId }}</b><small v-if="link.text">{{ link.text }}</small></span><CornerUpLeft :size="14" /></button></div>
+            <footer class="annotation-card-actions"><button type="button" @click.stop="startEdit(annotation)"><Pencil :size="13" />{{ t('edit') }}</button><button type="button" @click.stop="emit('delete', annotation.id)"><Trash2 :size="13" />{{ t('delete') }}</button><button v-if="annotation.status !== 'resolved'" class="annotation-resolve" type="button" @click.stop="emit('resolve', annotation.id)"><Check :size="13" />{{ t('markResolved') }}</button></footer>
           </template>
         </div>
       </article>
-      <div v-if="!filtered.length" class="annotation-empty"><MessageSquareText :size="18" />当前筛选下暂无批注。</div>
+      <div v-if="!filtered.length" class="annotation-empty"><MessageSquareText :size="18" />{{ t('annotationsEmptyFilter') }}</div>
     </div>
-    <button v-if="!readonly && !creating" class="annotation-new" type="button" @click="startCreate"><Plus :size="16" />新建批注</button>
+    <button v-if="!readonly && !creating" class="annotation-new" type="button" @click="startCreate"><Plus :size="16" />{{ t('newAnnotation') }}</button>
   </aside>
 </template>
 

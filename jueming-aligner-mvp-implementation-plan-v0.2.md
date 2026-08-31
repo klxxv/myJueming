@@ -413,7 +413,7 @@ UI State 不得写入 canonical 表；有价值的布局偏好进入用户设置
 | Dock | `dockview-vue` | P1 Context Pane 与可序列化辅助布局；不接管正文双栏核心布局 |
 | 原生多窗口 | Tauri `WebviewWindow` | P1 “Open in New Window”；窗口间只共享 ID/Query，不复制可变 canonical state |
 | 图标 | `lucide-vue-next` | 统一线性图标；产品 logo 作为自有资产 |
-| 国际化 | `vue-i18n` | 中英文 UI 文案与格式；不把双语语料内容交给 i18n 管理 |
+| 国际化 | `vue-i18n` | 中、英、法 UI 文案与格式，离线即时切换；不把双语语料内容交给 i18n 管理 |
 | 样式 | CSS Custom Properties + Vue scoped CSS | 自有 design tokens、Light / Eye Care 主题；不引入带强视觉意见的大型成品 UI 框架 |
 | 前端测试 | Vitest + Vue Test Utils | controller、store、composable、组件状态与无障碍单测 |
 | UI/E2E | Playwright | 浏览器层主流程、键盘、截图回归；Tauri 安装包另做 Windows smoke test |
@@ -815,6 +815,8 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 退出条件：在故障注入点强制终止进程，工程仍能打开到最后完整提交；恢复旧版本不删除后续历史。
 
 ### Phase 6：Export、Settings 与视觉收口
+
+国际化补齐（2026-08-31）：采用 Vue I18n Composition API 和 Vite 词典预编译，覆盖中、英、法应用壳、导入、共享工作区、搜索替换、书签、批注、历史、设置及已知 Kernel 诊断。首次启动按系统语言选择，设置页即时切换并保存在本机；不重建编辑会话、不写入 canonical 数据。Windows NSIS/MSI 配置三语安装包，确认框使用翻译按钮，未知系统诊断保留原文。三语词典与交互回归检查纳入 CI；维护说明见 [国际化指南](docs/development/localization.md)。
 
 实现状态（2026-08-28）：TXT/JSON/XML 原子导出、Light/Eye Care、界面缩放、侧栏折叠、自动保存延迟、缓存清理策略、离线状态、空状态、错误反馈和主效果图结构均已接入。设置页新增自动 / macOS / Windows-Linux 快捷键布局、当前键位表与触控板优化开关；macOS 自定义窗口栏采用左侧 traffic-light 排列。触控板滚动会立即取消尚未完成的跳转 rAF，系统“减少动态效果”会直接定位。Windows 文件对话框已完成导入、打开与 TXT 导出，导出首行验证为 `1:1\t阿古顿巴\tAkhu Tenpa [verified]`；前端 production build、Tauri debug 构建与严格类型检查通过。Review、Edit、Order、Search、Annotation、History、Settings 七个状态已分别完成桌面端检查；真实 307×308 工程已验证快速查找跳转与 highlight、双击编辑与 Escape 退出、30 秒草稿守卫、自动保存形成 Revision、源侧顺序持久化与基线恢复、派生缓存清理不删除历史。静态截图未展示拖拽悬浮态，以及延期 POS 覆盖层是已记录的有意差异，不冒充像素级一致。
 

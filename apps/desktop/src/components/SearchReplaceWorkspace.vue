@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed, ref } from "vue";
 import { Check, ChevronDown, Filter, Replace, Search, X } from "@lucide/vue";
 
@@ -43,7 +44,7 @@ const props = withDefaults(
     projectLabel?: string;
     loading?: boolean;
   }>(),
-  { query: "", side: "both", regex: false, caseSensitive: false, replacement: "", projectLabel: "当前工程", loading: false },
+  { query: "", side: "both", regex: false, caseSensitive: false, replacement: "", projectLabel: "", loading: false },
 );
 
 const emit = defineEmits<{
@@ -137,32 +138,32 @@ const openReplacePreview = () => {
 </script>
 
 <template>
-  <section class="search-replace-workspace" aria-label="搜索与替换">
+  <section class="search-replace-workspace" :aria-label="t('searchReplace')">
     <form class="sr-toolbar" @submit.prevent="runSearch">
-      <label class="sr-query-label" for="sr-query">查询</label>
+      <label class="sr-query-label" for="sr-query">{{ t('query') }}</label>
       <div class="sr-input-group">
         <Search :size="18" aria-hidden="true" />
-        <input id="sr-query" :value="query" type="search" placeholder="搜索当前工程" @input="emit('update:query', ($event.target as HTMLInputElement).value)" />
-        <button v-if="query" type="button" title="清除查询" @click="emit('update:query', '')"><X :size="15" /></button>
+        <input id="sr-query" :value="query" type="search" :placeholder="t('searchCurrentProject')" @input="emit('update:query', ($event.target as HTMLInputElement).value)" />
+        <button v-if="query" type="button" :title="t('clearQuery')" @click="emit('update:query', '')"><X :size="15" /></button>
       </div>
-      <button class="sr-primary" type="submit" :disabled="loading"><Search :size="15" />搜索</button>
-      <button class="sr-side-button" type="button" :aria-label="`搜索范围：${side}`" @click="toggleSide"><ChevronDown :size="15" />{{ side === "both" ? "双语" : side === "source" ? "中文" : "English" }}</button>
-      <label class="sr-check"><input :checked="regex" type="checkbox" @change="emit('update:regex', ($event.target as HTMLInputElement).checked)" />正则</label>
-      <label class="sr-check"><input :checked="caseSensitive" type="checkbox" @change="emit('update:caseSensitive', ($event.target as HTMLInputElement).checked)" />区分大小写</label>
-      <span class="sr-project"><Check :size="14" />{{ projectLabel }}</span>
+      <button class="sr-primary" type="submit" :disabled="loading"><Search :size="15" />{{ t('navSearch') }}</button>
+      <button class="sr-side-button" type="button" :aria-label="t('searchScope', { p0: t(side === 'both' ? 'bothSides' : side === 'source' ? 'sourceSide' : 'targetSide') })" @click="toggleSide"><ChevronDown :size="15" />{{ t(side === 'both' ? 'bothSides' : side === 'source' ? 'sourceSide' : 'targetSide') }}</button>
+      <label class="sr-check"><input :checked="regex" type="checkbox" @change="emit('update:regex', ($event.target as HTMLInputElement).checked)" />{{ t('regex') }}</label>
+      <label class="sr-check"><input :checked="caseSensitive" type="checkbox" @change="emit('update:caseSensitive', ($event.target as HTMLInputElement).checked)" />{{ t('caseSensitive') }}</label>
+      <span class="sr-project"><Check :size="14" />{{ projectLabel || t('currentProject') }}</span>
     </form>
 
     <div class="sr-replacebar">
-      <label for="sr-replacement">替换为</label>
-      <input id="sr-replacement" :value="replacement" placeholder="输入替换文本（支持正则捕获组）" @input="emit('update:replacement', ($event.target as HTMLInputElement).value)" />
-      <button class="sr-secondary" type="button" :disabled="!query || !matchingResults.length" @click="openReplacePreview"><Replace :size="15" />预览替换</button>
-      <button class="sr-secondary" type="button" :disabled="!replacement || !matchingResults.length" @click="emit('apply-replace', replacementPreview)">应用替换</button>
-      <button class="sr-reset" type="button" @click="emit('reset')">重置</button>
+      <label for="sr-replacement">{{ t('replaceWith') }}</label>
+      <input id="sr-replacement" :value="replacement" :placeholder="t('replacementPlaceholder')" @input="emit('update:replacement', ($event.target as HTMLInputElement).value)" />
+      <button class="sr-secondary" type="button" :disabled="!query || !matchingResults.length" @click="openReplacePreview"><Replace :size="15" />{{ t('previewReplace') }}</button>
+      <button class="sr-secondary" type="button" :disabled="!replacement || !matchingResults.length" @click="emit('apply-replace', replacementPreview)">{{ t('applyReplace') }}</button>
+      <button class="sr-reset" type="button" @click="emit('reset')">{{ t('reset') }}</button>
     </div>
 
-    <div class="sr-summary">找到 <strong>{{ matchingResults.length }}</strong> 条结果 <span>（查询结果由上层索引提供）</span></div>
+    <div class="sr-summary"><strong>{{ t('resultCount', { count: matchingResults.length }) }}</strong> <span>{{ t('searchIndexHint') }}</span></div>
     <div class="sr-table">
-      <div class="sr-table-head"><span>ID</span><span>中文（上下文）</span><span>匹配词</span><span>English（上下文）</span><span>对齐 ID</span></div>
+      <div class="sr-table-head"><span>{{ t('id') }}</span><span>{{ t('sourceContext') }}</span><span>{{ t('match') }}</span><span>{{ t('targetContext') }}</span><span>{{ t('alignmentId') }}</span></div>
       <button v-for="result in matchingResults" :key="result.id" class="sr-row" type="button" @click="emit('select-result', result)">
         <span class="sr-id" :title="result.id">{{ result.label ?? result.id }}</span>
         <span class="sr-context"><template v-for="(chunk, index) in parts(result.sourceText)" :key="`${result.id}-source-${index}`"><mark v-if="chunk.match">{{ chunk.text }}</mark><template v-else>{{ chunk.text }}</template></template></span>
@@ -170,15 +171,15 @@ const openReplacePreview = () => {
         <span class="sr-context"><template v-for="(chunk, index) in parts(result.targetText)" :key="`${result.id}-target-${index}`"><mark v-if="chunk.match">{{ chunk.text }}</mark><template v-else>{{ chunk.text }}</template></template></span>
         <span class="sr-alignment" :title="result.alignmentId ?? undefined">{{ result.alignmentLabel ?? result.alignmentId ?? "—" }}</span>
       </button>
-      <div v-if="!matchingResults.length" class="sr-empty"><Filter :size="18" />输入查询条件后显示句段结果。</div>
+      <div v-if="!matchingResults.length" class="sr-empty"><Filter :size="18" />{{ t('searchEmptyHint') }}</div>
     </div>
 
-    <div v-if="replaceOpen" class="sr-preview" role="dialog" aria-label="替换预览">
-      <header><div><span class="sr-eyebrow">REPLACE PREVIEW</span><h2>替换预览 <small>{{ replacementPreview.resultIds.length }} 个句段</small></h2></div><button type="button" title="关闭预览" @click="replaceOpen = false"><X :size="17" /></button></header>
+    <div v-if="replaceOpen" class="sr-preview" role="dialog" :aria-label="t('replacePreview')">
+      <header><div><span class="sr-eyebrow">{{ t('replacePreviewEyebrow') }}</span><h2>{{ t('replacePreview') }} <small>{{ t('segmentCount', { count: replacementPreview.resultIds.length }) }}</small></h2></div><button type="button" :title="t('closePreview')" @click="replaceOpen = false"><X :size="17" /></button></header>
       <div class="sr-preview-list">
         <article v-for="item in replacementPreview.source" :key="`preview-${item.resultId}`"><span>{{ item.resultId }}</span><p><del>{{ item.before }}</del><b>{{ item.after }}</b></p></article>
       </div>
-      <footer><button class="sr-secondary" type="button" @click="replaceOpen = false">取消</button><button class="sr-primary sr-primary--compact" type="button" @click="emit('apply-replace', replacementPreview); replaceOpen = false">确认应用</button></footer>
+      <footer><button class="sr-secondary" type="button" @click="replaceOpen = false">{{ t('cancel') }}</button><button class="sr-primary sr-primary--compact" type="button" @click="emit('apply-replace', replacementPreview); replaceOpen = false">{{ t('confirmApply') }}</button></footer>
     </div>
   </section>
 </template>

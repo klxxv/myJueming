@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n';
 import { computed } from "vue";
 import { Check, Copy, Link2, RotateCcw, Split } from "@lucide/vue";
 
@@ -52,27 +53,27 @@ const compare = () => { if (base.value && selected.value) emit("compare", base.v
 </script>
 
 <template>
-  <section class="history-workspace" aria-label="历史版本">
+  <section class="history-workspace" :aria-label="t('historyVersion')">
     <header class="history-heading">
-      <div><span class="history-eyebrow">REVISION HISTORY</span><h2>历史记录</h2><p>比较工程版本，恢复操作会创建新的 Revision。</p></div>
-      <div class="history-actions"><button class="history-tool" type="button" :disabled="!canCompare || loading" @click="compare"><Split :size="15" />比较</button><button class="history-tool" type="button" :disabled="!selected || selected === current || loading" @click="selected && emit('restore', selected)"><RotateCcw :size="15" />恢复此版本</button><span v-if="current" class="current-version"><Check :size="14" />当前 {{ current }}</span></div>
+      <div><span class="history-eyebrow">{{ t('historyEyebrow') }}</span><h2>{{ t('historyTitle') }}</h2><p>{{ t('historyDescription') }}</p></div>
+      <div class="history-actions"><button class="history-tool" type="button" :disabled="!canCompare || loading" @click="compare"><Split :size="15" />{{ t('compare') }}</button><button class="history-tool" type="button" :disabled="!selected || selected === current || loading" @click="selected && emit('restore', selected)"><RotateCcw :size="15" />{{ t('restoreVersion') }}</button><span v-if="current" class="current-version"><Check :size="14" />{{ t('current') }} {{ current }}</span></div>
     </header>
     <div class="history-layout">
-      <aside class="revision-list" aria-label="版本列表">
+      <aside class="revision-list" :aria-label="t('revisionList')">
         <button v-for="revision in revisions" :key="revision.id" class="revision-item" :class="{ active: revision.id === selected }" type="button" @click="selectRevision(revision.id)">
-          <strong>{{ revision.label }} <small v-if="revision.current">当前版本</small></strong><time>{{ revision.timestamp }}</time><b>{{ revision.action }}</b><span>{{ revision.summary }}</span>
+          <strong>{{ revision.label }} <small v-if="revision.current">{{ t('currentVersion') }}</small></strong><time>{{ revision.timestamp }}</time><b>{{ revision.action }}</b><span>{{ revision.summary }}</span>
         </button>
-        <div v-if="!revisions.length" class="history-empty"><RotateCcw :size="18" />暂无 Revision 记录</div>
+        <div v-if="!revisions.length" class="history-empty"><RotateCcw :size="18" />{{ t('revisionsEmpty') }}</div>
       </aside>
-      <section v-if="diff" class="revision-diff" aria-label="双栏差异">
-        <div class="diff-caption"><span>比较：<b>{{ base ?? "—" }} → {{ selected ?? "—" }}</b></span><span>段落：{{ diff.segmentId }} <Link2 :size="15" /></span></div>
+      <section v-if="diff" class="revision-diff" :aria-label="t('sideBySideDiff')">
+        <div class="diff-caption"><span>{{ t('compareLabel') }}<b>{{ base ?? "—" }} → {{ selected ?? "—" }}</b></span><span>{{ t('segmentLabel') }}{{ diff.segmentId }} <Link2 :size="15" /></span></div>
         <div class="diff-grid">
-          <article><header><small>{{ base ?? "旧版本" }}（旧版本）</small><button type="button" title="复制旧版本" @click="emit('copy-value', diff.targetOld)"><Copy :size="14" /></button></header><div class="diff-language"><span>中文（原文）</span><p class="diff-old">{{ diff.sourceOld || "（无内容）" }}</p></div><div class="diff-language"><span>English（译文）</span><p class="diff-old">{{ diff.targetOld || "（无内容）" }}</p></div></article>
-          <article><header><small>{{ selected ?? "当前版本" }}（当前版本）</small><button type="button" title="复制当前版本" @click="emit('copy-value', diff.targetNew)"><Copy :size="14" /></button></header><div class="diff-language"><span>中文（原文）</span><p class="diff-new">{{ diff.sourceNew || "（无内容）" }}</p></div><div class="diff-language"><span>English（译文）</span><p class="diff-new">{{ diff.targetNew || "（无内容）" }}</p></div></article>
+          <article><header><small>{{ base ?? t('oldVersion') }}{{ t('oldVersionSuffix') }}</small><button type="button" :title="t('copyOldVersion')" @click="emit('copy-value', diff.targetOld)"><Copy :size="14" /></button></header><div class="diff-language"><span>{{ t('sourceHeading') }}</span><p class="diff-old">{{ diff.sourceOld || t('noContent') }}</p></div><div class="diff-language"><span>{{ t('targetHeading') }}</span><p class="diff-old">{{ diff.targetOld || t('noContent') }}</p></div></article>
+          <article><header><small>{{ selected ?? t('currentVersion') }}{{ t('currentVersionSuffix') }}</small><button type="button" :title="t('copyCurrentVersion')" @click="emit('copy-value', diff.targetNew)"><Copy :size="14" /></button></header><div class="diff-language"><span>{{ t('sourceHeading') }}</span><p class="diff-new">{{ diff.sourceNew || t('noContent') }}</p></div><div class="diff-language"><span>{{ t('targetHeading') }}</span><p class="diff-new">{{ diff.targetNew || t('noContent') }}</p></div></article>
         </div>
-        <div class="change-summary"><b>变更摘要</b><p><span class="diff-delete">− 删除 {{ diff.deletedLines ?? 1 }} 行</span><span class="diff-add">＋ 添加 {{ diff.addedLines ?? 1 }} 行</span></p><p>{{ diff.summary ?? "已生成该段落的版本差异。" }}</p></div>
+        <div class="change-summary"><b>{{ t('changeSummary') }}</b><p><span class="diff-delete">{{ t('removedLines') }} {{ diff.deletedLines ?? 1 }} {{ t('lines') }}</span><span class="diff-add">{{ t('addedLines') }} {{ diff.addedLines ?? 1 }} {{ t('lines') }}</span></p><p>{{ diff.summary ?? t('diffReady') }}</p></div>
       </section>
-      <section v-else class="history-empty history-empty--detail"><RotateCcw :size="22" /><p>选择一个版本后查看双栏 Diff。</p></section>
+      <section v-else class="history-empty history-empty--detail"><RotateCcw :size="22" /><p>{{ t('selectRevisionHint') }}</p></section>
     </div>
   </section>
 </template>

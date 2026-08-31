@@ -1,6 +1,6 @@
 # 决明对齐器决策总览
 
-_更新时间：2026-08-29。本文是仓库级快速入口；正式架构依据仍是 [`docs/adr/`](docs/adr/000-index.md) 与 [Phase 0 合同](docs/architecture/mvp-phase0-contracts-v0.1.md)。_
+_更新时间：2026-08-31。本文是仓库级快速入口；正式架构依据仍是 [`docs/adr/`](docs/adr/000-index.md) 与 [Phase 0 合同](docs/architecture/mvp-phase0-contracts-v0.1.md)。_
 
 ## 已接受的架构决策
 
@@ -40,6 +40,9 @@ _更新时间：2026-08-29。本文是仓库级快速入口；正式架构依据
 
 ### 主题与视觉
 
+- 使用 Vue I18n Composition API 提供中文、英文、法文 UI；三份词典随应用预编译打包，切换不需要联网。
+- 界面语言仅保存在设备偏好中，不改变 Project LanguageId、Segment、批注正文、稳定 ID 或 Revision；动态状态在显示时翻译。选型、维护和验证见 [国际化指南](docs/development/localization.md)。
+
 - 当前项目不使用 Tailwind；主题由全局语义 CSS 变量和组件 scoped CSS 组成。
 - 明亮与护眼模式共享 `paper/surface/input/hover/status` 表面色合同。新增组件不得硬编码 `#fff` 作为中性表面，应复用 `apps/desktop/src/styles.css` 中的变量。
 - 护眼模式覆盖框架、工具栏、列表、卡片、输入区、弹窗、批注、搜索和历史 Diff，同时保留但柔化成功、警告和错误语义色。
@@ -54,7 +57,7 @@ _更新时间：2026-08-29。本文是仓库级快速入口；正式架构依据
 
 ### CI 与发布
 
-- `main` push 和 pull request 运行 TypeScript build、Rust format、Clippy `-D warnings` 与全 workspace tests。
+- `main` push 和 pull request 运行 TypeScript build、三语词典与交互回归测试、Rust format、Clippy `-D warnings` 与全 workspace tests。
 - 手动触发或 `v*` tag 才执行 Windows/macOS 安装包矩阵，产物保存为 workflow artifacts。
 - Actions 使用固定提交 SHA，默认权限为 `contents: read`；当前流程不自动创建 GitHub Release。
 - 正式 macOS 分发仍需 Developer ID 签名与 notarization；当前测试包只使用 ad-hoc 签名。

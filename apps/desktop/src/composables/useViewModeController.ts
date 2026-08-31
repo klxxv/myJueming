@@ -1,3 +1,5 @@
+import { t, type LocalizedMessage } from '../i18n';
+import { formatError } from '../i18n/kernel-messages';
 import { computed, onBeforeUnmount, ref, type Ref } from "vue";
 import type { WorkspaceMode } from "../domain/kernel-client";
 
@@ -9,7 +11,7 @@ export interface EditSession {
   persistedText: string;
   draft: string;
   status: EditSessionStatus;
-  error: string | null;
+  error: unknown;
 }
 
 export interface PendingModeTransition {
@@ -19,7 +21,7 @@ export interface PendingModeTransition {
 interface ViewModeControllerOptions {
   autosaveDelayMs: Ref<number>;
   persist: (segmentId: string, text: string) => Promise<void>;
-  onStatus?: (message: string) => void;
+  onStatus?: (message: LocalizedMessage) => void;
 }
 
 /**
@@ -98,7 +100,7 @@ export function useViewModeController(options: ViewModeControllerOptions) {
     const text = session.draft.trim() ? session.draft : session.persistedText;
     session.status = "saving";
     session.error = null;
-    options.onStatus?.(reason === "auto" ? "自动保存中…" : "保存编辑中…");
+    options.onStatus?.(() => reason === "auto" ? t('autosaving') : t('savingEdit'));
     saveInFlight = (async () => {
       try {
         await options.persist(segmentId, text);
@@ -108,16 +110,15 @@ export function useViewModeController(options: ViewModeControllerOptions) {
           current.status = current.draft === text ? "clean" : "dirty";
           current.error = null;
         }
-        options.onStatus?.("本地存储 · 已保存");
+        options.onStatus?.(() => t('savedLocally'));
         return true;
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
         const current = editSession.value;
         if (current?.segmentId === segmentId) {
           current.status = "error";
-          current.error = message;
+          current.error = error;
         }
-        options.onStatus?.(`自动保存失败：${message}`);
+        options.onStatus?.(() => t('autosaveFailed', { p0: formatError(error) }));
         return false;
       } finally {
         saveInFlight = null;
@@ -140,7 +141,7 @@ export function useViewModeController(options: ViewModeControllerOptions) {
     editSession.value = null;
     pendingTransition.value = null;
     activeMode.value = "review";
-    options.onStatus?.("已放弃未保存编辑");
+    options.onStatus?.(() => t('draftDiscarded'));
   };
 
   const requestMode = (mode: WorkspaceMode): "applied" | "guarded" => {
@@ -175,7 +176,7 @@ export function useViewModeController(options: ViewModeControllerOptions) {
     editSession.value = null;
     pendingTransition.value = null;
     activeMode.value = pending.mode;
-    options.onStatus?.("已放弃未保存编辑");
+    options.onStatus?.(() => t('draftDiscarded'));
     return true;
   };
 

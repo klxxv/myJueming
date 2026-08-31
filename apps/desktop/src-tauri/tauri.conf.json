@@ -44,7 +44,17 @@
     },
     "windows": {
       "wix": {
-        "language": "zh-CN"
+        "upgradeCode": "2e90697d-b29d-58f5-b283-b08403419c63",
+        "template": "wix/main.wxs",
+        "language": {
+          "zh-CN": { "localePath": "wix/locales/zh-CN.wxl" },
+          "en-US": { "localePath": "wix/locales/en-US.wxl" },
+          "fr-FR": { "localePath": "wix/locales/fr-FR.wxl" }
+        }
+      },
+      "nsis": {
+        "languages": ["SimpChinese", "English", "French"],
+        "displayLanguageSelector": true
       }
     }
   }

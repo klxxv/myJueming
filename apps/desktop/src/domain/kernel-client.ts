@@ -1,3 +1,4 @@
+import { LocalizedError } from '../i18n/kernel-messages';
 import { invoke } from "@tauri-apps/api/core";
 import { fallbackLanguages } from "./languages";
 
@@ -321,19 +322,19 @@ export const makeImportProfile = (
 
 export const createKernelClient = (): KernelClient => ({
   async previewImport(request) {
-    if (!inTauri()) throw new Error("请在 Tauri 桌面应用中预览本地文件");
+    if (!inTauri()) throw new LocalizedError('desktopPreviewRequired');
     return invoke<ImportPreviewResponse>("preview_import", { request });
   },
   async createProject(request) {
-    if (!inTauri()) throw new Error("请在 Tauri 桌面应用中创建工程");
+    if (!inTauri()) throw new LocalizedError('desktopCreateRequired');
     return invoke<ProjectSnapshot>("create_project", { request });
   },
   async openProject(projectPath) {
-    if (!inTauri()) throw new Error("请在 Tauri 桌面应用中打开工程");
+    if (!inTauri()) throw new LocalizedError('desktopOpenRequired');
     return invoke<ProjectSnapshot>("open_project", { projectPath });
   },
   async getCurrentProject() {
-    if (!inTauri()) throw new Error("浏览器预览没有已打开的本地工程");
+    if (!inTauri()) throw new LocalizedError('browserNoProject');
     return invoke<ProjectSnapshot>("get_current_project");
   },
   async getProjectSummary() {
@@ -357,7 +358,7 @@ export const createKernelClient = (): KernelClient => ({
     await invoke("move_segment", { segmentId, beforeSegmentId, afterSegmentId });
   },
   async reorderSegments(orderedSegmentIds) {
-    if (!inTauri()) throw new Error("浏览器预览不支持持久化排序，请在 Tauri 中操作");
+    if (!inTauri()) throw new LocalizedError('desktopOrderRequired');
     return invoke<ProjectSnapshot>("reorder_segments", { orderedSegmentIds });
   },
   async listSupportedLanguages() {
@@ -365,31 +366,31 @@ export const createKernelClient = (): KernelClient => ({
     return invoke<SupportedLanguageDto[]>("list_supported_languages");
   },
   async insertAlignmentGap(segmentId, edge) {
-    if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
+    if (!inTauri()) throw new LocalizedError('desktopAlignmentRequired');
     return invoke<ProjectSnapshot>("insert_alignment_gap", { segmentId, edge });
   },
   async linkSegments(sourceSegmentIds, targetSegmentIds, replaceExisting) {
-    if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
+    if (!inTauri()) throw new LocalizedError('desktopAlignmentRequired');
     return invoke<ProjectSnapshot>("link_segments", { sourceSegmentIds, targetSegmentIds, replaceExisting });
   },
   async unlinkAlignment(alignmentId) {
-    if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
+    if (!inTauri()) throw new LocalizedError('desktopAlignmentRequired');
     return invoke<ProjectSnapshot>("unlink_alignment", { alignmentId });
   },
   async mergeSegments(segmentIds, mergedContent) {
-    if (!inTauri()) throw new Error("浏览器预览不支持修改 Segment 内容，请在 Tauri 中操作");
+    if (!inTauri()) throw new LocalizedError('desktopContentRequired');
     return invoke<ProjectSnapshot>("merge_segments", { segmentIds, mergedContent });
   },
   async splitSegment(segmentId, parts) {
-    if (!inTauri()) throw new Error("浏览器预览不支持修改 Segment 内容，请在 Tauri 中操作");
+    if (!inTauri()) throw new LocalizedError('desktopContentRequired');
     return invoke<ProjectSnapshot>("split_segment", { segmentId, parts });
   },
   async groupAlignments(alignmentIds, unlinkedSegmentIds) {
-    if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
+    if (!inTauri()) throw new LocalizedError('desktopAlignmentRequired');
     return invoke<ProjectSnapshot>("group_alignment", { alignmentIds, unlinkedSegmentIds });
   },
   async ungroupAlignment(alignmentId, sourceGroups, targetGroups) {
-    if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
+    if (!inTauri()) throw new LocalizedError('desktopAlignmentRequired');
     return invoke<ProjectSnapshot>("ungroup_alignment", { alignmentId, sourceGroups, targetGroups });
   },
   async listRevisions() {
@@ -408,6 +409,7 @@ export const createKernelClient = (): KernelClient => ({
   async createBookmark(segmentId, alignmentId, label) { return invoke<ProjectSnapshot>("create_bookmark", { request: { segment_id: segmentId, alignment_id: alignmentId, label } }); },
   async listBookmarks() { return invoke<BookmarkPreviewDto[]>("list_bookmarks"); },
   async deleteBookmark(bookmarkId) { return invoke<ProjectSnapshot>("delete_bookmark", { bookmarkId }); },
+  // This author label is stored metadata, not a translated interface label.
   async createAnnotation(request) { return invoke<ProjectSnapshot>("create_annotation", { request: { ...request, local_author_label: request.local_author_label ?? "本地用户" } }); },
   async updateAnnotation(annotationId, request) { const { local_author_label: _author, ...rest } = request; return invoke<ProjectSnapshot>("update_annotation", { request: { annotation_id: annotationId, ...rest } }); },
   async deleteAnnotation(annotationId) { return invoke<ProjectSnapshot>("delete_annotation", { annotationId }); },

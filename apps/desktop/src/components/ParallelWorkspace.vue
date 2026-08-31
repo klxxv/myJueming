@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t, type LocalizedMessage } from '../i18n';
+import { fallbackLanguages, languageLabel } from '../domain/languages';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, GripVertical, Link2, Link2Off, LockKeyhole, Merge, RotateCcw, Scissors, Search, X } from "@lucide/vue";
 import type { EditSession } from "../composables/useViewModeController";
@@ -19,6 +21,8 @@ const props = withDefaults(defineProps<{
   bookmarkedSegmentIds?: string[];
   annotatedSegmentIds?: string[];
   selectedAlignmentId: string;
+  sourceLanguage?: string;
+  targetLanguage?: string;
   editSession?: EditSession | null;
   trackpadOptimized?: boolean;
   writable?: boolean;
@@ -43,7 +47,7 @@ const emit = defineEmits<{
   ungroup: [alignmentId: string, sourceGroups: string[][], targetGroups: string[][]];
   bookmark: [segmentId: string, alignmentId: string | null];
   annotation: [segmentId: string, alignmentId: string | null];
-  status: [message: string];
+  status: [message: LocalizedMessage];
 }>();
 
 const bookmarked = computed(() => new Set(props.bookmarkedSegmentIds));
@@ -119,7 +123,7 @@ const focusAlignment = async (alignmentId: string) => {
 };
 const { highlightedSegmentId: jumpHighlightSegmentId, jumpToSegment } = useTransientSegmentJump({
   focus: async (segmentId) => alignedWorkspaceRef.value?.focusSegment(segmentId),
-  onMissing: () => emit("status", "未找到跳转锚定的句段"),
+  onMissing: () => emit("status", () => t('jumpAnchorMissing')),
 });
 const focusSegment = jumpToSegment;
 
@@ -135,7 +139,7 @@ const unlinkedRuns = computed(() => {
 });
 const navigateUnlinked = async (direction: -1 | 1, byRun: boolean) => {
   const candidates = byRun ? unlinkedRuns.value : rows.value.filter((row) => !row.linked).map((row) => [row]);
-  if (!candidates.length) { emit("status", "当前视图没有未匹配 Segment"); return; }
+  if (!candidates.length) { emit("status", () => t('noUnmatched')); return; }
   const currentRowIndex = rows.value.findIndex((row) => row.alignmentId === props.selectedAlignmentId);
   const currentCandidateIndex = candidates.findIndex((candidate) => candidate.some((row) => row.index === currentRowIndex));
   let targetIndex: number;
@@ -150,7 +154,7 @@ const navigateUnlinked = async (direction: -1 | 1, byRun: boolean) => {
   if (targetIndex < 0) targetIndex = direction > 0 ? 0 : candidates.length - 1;
   const target = candidates[targetIndex];
   const targetSegmentId = target[0].sourceSegments[0]?.id ?? target[0].targetSegments[0]?.id;
-  if (!targetSegmentId) { emit("status", "未找到跳转锚定的句段"); return; }
+  if (!targetSegmentId) { emit("status", () => t('jumpAnchorMissing')); return; }
   clearSelection();
   suppressedSelectionFocusId.value = target[0].alignmentId;
   emit("select", target[0].alignmentId);
@@ -213,7 +217,7 @@ defineExpose({ openFind, closeFind, navigateFind, clearSelection, focusSegment, 
 const requestEdit = (segmentId: string, alignmentId: string) => {
   const segment = [...props.sourceSegments, ...props.targetSegments].find((candidate) => candidate.id === segmentId);
   if (!segment) return;
-  if (!props.writable) { emit("status", "当前为演示预览，请先新建或打开工程"); return; }
+  if (!props.writable) { emit("status", () => t('demoOperationHint')); return; }
   // A browser double-click dispatches two click events first. Those clicks are
   // valid for alignment operations in Review, but must not leak into Edit.
   clearSelection();
@@ -221,7 +225,7 @@ const requestEdit = (segmentId: string, alignmentId: string) => {
   emit("requestEdit", segmentId, alignmentId);
 };
 const toggleBookmark = (segmentId: string, alignmentId: string | null) => {
-  if (!props.writable) { emit("status", "当前为演示预览，请先新建或打开工程"); return; }
+  if (!props.writable) { emit("status", () => t('demoOperationHint')); return; }
   emit("bookmark", segmentId, alignmentId);
 };
 const toggleSegment = (side: "source" | "target", id: string, alignmentId: string, event: MouseEvent) => {
@@ -309,7 +313,7 @@ const quickRelationAction = (row: AlignmentBlockView) => {
     targetIds: row.targetSegments.map((segment) => segment.id),
   });
   if (!props.writable) {
-    emit("status", "当前为演示预览，请先新建或打开工程");
+    emit("status", () => t('demoOperationHint'));
     return;
   }
   if (row.linked) {
@@ -327,7 +331,7 @@ const quickRelationAction = (row: AlignmentBlockView) => {
   clearSelection();
   selectedSourceIds.value = new Set(sourceIds);
   selectedTargetIds.value = new Set(targetIds);
-  emit("status", "已选中待匹配 Segment；请在另一侧选择句段后使用 Link");
+  emit("status", () => t('selectOtherSideHint'));
 };
 watch(() => props.mode, (mode, previousMode) => {
   if (mode === "edit" || previousMode === "edit") clearSelection();
@@ -365,16 +369,16 @@ const groupPlan = computed(() => {
   };
 });
 const groupHint = computed(() => {
-  if (hasAlignedSegmentSelection.value) return "已对齐句段请通过中间关系图标选择整个 Alignment";
-  if (!selectedGroupable.value.length && groupSelectionSize.value) return "仅选择未对齐句段时请使用 Link";
-  if (groupSelectionSize.value < 2) return "按 Ctrl/⌘ 多选至少两个完整 Alignment，或一个 Alignment 加未对齐句段";
-  if (!groupSourceIds.value.size || !groupTargetIds.value.size) return "分组结果必须同时包含左右语言句段";
-  return `分组 ${selectedGroupable.value.length} 个 Alignment 与 ${selectedUnlinkedSourceIds.value.length + selectedUnlinkedTargetIds.value.length} 条未对齐句段`;
+  if (hasAlignedSegmentSelection.value) return t('selectWholeAlignmentHint');
+  if (!selectedGroupable.value.length && groupSelectionSize.value) return t('useLinkHint');
+  if (groupSelectionSize.value < 2) return t('groupSelectionHint');
+  if (!groupSourceIds.value.size || !groupTargetIds.value.size) return t('groupBothSidesRequired');
+  return t('groupSelectionSummary', { p0: selectedGroupable.value.length, p1: selectedUnlinkedSourceIds.value.length + selectedUnlinkedTargetIds.value.length });
 });
 const groupWarning = computed(() => {
   if (!groupPlan.value) return null;
   const indexes = selectedGroupRowIndexes.value;
-  if (indexes.length > 1 && indexes[indexes.length - 1] - indexes[0] + 1 !== indexes.length) return "所选块在当前视图投影中不连续；仍会按稳定 Segment ID 分组。";
+  if (indexes.length > 1 && indexes[indexes.length - 1] - indexes[0] + 1 !== indexes.length) return t('noncontiguousGroupWarning');
   const positions = selectedGroupable.value.map((id) => {
     const alignment = props.alignments.find((candidate) => candidate.id === id);
     const source = Math.min(...(alignment?.sourceIds.map((segmentId) => props.sourceSegments.find((segment) => segment.id === segmentId)?.order ?? Number.MAX_SAFE_INTEGER) ?? []));
@@ -382,7 +386,7 @@ const groupWarning = computed(() => {
     return { source, target };
   }).sort((a, b) => a.source - b.source);
   return positions.some((position, index) => index > 0 && position.target < positions[index - 1].target)
-    ? "所选 Alignment 的两侧顺序可能交叉；请确认 Group 后的阅读顺序。"
+    ? t('crossedGroupWarning')
     : null;
 });
 const ungroupableAlignment = computed(() => {
@@ -399,19 +403,19 @@ const selectedSegments = computed(() => ([
 ]));
 const segmentMergeIssue = computed(() => {
   const segments = selectedSegments.value;
-  if (segments.length < 2) return "选择同一侧至少两个连续 Segment";
-  if (new Set(segments.map((segment) => segment.side)).size !== 1) return "Merge 内容只能合并同一语言侧的 Segment";
+  if (segments.length < 2) return t('mergeSelectHint');
+  if (new Set(segments.map((segment) => segment.side)).size !== 1) return t('mergeSameSideRequired');
   const ordered = [...segments].sort((a, b) => a.order - b.order);
-  if (ordered.some((segment, index) => index > 0 && segment.order !== ordered[index - 1].order + 1)) return "Merge 内容要求 Segment 在当前顺序中连续";
+  if (ordered.some((segment, index) => index > 0 && segment.order !== ordered[index - 1].order + 1)) return t('mergeConsecutiveRequired');
   const alignmentIds = new Set(segments.map((segment) => alignmentBySegmentId.value.get(segment.id) ?? null));
-  if (alignmentIds.size > 1) return "选中的 Segment 跨越多个 Alignment Block；请先 Group，再合并内容";
+  if (alignmentIds.size > 1) return t('mergeGroupFirst');
   return null;
 });
 const segmentMergePlan = computed(() => segmentMergeIssue.value ? null : [...selectedSegments.value].sort((a, b) => a.order - b.order));
 const segmentSplitPlan = computed(() => selectedSegments.value.length === 1 ? selectedSegments.value[0] : null);
 const segmentSplitIssue = computed(() => {
-  if (!selectedSegments.value.length) return "选择一个 Segment 后拆分内容";
-  if (selectedSegments.value.length > 1) return "Split 内容一次只能拆分一个 Segment";
+  if (!selectedSegments.value.length) return t('splitSelectHint');
+  if (selectedSegments.value.length > 1) return t('splitSingleRequired');
   return null;
 });
 const openMergeContent = () => {
@@ -462,44 +466,44 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="workspace" :class="[`workspace--${mode}`, { 'workspace--trackpad': trackpadOptimized }]" aria-label="双语平行工作区">
-    <div v-if="mode === 'review' || mode === 'order'" class="unified-toolbar" aria-label="审阅与排序工具">
-      <section class="unified-toolbar__group" aria-label="顺序操作">
-      <button class="tool-button tool-button--active" type="button" title="从中文或英文编号手柄拖动 Segment"><GripVertical :size="15" />拖动排序</button>
-      <button class="tool-button" type="button" :disabled="!writable || !orderSelection" @click="orderSelection && emit('move', orderSelection.side, orderSelection.segmentId, 'up')"><ArrowUp :size="15" />上移</button>
-      <button class="tool-button" type="button" :disabled="!writable || !orderSelection" @click="orderSelection && emit('move', orderSelection.side, orderSelection.segmentId, 'down')"><ArrowDown :size="15" />下移</button>
-      <button class="tool-button" type="button" :disabled="!writable" @click="emit('resetOrder')"><RotateCcw :size="15" />恢复顺序</button>
+  <section class="workspace" :class="[`workspace--${mode}`, { 'workspace--trackpad': trackpadOptimized }]" :aria-label="t('parallelWorkspace')">
+    <div v-if="mode === 'review' || mode === 'order'" class="unified-toolbar" :aria-label="t('reviewOrderTools')">
+      <section class="unified-toolbar__group" :aria-label="t('orderActions')">
+      <button class="tool-button tool-button--active" type="button" :title="t('dragHandleHint')"><GripVertical :size="15" />{{ t('dragOrder') }}</button>
+      <button class="tool-button" type="button" :disabled="!writable || !orderSelection" @click="orderSelection && emit('move', orderSelection.side, orderSelection.segmentId, 'up')"><ArrowUp :size="15" />{{ t('moveUp') }}</button>
+      <button class="tool-button" type="button" :disabled="!writable || !orderSelection" @click="orderSelection && emit('move', orderSelection.side, orderSelection.segmentId, 'down')"><ArrowDown :size="15" />{{ t('moveDown') }}</button>
+      <button class="tool-button" type="button" :disabled="!writable" @click="emit('resetOrder')"><RotateCcw :size="15" />{{ t('restoreOrder') }}</button>
       </section>
-      <section class="unified-toolbar__group unified-toolbar__group--relations" aria-label="Alignment 关系操作">
-        <button class="tool-button tool-button--link" type="button" :disabled="!writable || selectedAlignmentIds.size > 0 || hasAlignedSegmentSelection || !selectedSourceIds.size || !selectedTargetIds.size" :title="hasAlignedSegmentSelection ? '已对齐句段须先 Unlink；Link 不会静默抢占关系' : '分别选择至少一条未对齐中文和英文 Segment'" @click="emit('link', [...selectedSourceIds], [...selectedTargetIds])"><Link2 :size="15" />Link</button>
-        <button class="tool-button" type="button" :disabled="!writable || !selectedUnlinkableId" title="在中间关系轨选择一个 Alignment" @click="selectedUnlinkableId && emit('unlink', selectedUnlinkableId)"><Link2Off :size="15" />Unlink</button>
-        <button class="tool-button" type="button" :disabled="!writable || !groupPlan" :title="groupHint" @click="groupPlan && emit('group', groupPlan.alignmentIds, groupPlan.unlinkedSegmentIds)"><Merge :size="15" />Group</button>
-        <button class="tool-button" type="button" :disabled="!writable || !ungroupableAlignment" title="编辑两侧的明确分组边界" @click="openUngroupDialog"><Scissors :size="15" />Ungroup</button>
+      <section class="unified-toolbar__group unified-toolbar__group--relations" :aria-label="t('relationActions')">
+        <button class="tool-button tool-button--link" type="button" :disabled="!writable || selectedAlignmentIds.size > 0 || hasAlignedSegmentSelection || !selectedSourceIds.size || !selectedTargetIds.size" :title="hasAlignedSegmentSelection ? t('unlinkFirstHint') : t('linkSelectionHint')" @click="emit('link', [...selectedSourceIds], [...selectedTargetIds])"><Link2 :size="15" />{{ t('link') }}</button>
+        <button class="tool-button" type="button" :disabled="!writable || !selectedUnlinkableId" :title="t('selectRailHint')" @click="selectedUnlinkableId && emit('unlink', selectedUnlinkableId)"><Link2Off :size="15" />{{ t('unlink') }}</button>
+        <button class="tool-button" type="button" :disabled="!writable || !groupPlan" :title="groupHint" @click="groupPlan && emit('group', groupPlan.alignmentIds, groupPlan.unlinkedSegmentIds)"><Merge :size="15" />{{ t('groupAction') }}</button>
+        <button class="tool-button" type="button" :disabled="!writable || !ungroupableAlignment" :title="t('editGroupBoundaries')" @click="openUngroupDialog"><Scissors :size="15" />{{ t('ungroup') }}</button>
       </section>
-      <section class="unified-toolbar__group unified-toolbar__group--unlinked-nav" aria-label="上一未匹配">
-        <span class="unlinked-nav__label">上一未匹配</span>
-        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" title="上一未匹配 Segment" aria-label="上一未匹配 Segment" @click="navigateUnlinked(-1, false)"><ArrowUp :size="16" /></button>
-        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" title="上一连续未匹配段" aria-label="上一连续未匹配段" @click="navigateUnlinked(-1, true)"><ChevronsUp :size="16" /></button>
+      <section class="unified-toolbar__group unified-toolbar__group--unlinked-nav" :aria-label="t('previousUnmatched')">
+        <span class="unlinked-nav__label">{{ t('previousUnmatched') }}</span>
+        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" :title="t('previousUnmatchedSegment')" :aria-label="t('previousUnmatchedSegment')" @click="navigateUnlinked(-1, false)"><ArrowUp :size="16" /></button>
+        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" :title="t('previousUnmatchedRun')" :aria-label="t('previousUnmatchedRun')" @click="navigateUnlinked(-1, true)"><ChevronsUp :size="16" /></button>
       </section>
-      <section class="unified-toolbar__group unified-toolbar__group--unlinked-nav" aria-label="下一未匹配">
-        <span class="unlinked-nav__label">下一未匹配</span>
-        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" title="下一未匹配 Segment" aria-label="下一未匹配 Segment" @click="navigateUnlinked(1, false)"><ArrowDown :size="16" /></button>
-        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" title="下一连续未匹配段" aria-label="下一连续未匹配段" @click="navigateUnlinked(1, true)"><ChevronsDown :size="16" /></button>
+      <section class="unified-toolbar__group unified-toolbar__group--unlinked-nav" :aria-label="t('nextUnmatched')">
+        <span class="unlinked-nav__label">{{ t('nextUnmatched') }}</span>
+        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" :title="t('nextUnmatchedSegment')" :aria-label="t('nextUnmatchedSegment')" @click="navigateUnlinked(1, false)"><ArrowDown :size="16" /></button>
+        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" :title="t('nextUnmatchedRun')" :aria-label="t('nextUnmatchedRun')" @click="navigateUnlinked(1, true)"><ChevronsDown :size="16" /></button>
       </section>
-      <section v-if="selectedSegments.length" class="unified-toolbar__group unified-toolbar__group--content" aria-label="Segment 内容操作">
-        <button class="tool-button" type="button" :disabled="!writable || !segmentMergePlan" :title="segmentMergeIssue ?? '合并内容会保留首个 Segment ID'" @click="openMergeContent"><Merge :size="15" />Merge 内容</button>
-        <button class="tool-button" type="button" :disabled="!writable || !segmentSplitPlan" :title="segmentSplitIssue ?? '以无损 parts 拆分当前内容'" @click="openSplitContent"><Scissors :size="15" />Split 内容</button>
+      <section v-if="selectedSegments.length" class="unified-toolbar__group unified-toolbar__group--content" :aria-label="t('contentActions')">
+        <button class="tool-button" type="button" :disabled="!writable || !segmentMergePlan" :title="segmentMergeIssue ?? t('mergePreservesId')" @click="openMergeContent"><Merge :size="15" />{{ t('mergeContent') }}</button>
+        <button class="tool-button" type="button" :disabled="!writable || !segmentSplitPlan" :title="segmentSplitIssue ?? t('splitLosslessHint')" @click="openSplitContent"><Scissors :size="15" />{{ t('splitContent') }}</button>
       </section>
       <span v-if="groupWarning || (segmentMergeIssue && selectedSegments.length)" class="unified-toolbar__warning">{{ groupWarning ?? segmentMergeIssue }}</span>
-      <button v-if="hasOperationSelection || orderSelection" class="selection-clear" type="button" @click="clearSelection">清除选择</button>
-      <span v-else class="unified-toolbar__summary">{{ writable ? `中文 ${sourceSegments.length} 段 · 英文 ${targetSegments.length} 段` : '演示预览 · 打开工程后可操作' }}</span>
+      <button v-if="hasOperationSelection || orderSelection" class="selection-clear" type="button" @click="clearSelection">{{ t('clearSelection') }}</button>
+      <span v-else class="unified-toolbar__summary">{{ writable ? t('selectedSegmentCounts', { p0: sourceSegments.length, p1: targetSegments.length }) : t('demoOpenHint') }}</span>
     </div>
-    <div v-if="findOpen && mode === 'review'" class="view-find" role="search" aria-label="审阅模式快速查找">
-      <Search :size="16" /><input ref="findInputRef" v-model="findQuery" aria-label="查找当前平行视图" placeholder="查找中文或英文…" @keydown.enter.prevent="activateFindMatch(findCursor + ($event.shiftKey ? -1 : 1))" @keydown.esc.prevent="closeFind" />
-      <span>{{ findPending ? '查找中…' : findMatches.length ? `${findCursor + 1} / ${findMatches.length}` : findQuery ? '无结果' : '输入关键词' }}</span>
-      <button type="button" title="上一处" :disabled="!findMatches.length" @click="activateFindMatch(findCursor - 1)"><ArrowUp :size="15" /></button><button type="button" title="下一处" :disabled="!findMatches.length" @click="activateFindMatch(findCursor + 1)"><ArrowDown :size="15" /></button><button type="button" title="关闭查找" @click="closeFind"><X :size="16" /></button>
+    <div v-if="findOpen && mode === 'review'" class="view-find" role="search" :aria-label="t('quickFindLabel')">
+      <Search :size="16" /><input ref="findInputRef" v-model="findQuery" :aria-label="t('findCurrentView')" :placeholder="t('findPlaceholder')" @keydown.enter.prevent="activateFindMatch(findCursor + ($event.shiftKey ? -1 : 1))" @keydown.esc.prevent="closeFind" />
+      <span>{{ findPending ? t('finding') : findMatches.length ? `${findCursor + 1} / ${findMatches.length}` : findQuery ? t('noResults') : t('enterKeyword') }}</span>
+      <button type="button" :title="t('previousMatch')" :disabled="!findMatches.length" @click="activateFindMatch(findCursor - 1)"><ArrowUp :size="15" /></button><button type="button" :title="t('nextMatch')" :disabled="!findMatches.length" @click="activateFindMatch(findCursor + 1)"><ArrowDown :size="15" /></button><button type="button" :title="t('closeFind')" @click="closeFind"><X :size="16" /></button>
     </div>
-    <div class="column-headings" :style="{ paddingRight: `${listScrollbarWidth}px` }"><h2>中文 <span>（原文）</span></h2><div class="heading-divider" aria-hidden="true"></div><h2>English <span>（译文）</span></h2></div>
+    <div class="column-headings" :style="{ paddingRight: `${listScrollbarWidth}px` }"><h2>{{ languageLabel(fallbackLanguages, sourceLanguage ?? 'zh') }} <span>{{ t('sourceSuffix') }}</span></h2><div class="heading-divider" aria-hidden="true"></div><h2>{{ languageLabel(fallbackLanguages, targetLanguage ?? 'en') }} <span>{{ t('targetSuffix') }}</span></h2></div>
     <AlignedWorkspaceViewport
       ref="alignedWorkspaceRef"
       :rows="rows"
@@ -537,7 +541,7 @@ onBeforeUnmount(() => {
       @escape-edit="emit('escapeEdit')"
       @scrollbar-width="listScrollbarWidth = $event"
     />
-    <div v-if="mode === 'edit' && !editSession" class="edit-tip"><LockKeyhole :size="15" />双击任意句子进入编辑；Esc 保存并退出，Ctrl/⌘+Enter 保存并退出。</div>
+    <div v-if="mode === 'edit' && !editSession" class="edit-tip"><LockKeyhole :size="15" />{{ t('editShortcutHint') }}</div>
     <OrderDragOverlay :dragged-segment="draggedSegment" :drag-pointer="dragPointer" />
     <SegmentContentDialog v-if="contentDialog" :operation="contentDialog" @close="closeContentDialog" @merge="confirmMergeContent" @split="confirmSplitContent" />
     <AlignmentUngroupDialog v-if="ungroupDialogAlignment" :alignment="ungroupDialogAlignment" :source-segments="sourceSegments" :target-segments="targetSegments" @close="ungroupDialogAlignment = null" @confirm="confirmUngroup" />
@@ -546,7 +550,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .workspace { --alignment-gutter: 176px; }
-.unified-toolbar { display: flex; min-height: 55px; align-items: center; gap: 0; overflow-x: auto; padding: 0 28px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); scrollbar-width: thin; }
+.unified-toolbar { display: flex; flex: 0 0 auto; flex-wrap: wrap; min-height: 55px; align-items: center; gap: 8px 0; padding: 8px 20px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
 .unified-toolbar__group { display: flex; flex: 0 0 auto; align-items: center; gap: 9px; padding-right: 16px; }
 .unified-toolbar__group + .unified-toolbar__group { padding-left: 16px; border-left: 1px solid var(--line); }
 .unified-toolbar .tool-button { height: 34px; white-space: nowrap; }
