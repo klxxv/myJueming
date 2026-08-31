@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../../i18n';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import type { EditSession } from "../../composables/useViewModeController";
 import type {
@@ -250,11 +251,11 @@ defineExpose({ focusAlignment, focusSegment, focusSegments, focusViewport, measu
     ref="viewportRef"
     class="aligned-workspace-viewport"
     tabindex="-1"
-    aria-label="双语 Alignment 计算对齐工作区"
+    :aria-label="t('parallelWorkspaceLabel')"
     @scroll.passive="handleScroll"
   >
     <div class="aligned-workspace-canvas" :style="{ height: `${totalHeight}px` }">
-      <section class="aligned-workspace-column aligned-workspace-column--source" aria-label="中文 Segment 列">
+      <section class="aligned-workspace-column aligned-workspace-column--source" :aria-label="t('sourceColumnLabel')">
         <OrderDropZone
           v-for="zone in sourceDropZones"
           :key="zone.key"
@@ -303,7 +304,7 @@ defineExpose({ focusAlignment, focusSegment, focusSegments, focusViewport, measu
         />
       </section>
 
-      <section class="aligned-workspace-relations" aria-label="Alignment 关系轨">
+      <section class="aligned-workspace-relations" :aria-label="t('relationRailLabel')">
         <AlignmentRelationRail
           v-for="position in visiblePositions"
           :key="`relation-${position.block.alignmentId}`"
@@ -319,7 +320,7 @@ defineExpose({ focusAlignment, focusSegment, focusSegments, focusViewport, measu
         />
       </section>
 
-      <section class="aligned-workspace-column aligned-workspace-column--target" aria-label="英文 Segment 列">
+      <section class="aligned-workspace-column aligned-workspace-column--target" :aria-label="t('targetColumnLabel')">
         <OrderDropZone
           v-for="zone in targetDropZones"
           :key="zone.key"

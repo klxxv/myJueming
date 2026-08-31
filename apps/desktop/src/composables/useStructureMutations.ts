@@ -1,3 +1,4 @@
+import { t, type LocalizedMessage } from '../i18n';
 import type { Ref } from "vue";
 import type { AlignmentDto, AlignmentGapEdge, KernelClient, ProjectSnapshot, SegmentDto } from "../domain/kernel-client";
 
@@ -10,7 +11,7 @@ interface StructureMutationOptions {
   requireOpenProject: () => boolean;
   applySnapshot: (snapshot: ProjectSnapshot) => Promise<void>;
   clearWorkspaceSelection: () => void;
-  notify: (message: string) => void;
+  notify: (message: LocalizedMessage) => void;
   errorMessage: (error: unknown) => string;
 }
 
@@ -28,15 +29,15 @@ export const useStructureMutations = ({
 }: StructureMutationOptions) => {
   const insertAlignmentGap = async (segmentId: string, edge: AlignmentGapEdge) => {
     if (!requireOpenProject() || busy.value) return;
-    const sideLabel = sourceRows.value.some((segment) => segment.id === segmentId) ? "中文" : "英文";
+    const isSource = sourceRows.value.some((segment) => segment.id === segmentId);
     busy.value = true;
     try {
       await applySnapshot(await kernelClient.insertAlignmentGap(segmentId, edge));
       selectedAlignmentId.value = alignmentRows.value.find((alignment) =>
         alignment.sourceIds.includes(segmentId) || alignment.targetIds.includes(segmentId))?.id ?? selectedAlignmentId.value;
-      notify(`已在${sideLabel}句段${edge === "before" ? "上方" : "下方"}插入空位，并自动重建后续 1:1 对齐`);
+      notify(() => t('gapInserted', { p0: t(isSource ? 'sourceSide' : 'targetSide'), p1: edge === "before" ? t('above') : t('below') }));
     } catch (error) {
-      notify(`插入空位失败：${errorMessage(error)}`);
+      notify(() => t('gapFailed', { p0: errorMessage(error) }));
     } finally {
       busy.value = false;
     }
@@ -48,9 +49,9 @@ export const useStructureMutations = ({
     try {
       await applySnapshot(await kernelClient.mergeSegments(segmentIds, mergedContent));
       clearWorkspaceSelection();
-      notify(`已合并 ${segmentIds.length} 个 Segment 内容；首项 ID 与关联锚点已保留`);
+      notify(() => t('segmentsMerged', { p0: segmentIds.length }));
     } catch (error) {
-      notify(`Merge 内容失败：${errorMessage(error)}`);
+      notify(() => t('mergeFailed', { p0: errorMessage(error) }));
     } finally {
       busy.value = false;
     }
@@ -62,9 +63,9 @@ export const useStructureMutations = ({
     try {
       await applySnapshot(await kernelClient.splitSegment(segmentId, parts));
       clearWorkspaceSelection();
-      notify(`已无损拆分为 ${parts.length} 个 Segment；原 Alignment 关系保持不变`);
+      notify(() => t('segmentSplit', { p0: parts.length }));
     } catch (error) {
-      notify(`Split 内容失败：${errorMessage(error)}`);
+      notify(() => t('splitFailed', { p0: errorMessage(error) }));
     } finally {
       busy.value = false;
     }
@@ -86,13 +87,12 @@ export const useStructureMutations = ({
       selectedAlignmentId.value = alignmentRows.value.find((alignment) =>
         [...sourceSegmentIds].every((id) => alignment.sourceIds.includes(id))
         && [...targetSegmentIds].every((id) => alignment.targetIds.includes(id)))?.id ?? selectedAlignmentId.value;
-      const parts = [
-        alignmentIds.length ? `${alignmentIds.length} 个 Alignment` : "",
-        unlinkedSegmentIds.length ? `${unlinkedSegmentIds.length} 条未对齐句段` : "",
-      ].filter(Boolean);
-      notify(`已将 ${parts.join("与")} Group 为一个 Alignment`);
+      notify(() => t('alignmentsGrouped', { p0: [
+        alignmentIds.length ? t('alignmentCount', { p0: alignmentIds.length }) : "",
+        unlinkedSegmentIds.length ? t('unalignedCount', { p0: unlinkedSegmentIds.length }) : "",
+      ].filter(Boolean).join(t('and')) }));
     } catch (error) {
-      notify(`Group 失败：${errorMessage(error)}`);
+      notify(() => t('groupFailed', { p0: errorMessage(error) }));
     } finally {
       busy.value = false;
     }
@@ -104,9 +104,9 @@ export const useStructureMutations = ({
     try {
       await applySnapshot(await kernelClient.ungroupAlignment(alignmentId, sourceGroups, targetGroups));
       clearWorkspaceSelection();
-      notify("已 Ungroup Alignment");
+      notify(() => t('alignmentUngrouped'));
     } catch (error) {
-      notify(`Ungroup 失败：${errorMessage(error)}`);
+      notify(() => t('ungroupFailed', { p0: errorMessage(error) }));
     } finally {
       busy.value = false;
     }

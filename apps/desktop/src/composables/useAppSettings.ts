@@ -1,3 +1,5 @@
+import { t, formatNumber, type LocalizedMessage } from '../i18n';
+import { formatError } from '../i18n/kernel-messages';
 import { computed, ref } from "vue";
 
 export type AppTheme = "light" | "eye";
@@ -7,7 +9,7 @@ export type ShortcutProfile = "auto" | "macos" | "windows";
 type UseAppSettingsOptions = {
   detectedMacOS: boolean;
   clearCache: () => Promise<number>;
-  onStatus: (message: string) => void;
+  onStatus: (message: LocalizedMessage) => void;
 };
 
 const AUTOSAVE_DELAYS = [1000, 3000, 5000, 10000, 30000];
@@ -49,12 +51,12 @@ export function useAppSettings(options: UseAppSettingsOptions) {
     commitEdit: "Ctrl+Enter",
   });
   const shortcutRows = computed<Array<[string, string]>>(() => [
-    ["新建 / 打开工程", `${shortcutLabels.value.newProject} / ${shortcutLabels.value.openProject}`],
-    ["保存工程", shortcutLabels.value.save],
-    ["审阅内查找", shortcutLabels.value.find],
-    ["下一处 / 上一处", `${shortcutLabels.value.nextFind} / ${shortcutLabels.value.previousFind}`],
-    ["撤销 / 重做", `${shortcutLabels.value.undo} / ${shortcutLabels.value.redo}`],
-    ["保存句段并退出", `${shortcutLabels.value.commitEdit} · Esc`],
+    [t('shortcutNewOpen'), `${shortcutLabels.value.newProject} / ${shortcutLabels.value.openProject}`],
+    [t('saveProject'), shortcutLabels.value.save],
+    [t('shortcutFind'), shortcutLabels.value.find],
+    [t('shortcutNextPrevious'), `${shortcutLabels.value.nextFind} / ${shortcutLabels.value.previousFind}`],
+    [t('shortcutUndoRedo'), `${shortcutLabels.value.undo} / ${shortcutLabels.value.redo}`],
+    [t('shortcutSaveExit'), `${shortcutLabels.value.commitEdit} · Esc`],
   ]);
 
   function applyUiSettings() {
@@ -77,14 +79,14 @@ export function useAppSettings(options: UseAppSettingsOptions) {
     localStorage.setItem("jueming-shortcut-profile", shortcutProfile.value);
     localStorage.setItem("jueming-trackpad-optimized", String(trackpadOptimized.value));
     if (notifyUser) {
-      options.onStatus(`快捷键已切换为${usesMacShortcuts.value ? "macOS" : "Windows / Linux"}布局`);
+      options.onStatus(() => t('shortcutChanged', { p0: usesMacShortcuts.value ? "macOS" : "Windows / Linux" }));
     }
   }
 
   function applyPersistenceSettings() {
     localStorage.setItem("jueming-autosave-delay-ms", String(autoSaveDelayMs.value));
     localStorage.setItem("jueming-cache-cleanup-policy", cacheCleanupPolicy.value);
-    options.onStatus("自动保存与缓存策略已更新");
+    options.onStatus(() => t('persistenceUpdated'));
   }
 
   function initializeSettings() {
@@ -119,10 +121,10 @@ export function useAppSettings(options: UseAppSettingsOptions) {
       lastCacheCleanupAt.value = Date.now();
       localStorage.setItem("jueming-cache-cleanup-at", String(lastCacheCleanupAt.value));
       if (manual) {
-        options.onStatus(`已清理 ${(removedBytes / 1024).toFixed(1)} KB 可重建缓存；Revision 历史未删除`);
+        options.onStatus(() => t('cacheCleared', { p0: formatNumber(removedBytes / 1024, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) }));
       }
     } catch (error) {
-      if (manual) options.onStatus(`缓存清理失败：${error instanceof Error ? error.message : String(error)}`);
+      if (manual) options.onStatus(() => t('cacheFailed', { p0: formatError(error) }));
     } finally {
       cacheCleaning.value = false;
     }

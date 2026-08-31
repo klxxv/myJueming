@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="fr-FR" xmlns="http://schemas.microsoft.com/wix/2006/localization">
+  <String Id="ProductName">Jueming Aligner</String>
+  <String Id="RunApp">Lancer Jueming Aligner</String>
+  <String Id="UninstallApp">Désinstaller Jueming Aligner</String>
+  <String Id="ApplicationFeature">Application</String>
+  <String Id="ShortcutsFeature">Raccourcis</String>
+  <String Id="PathFeature">Variable d’environnement PATH</String>
+  <String Id="LaunchApp">Lancer Jueming Aligner</String>
+  <String Id="DowngradeErrorMessage">Une version plus récente de Jueming Aligner est déjà installée.</String>
+  <String Id="PathEnvVarFeature">Ajouter Jueming Aligner au PATH pour le lancer depuis n’importe quel dossier.</String>
+  <String Id="InstallAppFeature">Installer Jueming Aligner.</String>
+</WixLocalization>

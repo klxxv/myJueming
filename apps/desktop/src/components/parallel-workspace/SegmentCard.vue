@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatError } from '../../i18n/kernel-messages';
+import { t } from '../../i18n';
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Check, GripVertical, Link2, MessageSquareText, Plus, Star, X } from "@lucide/vue";
 import type { EditSession } from "../../composables/useViewModeController";
@@ -103,8 +105,8 @@ onBeforeUnmount(() => cleanupOrderDrag?.());
       type="button"
       :disabled="!writable"
       data-order-drag-handle
-      :aria-label="`选择并拖动${side === 'source' ? '中文' : '英文'} Segment ${segment.order + 1}`"
-      :title="`拖动${side === 'source' ? '中文' : '英文'} Segment；单击后也可用上移和下移`"
+      :aria-label="t('dragSegmentLabel', { p0: side === 'source' ? t('sourceSide') : t('targetSide'), p1: segment.order + 1 })"
+      :title="t('dragSegmentHint', { p0: side === 'source' ? t('sourceSide') : t('targetSide') })"
       @click.stop="emit('selectOrder')"
     ><GripVertical :size="17" /><span>{{ orderLabel }}</span></button>
     <button
@@ -112,7 +114,7 @@ onBeforeUnmount(() => cleanupOrderDrag?.());
       class="segment-card__index"
       type="button"
       :title="segment.id"
-      :aria-label="`选择 ${side === 'source' ? '中文' : '英文'} Segment ${segment.order + 1}`"
+      :aria-label="t('selectSegmentLabel', { p0: side === 'source' ? t('sourceSide') : t('targetSide'), p1: segment.order + 1 })"
       @click.stop="emit('select', $event)"
     >{{ orderLabel }}</button>
 
@@ -121,8 +123,8 @@ onBeforeUnmount(() => cleanupOrderDrag?.());
         class="segment-card__context-action"
         :class="{ 'segment-card__context-action--highlighted': annotated }"
         type="button"
-        :aria-label="annotated ? '打开此句段的批注（已有批注）' : '打开此句段的批注'"
-        :title="annotated ? '已有批注' : '批注'"
+        :aria-label="annotated ? t('openExistingAnnotations') : t('openSegmentAnnotations')"
+        :title="annotated ? t('hasAnnotations') : t('annotation')"
         @click.stop="emit('annotation')"
       ><MessageSquareText :size="17" /></button>
       <button
@@ -130,8 +132,8 @@ onBeforeUnmount(() => cleanupOrderDrag?.());
         :class="{ 'segment-card__context-action--highlighted': bookmarked }"
         type="button"
         :disabled="!writable"
-        :aria-label="bookmarked ? '移除书签' : '添加书签'"
-        :title="bookmarked ? '移除书签' : '添加书签'"
+        :aria-label="bookmarked ? t('removeBookmark') : t('addBookmark')"
+        :title="bookmarked ? t('removeBookmark') : t('addBookmark')"
         @click.stop="emit('bookmark')"
       ><Star :size="17" :fill="bookmarked ? 'currentColor' : 'none'" /></button>
     </div>
@@ -140,21 +142,21 @@ onBeforeUnmount(() => cleanupOrderDrag?.());
       <textarea
         :value="editSession.draft"
         autofocus
-        :aria-label="side === 'source' ? '编辑中文原文' : '编辑英文译文'"
+        :aria-label="side === 'source' ? t('editSource') : t('editTarget')"
         @input="emit('editDraft', ($event.target as HTMLTextAreaElement).value)"
         @keydown.esc.stop.prevent="emit('escapeEdit')"
         @keydown.ctrl.enter.stop.prevent="emit('commitEdit', true)"
         @keydown.meta.enter.stop.prevent="emit('commitEdit', true)"
       ></textarea>
       <div class="segment-card__edit-meta">
-        <span>{{ side === 'source' ? `字数: ${editSession.draft.length}` : `Words: ${wordCount}` }}</span>
-        <span class="segment-card__save-state"><Check :size="15" />{{ editSession.status === 'saving' ? '保存中' : editSession.status === 'error' ? '保存失败' : editSession.status === 'dirty' ? '待保存' : '已保存' }}</span>
+        <span>{{ side === 'source' ? t('characterCount', { p0: editSession.draft.length }) : t('wordCount', { p0: wordCount }) }}</span>
+        <span class="segment-card__save-state"><Check :size="15" />{{ editSession.status === 'saving' ? t('saving') : editSession.status === 'error' ? t('saveFailed') : editSession.status === 'dirty' ? t('savePending') : t('saved') }}</span>
         <Link2 :size="17" />
       </div>
-      <p v-if="editSession.error" class="segment-card__edit-error">{{ editSession.error }}</p>
+      <p v-if="editSession.error" class="segment-card__edit-error">{{ formatError(editSession.error) }}</p>
       <div class="segment-card__edit-actions">
-        <button type="button" @click="emit('cancelEdit')"><X :size="14" />放弃并退出</button>
-        <button class="primary-button" type="button" :disabled="editSession.status === 'saving'" @click="emit('commitEdit', true)"><Check :size="14" />保存并退出</button>
+        <button type="button" @click="emit('cancelEdit')"><X :size="14" />{{ t('discardExit') }}</button>
+        <button class="primary-button" type="button" :disabled="editSession.status === 'saving'" @click="emit('commitEdit', true)"><Check :size="14" />{{ t('saveExit') }}</button>
       </div>
     </div>
     <button
@@ -165,15 +167,15 @@ onBeforeUnmount(() => cleanupOrderDrag?.());
       @dblclick.stop="emit('requestEdit')"
     >{{ segment.text }}</button>
 
-    <span v-if="fragmented" class="segment-card__fragment-warning">跨段片段</span>
+    <span v-if="fragmented" class="segment-card__fragment-warning">{{ t('fragmentWarning') }}</span>
 
     <button
       v-if="showGapControls"
       class="segment-card__gap segment-card__gap--before"
       type="button"
       :disabled="!canInsertBefore"
-      :aria-label="`在所选${side === 'source' ? '中文' : '英文'}句段上方插入空位`"
-      title="在上方插入空位，并按当前顺序重建后续 1:1 对齐"
+      :aria-label="t('gapAboveLabel', { p0: side === 'source' ? t('sourceSide') : t('targetSide') })"
+      :title="t('gapAboveHint')"
       @click.stop="emit('insertGap', 'before')"
     ><Plus :size="15" :stroke-width="2.6" /></button>
     <button
@@ -181,8 +183,8 @@ onBeforeUnmount(() => cleanupOrderDrag?.());
       class="segment-card__gap segment-card__gap--after"
       type="button"
       :disabled="!canInsertAfter"
-      :aria-label="`在所选${side === 'source' ? '中文' : '英文'}句段下方插入空位`"
-      title="在下方插入空位，并按当前顺序重建后续 1:1 对齐"
+      :aria-label="t('gapBelowLabel', { p0: side === 'source' ? t('sourceSide') : t('targetSide') })"
+      :title="t('gapBelowHint')"
       @click.stop="emit('insertGap', 'after')"
     ><Plus :size="15" :stroke-width="2.6" /></button>
   </div>

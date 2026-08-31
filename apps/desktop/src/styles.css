@@ -71,7 +71,7 @@ button { color: inherit; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline: 3px solid rgb(47 129 67 / 36%); outline-offset: 2px; }
 button:disabled { cursor: not-allowed; opacity: .42; }
 
-.app-shell { display: grid; grid-template-rows: 48px 68px minmax(0, 1fr) 58px; height: 100%; min-height: 760px; background: var(--paper); }
+.app-shell { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 48px 68px minmax(0, 1fr) 58px; height: 100%; min-height: 760px; background: var(--paper); }
 .window-chrome { display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
 .brand-lockup, .window-actions, .toolbar-left, .toolbar-actions, .toolbar-status, .mode-control, .nav-item, .footer-left, .footer-right, .footer-project, .edit-tip, .tool-button, .order-label, .order-hint, .edit-meta, .edit-actions, .search-options, .annotation-filter, .history-actions { display: flex; align-items: center; }
 .brand-lockup { gap: 9px; }
@@ -97,6 +97,16 @@ button:disabled { cursor: not-allowed; opacity: .42; }
 .toolbar-button--export { padding-right: 6px; }
 .mode-control { position: relative; gap: 8px; height: 38px; padding: 0 10px 0 12px; border: 1px solid #b7d9bb; border-radius: 7px; color: var(--green-900); background: var(--surface-green-soft); font-size: 14px; }
 .mode-control select { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
+.mode-control { flex-shrink: 0; }
+.toolbar-button { white-space: nowrap; }
+.footer-left, .footer-right, .footer-project, .save-state { min-width: 0; }
+.footer-left { flex: 1 1 45%; overflow: hidden; }
+.footer-right { flex: 1 1 55%; justify-content: flex-end; }
+.footer-right > span { white-space: nowrap; }
+.footer-project strong, .footer-status-pill { flex-shrink: 0; white-space: nowrap; }
+.footer-project { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.save-state { flex: 1; max-width: 42vw; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.progress-track { flex-shrink: 0; }
 .content-grid { --side-nav-width: 168px; --annotation-width: 355px; --annotation-track-width: 0px; display: grid; grid-template-columns: var(--side-nav-width) minmax(0, 1fr) var(--annotation-track-width); min-height: 0; overflow: hidden; transition: grid-template-columns 240ms cubic-bezier(.2, .8, .2, 1); }
 .content-grid--collapsed { --side-nav-width: 68px; }
 .content-grid--annotation { --annotation-track-width: var(--annotation-width); }

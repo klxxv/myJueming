@@ -8,6 +8,8 @@ MVP 功能代码已完成本地桌面闭环：Tauri 文件选择、双侧独立�
 
 ## 主要文档
 
+界面支持中文、English、Français。在「设置 → 外观与缩放 → 界面语言」中即时切换；偏好只保存在本机，离线可用，不改变工程的语种、正文或批注。
+
 - [MVP 实施计划](./jueming-aligner-mvp-implementation-plan-v0.2.md)
 - [MVP 功能规格](./jueming-aligner-mvp-functional-spec-v0.1.md)
 - [全局架构 Handoff](./jueming_global_architecture_handoff_v0.2.md)
@@ -17,6 +19,7 @@ MVP 功能代码已完成本地桌面闭环：Tauri 文件选择、双侧独立�
 - [MVP 视觉规范](./docs/design/mvp-visual-spec-v0.1.md)
 - [测试与 Computer Use 验收计划](./docs/testing/mvp-test-fixtures-and-computer-use-plan-v0.1.md)
 - [Windows / macOS 快捷键、触控板与打包说明](./docs/platform/desktop-platform-guide-v0.1.md)
+- [中英法国际化选型与维护指南](./docs/development/localization.md)
 - [当前品牌图标母版](./assets/brand/jueming-aligner-icon-master-v2.png)
 
 ## MVP 技术主线
@@ -40,6 +43,7 @@ Tauri 2 Desktop
 pnpm install
 pnpm build
 pnpm typecheck
+pnpm test
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace

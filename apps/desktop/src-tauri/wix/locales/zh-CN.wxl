@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="zh-CN" xmlns="http://schemas.microsoft.com/wix/2006/localization">
+  <String Id="ProductName">决明对齐器 Jueming Aligner</String>
+  <String Id="RunApp">运行决明对齐器</String>
+  <String Id="UninstallApp">卸载决明对齐器</String>
+  <String Id="ApplicationFeature">应用程序</String>
+  <String Id="ShortcutsFeature">快捷方式</String>
+  <String Id="PathFeature">PATH 环境变量</String>
+  <String Id="LaunchApp">启动决明对齐器</String>
+  <String Id="DowngradeErrorMessage">已安装更新版本的决明对齐器。</String>
+  <String Id="PathEnvVarFeature">将决明对齐器加入 PATH，以便从任意目录启动。</String>
+  <String Id="InstallAppFeature">安装决明对齐器。</String>
+</WixLocalization>
