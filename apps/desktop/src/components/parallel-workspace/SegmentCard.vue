@@ -138,6 +138,7 @@ onBeforeUnmount(() => cleanupOrderDrag?.());
 
     <div v-if="editing && editSession" class="segment-card__editor" @click.stop>
       <textarea
+        data-segment-content
         :value="editSession.draft"
         autofocus
         :aria-label="side === 'source' ? '编辑中文原文' : '编辑英文译文'"
@@ -160,6 +161,7 @@ onBeforeUnmount(() => cleanupOrderDrag?.());
     <button
       v-else
       class="segment-card__text"
+      data-segment-content
       type="button"
       @click.stop="emit('select', $event)"
       @dblclick.stop="emit('requestEdit')"

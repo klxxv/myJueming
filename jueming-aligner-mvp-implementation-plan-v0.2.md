@@ -9,6 +9,8 @@
 
 ---
 
+2026-09-06：用户已授权在 `codex/agent-mcp-pipeline` 分支实施 Agent / MCP / 全局侧栏 / Pipeline / 小花园扩展。原 MVP 验收记录描述扩展前基线；新增模块的接口、实施和验收分别见 [实施交接](docs/architecture/agent-implementation-handoff-v0.1.md)、[交付进度](docs/agent-delivery-status-v0.1.md) 与 [独立 QA](docs/testing/agent-integration-qa-v0.1.md)。此前的 Agent、中文分词和桌宠延期范围由本次明确请求调整，其余 NLP、云协作、外部可执行插件仍延期。
+
 ## 1. 计划结论
 
 首个可交付版本是一个 Windows 桌面端、本地离线、以人工操作为核心的双语平行语料对齐器。它必须完成以下闭环：

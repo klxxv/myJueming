@@ -1,5 +1,6 @@
 //! Typed IPC handlers grouped by feature, preserving existing command names.
 
+pub(crate) mod agent;
 pub(crate) mod alignment;
 pub(crate) mod annotation;
 pub(crate) mod bookmark;

@@ -23,6 +23,7 @@ _Phase 0 的 14 项架构决策索引；状态以本地单机 MVP 的合同冻�
 | [ADR-013](ADR-013-order-alignment-gap.md) | Order 空位使用原子关系重建 | Accepted | 不创建假 Segment/空 Alignment |
 | [ADR-014](ADR-014-segment-structure-and-alignment-groups.md) | Segment 内容结构与 Alignment 分组解耦 | Accepted | Merge/Split 改内容；Group/Ungroup 改关系 |
 | [ADR-015](ADR-015-local-agent-application-host.md) | 全局应用宿主与 MCP / AG-UI 适配器 | Accepted | 单一工程写入者、版本绑定提案、可信原生批准、可卸载呈现层 |
+| [ADR-016](ADR-016-pipeline-method-artifacts.md) | Pipeline 方法与派生产物 | Accepted | 方法修订独立于 canonical Revision，分词不修改原文 |
 
 ### 决策依赖
 

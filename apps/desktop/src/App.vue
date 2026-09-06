@@ -1,15 +1,33 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { confirm, open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Check, ChevronDown, Download, Eye, FilePlus2, Folder, FolderOpen, History, Link2, ListOrdered, MessageSquareText, Monitor, PanelLeft, Pencil, Redo2, Save, Search, Settings2, Star, Undo2 } from "@lucide/vue";
-import ParallelWorkspace from "./components/ParallelWorkspace.vue";
+import { Check, ChevronDown, Download, Eye, FilePlus2, Folder, FolderOpen, History, Link2, ListOrdered, MessageSquareText, Monitor, PanelLeft, Pencil, Redo2, Save, Search, Settings2, Sparkles, Star, Undo2, Workflow } from "@lucide/vue";
+import ParallelWorkspace, { type OperationSelectionContext } from "./components/ParallelWorkspace.vue";
 import AnnotationPanel, { type AnnotationDraft, type AnnotationFilter, type AnnotationItem } from "./components/AnnotationPanel.vue";
 import HistoryWorkspace, { type HistoryDiff, type RevisionItem } from "./components/HistoryWorkspace.vue";
 import SearchReplaceWorkspace, { type ReplacePreview as UiReplacePreview, type SearchQueryOptions, type SearchResult } from "./components/SearchReplaceWorkspace.vue";
 import BookmarksWorkspace from "./components/BookmarksWorkspace.vue";
 import NewProjectDialog from "./components/NewProjectDialog.vue";
 import SettingsWorkspace from "./components/SettingsWorkspace.vue";
+import GlobalSidePanel from "./components/GlobalSidePanel.vue";
+import AgentPanel from "./components/AgentPanel.vue";
+import AgentConnectionSettings from "./components/AgentConnectionSettings.vue";
+import AgentModelSettings from "./components/AgentModelSettings.vue";
+import { agentRuntimeClient, type AgentRuntimeMessage, type AgentRuntimeStatus, type AgentRuntimeEvent } from "./domain/agent-runtime-client";
+const loadPipelineWorkspace = () => import("./components/PipelineWorkspace.vue");
+const PipelineWorkspace = defineAsyncComponent(loadPipelineWorkspace);
+import { pipelineClient } from "./domain/pipeline-client";
+import type { PipelineMethodProposal } from "./domain/pipeline-types";
+import CompanionHabitat from "./components/CompanionHabitat.vue";
+import CompanionGarden from "./components/CompanionGarden.vue";
+import GuidanceOverlay from "./components/GuidanceOverlay.vue";
+import type { CompanionActivity } from "./domain/companion";
+import type { ReviewableProposal } from "./components/AgentActionBar.vue";
+import { useAgentWorkspace } from "./composables/useAgentWorkspace";
+import { agentClient } from "./domain/agent-client";
+import type { SearchSpec } from "./domain/agent-types";
+import type { SearchSegmentsResponse } from "./domain/kernel-client";
 import { useAppSettings } from "./composables/useAppSettings";
 import type { ReorderIntent } from "./composables/useOrderDragAndDrop";
 import { useViewModeController } from "./composables/useViewModeController";
@@ -18,7 +36,7 @@ import { alignments as fixtureAlignments, sourceSegments, targetSegments } from 
 import { createKernelClient, snapshotToWorkspace, type AlignmentDto, type BookmarkPreviewDto, type ExportFormat, type LanguageSide, type ProjectSnapshot, type ProjectSummaryDto, type ReplacePreviewRequest, type RevisionComparison, type SegmentDto, type WorkspaceMode } from "./domain/kernel-client";
 import "./styles.css";
 
-type NavId = "project" | "parallel" | "search" | "bookmarks" | "history" | "settings";
+type NavId = "project" | "parallel" | "search" | "bookmarks" | "history" | "pipeline" | "settings";
 type ModeMenuId = WorkspaceMode | "annotation";
 type ParallelWorkspaceExposed = {
   clearSelection: () => void;
@@ -37,6 +55,29 @@ const busy = ref(false);
 const statusMessage = ref(isTauriRuntime ? "尚未打开工程" : "演示预览 · 浏览器模式");
 const exportOpen = ref(false);
 const annotationOpen = ref(false);
+const assistantOpen = ref(false);
+const rightPanelTab = ref<"agent" | "annotations">("agent");
+const rightPanelOpen = computed(() => annotationOpen.value || assistantOpen.value);
+const agentBusy = ref(false);
+const agentActionError = ref<string | null>(null);
+const runtimeStatus = ref<AgentRuntimeStatus | null>(null);
+const runtimeMessages = ref<AgentRuntimeMessage[]>([]);
+const runtimeSessions = new Map<string, string>();
+const runtimeRuns = ref<Record<string, { runId: string; state: string }>>({});
+const runtimeStarting = ref<string | null>(null);
+let unlistenRuntime: (() => void) | null = null;
+let unlistenRuntimeResync: (() => void) | null = null;
+let runtimeHistoryGeneration = 0;
+const runtimeRunning = computed(() => runtimeStarting.value === agentProjectKey.value || ["running", "awaiting_approval"].includes(runtimeRuns.value[agentProjectKey.value]?.state ?? ""));
+const pipelineRefreshKey = ref(0);
+const pipelineVisited = ref(false);
+watch(activeNav, tab => { if (tab === "pipeline") pipelineVisited.value = true; });
+const guidance = ref<{ selector: string; label: string; key: number } | null>(null);
+const gardenVisible = computed(() => settings.value.device.pet.enabled && settings.value.device.pet.presentation !== "hidden");
+const gardenStrolling = ref(false);
+const companionActivity = computed<CompanionActivity>(() => agentProposals.value.length ? "awaiting_approval" : agentBusy.value || runtimeRunning.value ? "running" : "idle");
+const pipelineProposals = ref<PipelineMethodProposal[]>([]);
+const pipelineWorkspaceRef = ref<{ revealNode: (nodeId: string) => Promise<boolean>; reload: () => Promise<void>; hasDirtyDraft: () => boolean } | null>(null);
 const annotationWidth = ref(355);
 const annotationResizing = ref(false);
 const annotationContextSegmentId = ref<string | null>(null);
@@ -47,6 +88,12 @@ const searchRegex = ref(false);
 const searchCaseSensitive = ref(false);
 const replacement = ref("");
 const searchResults = ref<SearchResult[]>([]);
+const nativeReplacePreview = ref<UiReplacePreview | null>(null);
+const nativeReplaceRequest = ref<ReplacePreviewRequest | null>(null);
+const replacePreviewLoading = ref(false);
+const replacePreviewError = ref<string | null>(null);
+let replacePreviewGeneration = 0;
+const workspaceOperationSelection = ref<OperationSelectionContext>({ segmentIds: [], alignmentIds: [] });
 const annotationFilter = ref<AnnotationFilter>("all");
 const selectedAnnotationId = ref<string | null>(null);
 const selectedRevisionId = ref<string | null>(null);
@@ -83,10 +130,11 @@ const modeMenuItems: Array<{ id: ModeMenuId; label: string; hint: string; icon: 
 const navItems: Array<{ id: NavId; label: string; hint?: string; icon: typeof Folder }> = [
   { id: "project", label: "项目", icon: Folder }, { id: "parallel", label: "平行视图", icon: PanelLeft },
   { id: "search", label: "搜索", icon: Search }, { id: "bookmarks", label: "书签", icon: Star },
-  { id: "history", label: "历史", icon: History }, { id: "settings", label: "设置", icon: Settings2 },
+  { id: "history", label: "历史", icon: History },
+  { id: "pipeline", label: "Pipeline", hint: "处理流程", icon: Workflow },
+  { id: "settings", label: "设置", icon: Settings2 },
 ];
 const currentMode = computed(() => {
-  if (annotationOpen.value) return annotationModeItem;
   if (activeNav.value === "search") return { id: activeMode.value, label: "搜索", hint: "Search", icon: Search };
   return modeItems.find((item) => item.id === activeMode.value) ?? modeItems[0];
 });
@@ -196,6 +244,7 @@ const closeWindowSafely = async () => {
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
 const closeAnnotationPanel = () => {
   annotationOpen.value = false;
+  assistantOpen.value = false;
   annotationContextSegmentId.value = null;
 };
 const applySnapshot = async (
@@ -206,6 +255,7 @@ const applySnapshot = async (
   const previousAlignmentId = selectedAlignmentId.value;
   const workspace = snapshotToWorkspace(snapshot);
   projectSnapshot.value = snapshot;
+  agentWorkspace.setProjectSnapshot(snapshot);
   sourceRows.value = workspace.sourceSegments;
   targetRows.value = workspace.targetSegments;
   alignmentRows.value = workspace.alignments;
@@ -221,17 +271,186 @@ const applySnapshot = async (
     };
     activeNav.value = "parallel";
     forceMode(general.value.defaultWorkspace);
-    closeAnnotationPanel();
+    annotationContextSegmentId.value = null;
     selectedAnnotationId.value = null;
     resetSearch();
   }
 };
+const acceptAgentSearch = ({ spec, results }: { spec: SearchSpec | null; results: unknown }) => {
+  if (spec) {
+    searchQuery.value = spec.query;
+    searchRegex.value = spec.regex;
+    searchCaseSensitive.value = spec.case_sensitive;
+    searchSide.value = spec.language_id === projectSnapshot.value?.project.source_language ? "source" : spec.language_id === projectSnapshot.value?.project.target_language ? "target" : "both";
+  }
+  const response = results as SearchSegmentsResponse | null;
+  if (!response || !Array.isArray(response.hits)) { searchResults.value = []; return; }
+  if (response.revision_id !== projectSnapshot.value?.project.current_revision_id) return;
+  const byId = new Map([...sourceRows.value, ...targetRows.value].map(row => [row.id, row]));
+  searchResults.value = response.hits.map(hit => {
+    const alignment = alignmentRows.value.find(item => item.id === hit.alignment_id);
+    const sourceId = hit.language_id === projectSnapshot.value?.project.source_language ? hit.segment_id : alignment?.sourceIds[0] ?? null;
+    const targetId = hit.language_id === projectSnapshot.value?.project.target_language ? hit.segment_id : alignment?.targetIds[0] ?? null;
+    return { id: hit.segment_id, label: segmentLabel(hit.segment_id), sourceId, targetId, sourceText: sourceId ? byId.get(sourceId)?.text ?? "" : "", targetText: targetId ? byId.get(targetId)?.text ?? "" : "", alignmentId: hit.alignment_id, alignmentLabel: alignmentLabel(hit.alignment_id) };
+  });
+};
+const agentWorkspace = useAgentWorkspace({
+  tab: () => activeNav.value,
+  mode: () => activeMode.value,
+  projectSnapshot: () => projectSnapshot.value,
+  selection: () => activeNav.value === "parallel" && projectSnapshot.value ? { segmentIds: [...new Set([...workspaceOperationSelection.value.segmentIds, ...(editSession.value ? [editSession.value.segmentId] : [])])], alignmentIds: workspaceOperationSelection.value.alignmentIds } : { segmentIds: [], alignmentIds: [] },
+  searchState: () => ({ query: searchQuery.value, regex: searchRegex.value, caseSensitive: searchCaseSensitive.value, languageId: searchSide.value === "source" ? projectSnapshot.value?.project.source_language ?? null : searchSide.value === "target" ? projectSnapshot.value?.project.target_language ?? null : null }),
+  selectionSharingEnabled: () => settings.value.device.agent.shareSelection,
+  canLeaveDraft: () => {
+    if (!dirty.value) return true;
+    notify("请先保存或放弃当前编辑，再让助手跳转");
+    return false;
+  },
+  navigate: async (tab) => {
+    if (!navItems.some(item => item.id === tab)) throw new Error("助手请求了不可用的页面");
+    const scope = projectSnapshot.value?.project;
+    if (tab === "pipeline") await loadPipelineWorkspace();
+    if (scope?.project_id !== projectSnapshot.value?.project.project_id || scope?.current_revision_id !== projectSnapshot.value?.project.current_revision_id) throw new Error("工程状态已变化，请重新请求跳转");
+    setNav(tab as NavId);
+    await nextTick();
+    if (activeNav.value !== tab) throw new Error("当前编辑尚未允许切换页面");
+    guidance.value = { selector: `[data-nav-id="${CSS.escape(tab)}"]`, label: `已到达${navItems.find(item => item.id === tab)?.label ?? tab}`, key: Date.now() };
+  },
+  reveal: async ({ segment_id, alignment_id, node_id }) => {
+    const scope = projectSnapshot.value?.project;
+    if (node_id) {
+      await loadPipelineWorkspace();
+      if (scope?.project_id !== projectSnapshot.value?.project.project_id || scope?.current_revision_id !== projectSnapshot.value?.project.current_revision_id) throw new Error("工程状态已变化，请重新请求定位");
+      setNav("pipeline"); await nextTick();
+      if (!await pipelineWorkspaceRef.value?.revealNode(node_id)) throw new Error("未找到对应的 Pipeline 节点");
+      guidance.value = { selector: `[data-pipeline-node-id="${CSS.escape(node_id)}"]`, label: "已定位到这个节点", key: Date.now() };
+      return;
+    }
+    const alignment = alignmentRows.value.find(item => item.id === alignment_id);
+    const segmentId = segment_id ?? alignment?.sourceIds[0] ?? alignment?.targetIds[0];
+    if (!segmentId || ![...sourceRows.value, ...targetRows.value].some(row => row.id === segmentId)) throw new Error("当前工程中未找到该句段");
+    setNav("parallel");
+    await nextTick();
+    if (!await parallelWorkspaceRef.value?.focusSegment(segmentId)) throw new Error("句段尚未完成定位");
+    guidance.value = { selector: `[data-segment-id="${CSS.escape(segmentId)}"]`, label: "已定位到这个句段", key: Date.now() };
+  },
+  onProjectSnapshot: async snapshot => { await applySnapshot(snapshot); },
+  onSearchState: acceptAgentSearch,
+  onAppEvent: async event => {
+    if (event.kind === "pipeline_changed") { pipelineRefreshKey.value++; await reloadPipelineProposals(); }
+  },
+});
+const agentProjectKey = computed(() => projectSnapshot.value?.project.project_id ?? "application");
+const agentDraft = computed({
+  get: () => agentWorkspace.store.ensureProjectScope(agentProjectKey.value).drafts.composer ?? "",
+  set: value => agentWorkspace.store.setDraft(agentProjectKey.value, "composer", value),
+});
+const agentActivityLabels: Record<string, string> = { navigation_requested: "跳转页面", reveal_requested: "定位内容", search_changed: "更新搜索", proposal_changed: "更新修改提案", operation_changed: "操作状态", revision_advanced: "工程已保存", project_changed: "工程已切换" };
+const agentActivity = computed(() => agentWorkspace.store.activity.filter(event => event.kind !== "context_changed").map(event => ({ id: event.sequence, title: agentActivityLabels[event.kind] ?? event.kind, status: event.origin === "native" ? "应用内" : "外部助手" })));
+const textProposals = computed<ReviewableProposal[]>(() => agentWorkspace.store.proposals.filter(proposal => proposal.status === "pending").flatMap(proposal => {
+  const preview = proposal.preview as { base_revision_id?: string; items?: Array<{ segment_id: string; before: string; after: string }> } | undefined;
+  if (!proposal.proposal_id || !preview?.items) return [];
+  const selectedIds = (proposal.request as { selected_segment_ids?: string[] } | undefined)?.selected_segment_ids ?? [];
+  const changes = preview.items.filter(item => !selectedIds.length || selectedIds.includes(item.segment_id));
+  return [{ id: proposal.proposal_id, title: "审核文本替换", status: "pending", revision: preview.base_revision_id ?? proposal.base_revision_id ?? "—", changes: changes.map(item => ({ id: item.segment_id, before: item.before, after: item.after })) }];
+}));
+const agentProposals = computed<ReviewableProposal[]>(() => [...textProposals.value, ...pipelineProposals.value.filter(proposal => proposal.status === "pending").map(proposal => ({ id: proposal.proposal_id, title: `审核方法 · ${proposal.before.name}`, status: proposal.status, revision: proposal.base_canonical_revision_id, changes: [{ id: proposal.method_id, before: JSON.stringify(proposal.before.current.plan.nodes.map(node => ({ operator: node.operator, config: node.config })), null, 2), after: JSON.stringify(proposal.request.plan.nodes.map(node => ({ operator: node.operator, config: node.config })), null, 2) }] }))]);
+async function reloadPipelineProposals() {
+  const binding = agentWorkspace.binding.value?.binding_id;
+  if (!binding) { pipelineProposals.value = []; return; }
+  try { const proposals = await pipelineClient.listProposals(binding); if (binding === agentWorkspace.binding.value?.binding_id) pipelineProposals.value = proposals; }
+  catch { /* Initial binding can be replaced while opening a project. */ }
+}
+watch(() => agentWorkspace.binding.value?.binding_id, () => { pipelineProposals.value = []; void reloadPipelineProposals(); });
+const reviewAgentProposal = async (id: string, approve: boolean) => {
+  if (approve && dirty.value) { notify("请先保存当前编辑，再审核助手修改"); return; }
+  const bindingId = agentWorkspace.binding.value?.binding_id;
+  if (!bindingId) return;
+  agentBusy.value = true;
+  agentActionError.value = null;
+  try {
+    if (pipelineProposals.value.some(proposal => proposal.proposal_id === id)) {
+      await (approve ? pipelineClient.approveUpdate(id, bindingId) : pipelineClient.rejectUpdate(id, bindingId));
+      await reloadPipelineProposals();
+    } else await agentClient.call(approve ? "proposal.approve" : "proposal.reject", { proposal_id: id }, bindingId);
+    notify(approve ? "助手修改已保存为新版本" : "已拒绝助手修改");
+  } catch (error) { agentActionError.value = errorMessage(error); }
+  finally { agentBusy.value = false; }
+};
+const openAgentSettings = () => { rememberSettingsSection("agent"); setNav("settings"); };
+async function loadRuntimeHistory() {
+  const generation = ++runtimeHistoryGeneration;
+  const projectId = projectSnapshot.value?.project.project_id;
+  if (!projectId || !isTauriRuntime) { runtimeMessages.value = []; return; }
+  try {
+    const history = await agentRuntimeClient.history({ project_id: projectId, session_id: runtimeSessions.get(projectId), limit: 80 });
+    if (generation !== runtimeHistoryGeneration || projectId !== projectSnapshot.value?.project.project_id) return;
+    runtimeSessions.set(projectId, history.session_id); runtimeMessages.value = history.messages;
+  } catch (error) { if (generation === runtimeHistoryGeneration && projectId === projectSnapshot.value?.project.project_id) { runtimeMessages.value = []; agentActionError.value = errorMessage(error); } }
+}
+async function handleRuntimeEvent(event: AgentRuntimeEvent) {
+  runtimeSessions.set(event.project_id, event.session_id);
+  runtimeRuns.value = { ...runtimeRuns.value, [event.project_id]: { runId: event.run_id, state: event.state } };
+  if (event.project_id !== projectSnapshot.value?.project.project_id) return;
+  if (event.kind === "run_failed") {
+    const payload = event.payload as { error?: string };
+    agentActionError.value = payload.error ?? "助手执行失败，请检查模型配置";
+  }
+  await loadRuntimeHistory();
+}
+async function initializeRuntime() {
+  if (!isTauriRuntime) return;
+  try {
+    unlistenRuntime = await agentRuntimeClient.subscribe(event => { void handleRuntimeEvent(event); });
+    unlistenRuntimeResync = await agentRuntimeClient.subscribeResync(() => { void refreshRuntimeState(); });
+    await refreshRuntimeState();
+  }
+  catch (error) { agentActionError.value = errorMessage(error); }
+}
+async function refreshRuntimeState() {
+  try {
+    const status = await agentRuntimeClient.status();
+    runtimeStatus.value = status;
+    runtimeRuns.value = Object.fromEntries(Object.entries(runtimeRuns.value).map(([id, run]) => [id, status.active_run_ids.includes(run.runId) ? run : { ...run, state: "interrupted" }]));
+    await loadRuntimeHistory();
+  } catch (error) { agentActionError.value = errorMessage(error); }
+}
+async function sendAgentMessage(text: string) {
+  const projectId = projectSnapshot.value?.project.project_id;
+  if (!projectId || !runtimeStatus.value?.configured || runtimeRunning.value) return;
+  agentActionError.value = null;
+  const messageId = crypto.randomUUID();
+  const sentDraft = agentWorkspace.store.ensureProjectScope(projectId).drafts.composer;
+  runtimeStarting.value = projectId;
+  try {
+    await agentWorkspace.publishContext();
+    if (projectId !== projectSnapshot.value?.project.project_id) throw new Error("工程已切换，请在当前工程重新发送");
+    const context = agentWorkspace.recordOutboundMessage(projectId, messageId, crypto.randomUUID(), text);
+    const result = await agentRuntimeClient.start({ project_id: projectId, prompt: text, context, session_id: runtimeSessions.get(projectId) });
+    runtimeSessions.set(projectId, result.session_id); runtimeRuns.value = { ...runtimeRuns.value, [projectId]: { runId: result.run_id, state: result.state } };
+    agentWorkspace.store.markMessageSent(projectId, messageId);
+    if (agentWorkspace.store.ensureProjectScope(projectId).drafts.composer === sentDraft) agentWorkspace.store.setDraft(projectId, "composer", "");
+    await loadRuntimeHistory();
+  } catch (error) { if (projectId === projectSnapshot.value?.project.project_id) agentActionError.value = errorMessage(error); agentWorkspace.store.markMessageFailed(projectId, messageId, errorMessage(error)); }
+  finally { if (runtimeStarting.value === projectId) runtimeStarting.value = null; }
+}
+async function cancelAgentRun() {
+  const run = runtimeRuns.value[agentProjectKey.value];
+  if (!run) return;
+  try { await agentRuntimeClient.cancel(run.runId); } catch (error) { agentActionError.value = errorMessage(error); }
+}
+watch(() => projectSnapshot.value?.project.project_id, () => { runtimeMessages.value = []; void loadRuntimeHistory(); });
+watch(() => agentProposals.value.length, count => {
+  if (count && settings.value.device.agent.openOnRequest) { assistantOpen.value = true; rightPanelTab.value = "agent"; }
+});
 onMounted(async () => {
   sideNavCollapsed.value = localStorage.getItem("jueming-nav-collapsed") === "true";
   const savedAnnotationWidthValue = localStorage.getItem("jueming-annotation-width");
   const savedAnnotationWidth = savedAnnotationWidthValue === null ? Number.NaN : Number(savedAnnotationWidthValue);
   if (Number.isFinite(savedAnnotationWidth)) annotationWidth.value = Math.min(560, Math.max(300, savedAnnotationWidth));
   await initializeSettings();
+  if (isTauriRuntime) await agentWorkspace.start();
+  await initializeRuntime();
   try {
     await applySnapshot(await kernelClient.getCurrentProject(), true);
   } catch {
@@ -262,7 +481,6 @@ onMounted(async () => {
 const previousRevisionId = () => { const revisions = projectSnapshot.value?.revisions ?? []; return revisions[revisions.length - 2]?.revision_id ?? projectSummary.value.revision_id; };
 const applyModeContext = (mode: WorkspaceMode) => {
   activeNav.value = mode === "history" ? "history" : "parallel";
-  closeAnnotationPanel();
   exportOpen.value = false;
   if (mode === "history") void selectHistoryRevision(previousRevisionId());
 };
@@ -272,7 +490,6 @@ const setMode = (mode: WorkspaceMode) => {
 };
 const applyNavContext = (nav: NavId) => {
   activeNav.value = nav;
-  closeAnnotationPanel();
   if (nav === "history") { forceMode("history"); void selectHistoryRevision(previousRevisionId()); }
   else if (activeMode.value === "history") forceMode("review");
 };
@@ -285,14 +502,13 @@ const setNav = (nav: NavId) => {
   applyNavContext(nav);
 };
 const openAnnotationPanel = (segmentId?: string, alignmentId?: string | null) => {
-  activeNav.value = "parallel";
-  if (activeMode.value === "history") forceMode("review");
   if (alignmentId !== undefined) selectedAlignmentId.value = alignmentId ?? "";
   annotationContextSegmentId.value = segmentId ?? null;
   if (segmentId) {
     selectedAnnotationId.value = annotations.value.find((annotation) => annotation.links.some((link) => link.segmentId === segmentId))?.id ?? null;
   }
   annotationOpen.value = true;
+  rightPanelTab.value = "annotations";
   exportOpen.value = false;
 };
 const openNewProject = () => { void newProjectDialogRef.value?.open(); };
@@ -330,18 +546,17 @@ const requestSegmentEdit = (segmentId: string, alignmentId: string) => {
   if (!segment) return;
   selectedAlignmentId.value = alignmentId;
   activeNav.value = "parallel";
-  annotationOpen.value = false;
   enterEdit(segmentId, alignmentId, segment.text);
 };
 const commitSegmentEdit = async (exitAfterSave: boolean) => {
   const saved = await persistDraft(exitAfterSave, "manual");
-  if (saved && exitAfterSave) { activeNav.value = "parallel"; annotationOpen.value = false; }
+  if (saved && exitAfterSave) activeNav.value = "parallel";
 };
 const escapeSegmentEdit = async () => {
   const saved = await persistDraft(true, "escape");
-  if (saved) { activeNav.value = "parallel"; annotationOpen.value = false; }
+  if (saved) activeNav.value = "parallel";
 };
-const cancelSegmentEdit = () => { discardAndExit(); activeNav.value = "parallel"; annotationOpen.value = false; };
+const cancelSegmentEdit = () => { discardAndExit(); activeNav.value = "parallel"; };
 const moveSegment = async (side: LanguageSide, segmentId: string, direction: "up" | "down") => {
   if (!requireOpenProject()) return;
   const rows = side === "source" ? sourceRows : targetRows;
@@ -539,8 +754,18 @@ const makeSearchRequest = (options: SearchQueryOptions) => {
 };
 const runSearch = async (options: SearchQueryOptions) => {
   busy.value = true;
+  const searchProjectId = projectSnapshot.value?.project.project_id;
   try {
-    const response = await kernelClient.searchSegments(makeSearchRequest(options));
+    const request = makeSearchRequest(options);
+    if (isTauriRuntime) {
+      const binding = agentWorkspace.binding.value?.binding_id;
+      if (!binding) throw new Error("工程连接尚未就绪，请稍后重试");
+      const spec: SearchSpec = { query: request.query, regex: request.regex, case_sensitive: request.case_sensitive, language_id: request.language_id };
+      const result = await agentClient.call<{ total: number }>("search.execute", { spec, expected_revision_id: request.base_revision_id, page_size: 1 }, binding);
+      if (searchProjectId === projectSnapshot.value?.project.project_id) notify(`找到 ${result.data.total} 条结果`);
+      return;
+    }
+    const response = await kernelClient.searchSegments(request);
     const sourceById = new Map(sourceRows.value.map((segment) => [segment.id, segment.text]));
     const targetById = new Map(targetRows.value.map((segment) => [segment.id, segment.text]));
     searchResults.value = response.hits.map((hit) => {
@@ -550,18 +775,42 @@ const runSearch = async (options: SearchQueryOptions) => {
       return { id: hit.segment_id, label: segmentLabel(hit.segment_id), sourceId, targetId, sourceText: sourceId ? sourceById.get(sourceId) ?? "" : "", targetText: targetId ? targetById.get(targetId) ?? "" : "", alignmentId: hit.alignment_id, alignmentLabel: alignmentLabel(hit.alignment_id) };
     });
     notify(`找到 ${response.hits.length} 条结果`);
-  } catch (error) { searchResults.value = []; notify(`搜索失败：${errorMessage(error)}`); }
+  } catch (error) { if (searchProjectId === projectSnapshot.value?.project.project_id) { searchResults.value = []; notify(`搜索失败：${errorMessage(error)}`); } }
   finally { busy.value = false; }
 };
 const currentReplaceRequest = (): ReplacePreviewRequest => ({ ...makeSearchRequest({ query: searchQuery.value, side: searchSide.value, regex: searchRegex.value, caseSensitive: searchCaseSensitive.value }), replacement: replacement.value });
-const previewReplacement = async () => { try { const response = await kernelClient.previewReplace(currentReplaceRequest()); notify(`替换预览包含 ${response.items.length} 个句段`); } catch (error) { notify(`替换预览失败：${errorMessage(error)}`); } };
-const applyReplacement = async (preview: UiReplacePreview) => { busy.value = true; try { await applySnapshot(await kernelClient.applyReplace(currentReplaceRequest(), preview.resultIds)); notify(`已原子替换 ${preview.resultIds.length} 个句段`); await runSearch({ query: searchQuery.value, side: searchSide.value, regex: searchRegex.value, caseSensitive: searchCaseSensitive.value }); } catch (error) { notify(`替换失败：${errorMessage(error)}`); } finally { busy.value = false; } };
+const previewReplacement = async () => {
+  const generation = ++replacePreviewGeneration;
+  nativeReplacePreview.value = null; nativeReplaceRequest.value = null;
+  replacePreviewLoading.value = true; replacePreviewError.value = null;
+  try {
+    const request = currentReplaceRequest();
+    const response = await kernelClient.previewReplace(request);
+    if (generation !== replacePreviewGeneration || request.project_id !== projectSnapshot.value?.project.project_id || request.base_revision_id !== projectSnapshot.value?.project.current_revision_id) return;
+    const sourceIds = new Set(sourceRows.value.map(row => row.id));
+    const items = response.items.map(item => ({ resultId: item.segment_id, before: item.before, after: item.after }));
+    nativeReplaceRequest.value = request;
+    nativeReplacePreview.value = { options: { query: request.query, side: searchSide.value, regex: request.regex, caseSensitive: request.case_sensitive }, replacement: request.replacement, resultIds: response.items.map(item => item.segment_id), source: items.filter(item => sourceIds.has(item.resultId)), target: items.filter(item => !sourceIds.has(item.resultId)) };
+    notify(`替换预览包含 ${response.items.length} 个句段`);
+  } catch (error) { if (generation === replacePreviewGeneration) { replacePreviewError.value = errorMessage(error); notify(`替换预览失败：${errorMessage(error)}`); } }
+  finally { if (generation === replacePreviewGeneration) replacePreviewLoading.value = false; }
+};
+watch(() => [searchQuery.value, searchSide.value, searchRegex.value, searchCaseSensitive.value, replacement.value, projectSnapshot.value?.project.project_id, projectSnapshot.value?.project.current_revision_id], () => {
+  replacePreviewGeneration++; nativeReplacePreview.value = null; nativeReplaceRequest.value = null; replacePreviewLoading.value = false; replacePreviewError.value = null;
+}, { flush: "sync" });
+const applyReplacement = async (preview: UiReplacePreview) => {
+  const request = isTauriRuntime ? nativeReplaceRequest.value : currentReplaceRequest();
+  if (!request || (isTauriRuntime && preview !== nativeReplacePreview.value)) { notify("替换条件或工程版本已变化，请重新预览"); return; }
+  busy.value = true;
+  try { await applySnapshot(await kernelClient.applyReplace(request, preview.resultIds)); notify(`已原子替换 ${preview.resultIds.length} 个句段`); await runSearch({ query: searchQuery.value, side: searchSide.value, regex: searchRegex.value, caseSensitive: searchCaseSensitive.value }); }
+  catch (error) { notify(`替换失败：${errorMessage(error)}`); }
+  finally { busy.value = false; }
+};
 const jumpToSegment = async (segmentId: string, alignmentId: string | null = null) => {
   const resolvedAlignmentId = alignmentId ?? alignmentRows.value.find((alignment) => [...alignment.sourceIds, ...alignment.targetIds].includes(segmentId))?.id ?? "";
   selectedAlignmentId.value = resolvedAlignmentId;
   activeNav.value = "parallel";
   activeMode.value = "review";
-  annotationOpen.value = false;
   await nextTick();
   return parallelWorkspaceRef.value?.focusSegment(segmentId) ?? false;
 };
@@ -674,17 +923,18 @@ const handleShortcut = (event: KeyboardEvent) => {
   else if ((usesMacShortcuts.value && key === "z" && event.shiftKey) || (!usesMacShortcuts.value && (key === "y" || (key === "z" && event.shiftKey)))) { event.preventDefault(); void performRedo(); }
 };
 onMounted(() => window.addEventListener("keydown", handleShortcut));
-onBeforeUnmount(() => { window.removeEventListener("keydown", handleShortcut); stopAnnotationResize(); unlistenClose?.(); disposeSettings(); void flushSettings(); });
+onBeforeUnmount(() => { agentWorkspace.dispose(); unlistenRuntime?.(); unlistenRuntimeResync?.(); runtimeHistoryGeneration++; window.removeEventListener("keydown", handleShortcut); stopAnnotationResize(); unlistenClose?.(); disposeSettings(); void flushSettings(); });
 </script>
 
 <template>
-  <div class="app-shell">
-    <header class="app-toolbar"><div class="toolbar-left"><button class="toolbar-button" type="button" :title="`新建工程（${shortcutLabels.newProject}）`" @click="openNewProject"><FilePlus2 :size="19" />新建</button><button class="toolbar-button" type="button" :title="`打开本地工程（${shortcutLabels.openProject}）`" @click="openProject"><FolderOpen :size="19" />打开</button><button class="toolbar-button" type="button" :title="`保存工程（${shortcutLabels.save}）`" @click="saveProject"><Save :size="19" />保存</button><div class="toolbar-divider"></div><div class="toolbar-actions"><div class="toolbar-button--export-wrap"><button class="toolbar-button toolbar-button--export" type="button" title="导出工程" @click="exportOpen = !exportOpen"><Download :size="19" />导出<ChevronDown :size="15" /></button><div v-if="exportOpen" class="export-menu"><button type="button" @click="exportProject('txt')">TXT 文本</button><button type="button" @click="exportProject('json')">JSON 工程</button><button type="button" @click="exportProject('xml')">XML 对齐</button></div></div><div class="toolbar-divider"></div><button class="toolbar-button" type="button" :disabled="!canUndo || busy" :title="`撤销（${shortcutLabels.undo}）`" @click="performUndo"><Undo2 :size="19" />撤销</button><button class="toolbar-button" type="button" :disabled="!canRedo || busy" :title="`重做（${shortcutLabels.redo}）`" @click="performRedo"><Redo2 :size="19" />重做</button><div class="toolbar-divider"></div><button class="toolbar-button" type="button" @click="setNav('settings')"><Settings2 :size="19" />设置</button></div></div><div class="mode-control" :class="`mode-control--${annotationOpen ? 'annotation' : activeMode}`"><component :is="currentMode.icon" :size="17" /><span>{{ currentMode.label }} <small>{{ currentMode.hint }}</small></span><ChevronDown :size="15" /><select :value="annotationOpen ? 'annotation' : activeMode" aria-label="切换工作模式" @change="modeSelect"><option v-for="item in modeMenuItems" :key="item.id" :value="item.id">{{ item.label }} {{ item.hint }}</option></select></div></header>
-    <div class="content-grid" :class="{ 'content-grid--collapsed': sideNavCollapsed, 'content-grid--annotation': annotationOpen, 'content-grid--resizing': annotationResizing }" :style="{ '--annotation-width': `${annotationWidth}px` }">
-      <nav class="side-nav" :class="{ 'side-nav--collapsed': sideNavCollapsed }"><button v-for="item in navItems" :key="item.id" class="nav-item" :class="{ 'nav-item--active': activeNav === item.id }" type="button" :title="item.label" @click="setNav(item.id)"><component :is="item.icon" :size="22" :stroke-width="activeNav === item.id ? 2.2 : 1.8" /><span class="nav-label">{{ item.label }}<small v-if="item.hint">{{ item.hint }}</small></span></button><div class="nav-collapse"><button class="nav-item" type="button" :title="sideNavCollapsed ? '展开侧栏' : '收起侧栏'" @click="toggleSideNav"><ChevronDown :size="21" :style="{ transform: sideNavCollapsed ? 'rotate(-90deg)' : 'rotate(90deg)' }" /><span class="nav-label">{{ sideNavCollapsed ? '展开' : '收起' }}</span></button></div></nav>
+  <div class="app-shell" :class="{ 'app-shell--garden': gardenVisible }">
+    <header class="app-toolbar"><div class="toolbar-left"><button class="toolbar-button" type="button" :title="`新建工程（${shortcutLabels.newProject}）`" @click="openNewProject"><FilePlus2 :size="19" />新建</button><button class="toolbar-button" type="button" :title="`打开本地工程（${shortcutLabels.openProject}）`" @click="openProject"><FolderOpen :size="19" />打开</button><button class="toolbar-button" type="button" :title="`保存工程（${shortcutLabels.save}）`" @click="saveProject"><Save :size="19" />保存</button><div class="toolbar-divider"></div><div class="toolbar-actions"><div class="toolbar-button--export-wrap"><button class="toolbar-button toolbar-button--export" type="button" title="导出工程" @click="exportOpen = !exportOpen"><Download :size="19" />导出<ChevronDown :size="15" /></button><div v-if="exportOpen" class="export-menu"><button type="button" @click="exportProject('txt')">TXT 文本</button><button type="button" @click="exportProject('json')">JSON 工程</button><button type="button" @click="exportProject('xml')">XML 对齐</button></div></div><div class="toolbar-divider"></div><button class="toolbar-button" type="button" :disabled="!canUndo || busy" :title="`撤销（${shortcutLabels.undo}）`" @click="performUndo"><Undo2 :size="19" />撤销</button><button class="toolbar-button" type="button" :disabled="!canRedo || busy" :title="`重做（${shortcutLabels.redo}）`" @click="performRedo"><Redo2 :size="19" />重做</button><div class="toolbar-divider"></div><button class="toolbar-button" type="button" @click="setNav('settings')"><Settings2 :size="19" />设置</button></div></div><div class="global-panel-buttons"><button class="toolbar-button" type="button" :aria-pressed="rightPanelOpen && rightPanelTab === 'agent'" @click="assistantOpen = true; rightPanelTab = 'agent'"><Sparkles :size="18" />助手<span v-if="agentProposals.length" class="pending-count">{{ agentProposals.length }}</span></button><button class="toolbar-button" type="button" :aria-pressed="rightPanelOpen && rightPanelTab === 'annotations'" @click="openAnnotationPanel()"><MessageSquareText :size="18" />批注</button></div><div class="mode-control" :class="`mode-control--${activeMode}`"><component :is="currentMode.icon" :size="17" /><span>{{ currentMode.label }} <small>{{ currentMode.hint }}</small></span><ChevronDown :size="15" /><select :value="activeMode" aria-label="切换工作模式" @change="modeSelect"><option v-for="item in modeMenuItems" :key="item.id" :value="item.id">{{ item.label }} {{ item.hint }}</option></select></div></header>
+    <div class="content-grid" :class="{ 'content-grid--collapsed': sideNavCollapsed, 'content-grid--annotation': rightPanelOpen, 'content-grid--resizing': annotationResizing }" :style="{ '--annotation-width': `${annotationWidth}px` }">
+      <nav class="side-nav" :class="{ 'side-nav--collapsed': sideNavCollapsed }"><button v-for="item in navItems" :key="item.id" :data-nav-id="item.id" class="nav-item" :class="{ 'nav-item--active': activeNav === item.id }" type="button" :title="item.label" @click="setNav(item.id)"><component :is="item.icon" :size="22" :stroke-width="activeNav === item.id ? 2.2 : 1.8" /><span class="nav-label">{{ item.label }}<small v-if="item.hint">{{ item.hint }}</small></span></button><CompanionHabitat :in-garden="gardenStrolling" v-if="gardenVisible && !sideNavCollapsed" :settings="settings.device.pet" :activity="companionActivity" :dirty-editor="dirty" :motion="effectiveMotionMode" /><div class="nav-collapse"><button class="nav-item" type="button" :title="sideNavCollapsed ? '展开侧栏' : '收起侧栏'" @click="toggleSideNav"><ChevronDown :size="21" :style="{ transform: sideNavCollapsed ? 'rotate(-90deg)' : 'rotate(90deg)' }" /><span class="nav-label">{{ sideNavCollapsed ? '展开' : '收起' }}</span></button></div></nav>
       <main class="main-stage">
-        <ParallelWorkspace ref="parallelWorkspaceRef" v-if="activeNav === 'parallel'" :mode="activeMode" :source-segments="sourceRows" :target-segments="targetRows" :alignments="alignmentRows" :selected-alignment-id="selectedAlignmentId" :bookmarked-segment-ids="bookmarkedSegmentIds" :annotated-segment-ids="annotatedSegmentIds" :edit-session="editSession" :trackpad-optimized="trackpadOptimized" :smooth-navigation="smoothNavigationEnabled" :writable="workspaceWritable" @select="selectedAlignmentId = $event" @request-edit="requestSegmentEdit" @edit-draft="updateDraft" @commit-edit="commitSegmentEdit" @cancel-edit="cancelSegmentEdit" @escape-edit="escapeSegmentEdit" @move="moveSegment" @reorder="reorderSegment" @insert-gap="insertAlignmentGap" @reset-order="resetOrder" @link="linkSegments" @unlink="unlinkAlignment" @merge-segments="mergeSegmentContent" @split-segment="splitSegmentContent" @group="groupAlignments" @ungroup="ungroupAlignment" @bookmark="toggleBookmark" @annotation="openAnnotationPanel" @status="notify" />
-        <SearchReplaceWorkspace v-else-if="activeNav === 'search'" v-model:query="searchQuery" v-model:side="searchSide" v-model:regex="searchRegex" v-model:case-sensitive="searchCaseSensitive" v-model:replacement="replacement" :results="searchResults" :project-label="projectSummary.name" :loading="busy" @search="runSearch" @select-result="selectSearchResult" @replace-preview="previewReplacement" @apply-replace="applyReplacement" @reset="resetSearch" />
+        <PipelineWorkspace v-if="pipelineVisited" ref="pipelineWorkspaceRef" v-show="activeNav === 'pipeline'" :binding-id="agentWorkspace.binding.value?.binding_id ?? null" :project-id="projectSnapshot?.project.project_id ?? null" :revision-id="projectSummary.revision_id" :source-segments="sourceRows" :refresh-key="pipelineRefreshKey" :available="isTauriRuntime" @status="notify" />
+        <ParallelWorkspace @selection-context="workspaceOperationSelection = $event" ref="parallelWorkspaceRef" v-if="activeNav === 'parallel'" :mode="activeMode" :source-segments="sourceRows" :target-segments="targetRows" :alignments="alignmentRows" :selected-alignment-id="selectedAlignmentId" :bookmarked-segment-ids="bookmarkedSegmentIds" :annotated-segment-ids="annotatedSegmentIds" :edit-session="editSession" :trackpad-optimized="trackpadOptimized" :smooth-navigation="smoothNavigationEnabled" :writable="workspaceWritable" @select="selectedAlignmentId = $event" @request-edit="requestSegmentEdit" @edit-draft="updateDraft" @commit-edit="commitSegmentEdit" @cancel-edit="cancelSegmentEdit" @escape-edit="escapeSegmentEdit" @move="moveSegment" @reorder="reorderSegment" @insert-gap="insertAlignmentGap" @reset-order="resetOrder" @link="linkSegments" @unlink="unlinkAlignment" @merge-segments="mergeSegmentContent" @split-segment="splitSegmentContent" @group="groupAlignments" @ungroup="ungroupAlignment" @bookmark="toggleBookmark" @annotation="openAnnotationPanel" @status="notify" />
+        <SearchReplaceWorkspace :authoritative-results="isTauriRuntime" :native-preview="nativeReplacePreview" :preview-loading="replacePreviewLoading" :preview-error="replacePreviewError" v-else-if="activeNav === 'search'" v-model:query="searchQuery" v-model:side="searchSide" v-model:regex="searchRegex" v-model:case-sensitive="searchCaseSensitive" v-model:replacement="replacement" :results="searchResults" :project-label="projectSummary.name" :loading="busy" @search="runSearch" @select-result="selectSearchResult" @replace-preview="previewReplacement" @apply-replace="applyReplacement" @reset="resetSearch" />
         <HistoryWorkspace v-else-if="activeNav === 'history'" :revisions="revisionItems" :diff="historyDiff" :base-revision-id="baseRevisionId" :selected-revision-id="selectedRevisionId" :current-revision-id="projectSummary.revision_id" :loading="busy" @select-revision="selectHistoryRevision" @compare="compareHistory" @restore="restoreHistory" @copy-value="copyHistoryValue" />
         <SettingsWorkspace
           v-else-if="activeNav === 'settings'"
@@ -710,15 +960,22 @@ onBeforeUnmount(() => { window.removeEventListener("keydown", handleShortcut); s
           @clear-cache="clearProjectCache(true)"
           @remember-section="rememberSettingsSection"
           @reset-all="resetAllSettings"
-        />
+        >
+          <template #agent-settings><AgentConnectionSettings /><AgentModelSettings @changed="runtimeStatus = $event" /></template>
+        </SettingsWorkspace>
         <BookmarksWorkspace v-else-if="activeNav === 'bookmarks'" :bookmarks="projectSnapshot?.bookmarks ?? []" :previews="bookmarkPreviews" :source-segments="sourceRows" :target-segments="targetRows" :alignments="alignmentRows" :segment-labels="segmentLabels" :alignment-labels="alignmentLabels" @open="openBookmark" @remove="removeBookmark" />
-        <section v-else class="aux-view project-view"><Folder :size="28" /><h2>项目</h2><p>{{ projectSummary.name }}</p><div class="project-summary-card"><span>{{ projectSummary.source_count }}</span><small>中文句段</small><span>{{ projectSummary.target_count }}</span><small>English segments</small><span>{{ projectSummary.alignment_count }}</span><small>Alignment</small></div><div class="project-actions"><button type="button" class="primary-button" @click="openProject">打开工程</button><button type="button" class="secondary-button" @click="openNewProject">新建工程</button></div></section>
+        <section v-else-if="activeNav === 'project'" class="aux-view project-view"><Folder :size="28" /><h2>项目</h2><p>{{ projectSummary.name }}</p><div class="project-summary-card"><span>{{ projectSummary.source_count }}</span><small>中文句段</small><span>{{ projectSummary.target_count }}</span><small>English segments</small><span>{{ projectSummary.alignment_count }}</span><small>Alignment</small></div><div class="project-actions"><button type="button" class="primary-button" @click="openProject">打开工程</button><button type="button" class="secondary-button" @click="openNewProject">新建工程</button></div></section>
       </main>
-      <aside class="annotation-drawer" :class="{ 'annotation-drawer--open': annotationOpen }" :aria-hidden="!annotationOpen" :inert="!annotationOpen">
-        <div class="annotation-resize-handle" role="separator" tabindex="0" aria-label="调整批注面板宽度" aria-orientation="vertical" :aria-valuemin="annotationMinimumWidth" :aria-valuemax="annotationMaximumWidth()" :aria-valuenow="Math.round(annotationWidth)" title="拖动调整宽度，双击恢复默认" @pointerdown="startAnnotationResize" @dblclick="resetAnnotationWidth" @keydown="resizeAnnotationWithKeyboard"></div>
-        <AnnotationPanel v-model:active-filter="annotationFilter" :annotations="annotations" :selected-id="selectedAnnotationId" :readonly="!workspaceWritable" @select="selectedAnnotationId = $event" @open-link="openAnnotationLink" @create="createAnnotation" @edit="editAnnotation" @delete="deleteAnnotation" @resolve="resolveAnnotation" @close="closeAnnotationPanel" />
+      <aside class="annotation-drawer" :class="{ 'annotation-drawer--open': rightPanelOpen }" :aria-hidden="!rightPanelOpen" :inert="!rightPanelOpen">
+        <div class="annotation-resize-handle" role="separator" tabindex="0" aria-label="调整全局侧栏宽度" aria-orientation="vertical" :aria-valuemin="annotationMinimumWidth" :aria-valuemax="annotationMaximumWidth()" :aria-valuenow="Math.round(annotationWidth)" title="拖动调整宽度，双击恢复默认" @pointerdown="startAnnotationResize" @dblclick="resetAnnotationWidth" @keydown="resizeAnnotationWithKeyboard"></div>
+        <GlobalSidePanel v-model:active-tab="rightPanelTab" :project-label="projectSnapshot ? projectSummary.name : '尚未打开工程'" :annotation-count="annotations.length" :pending-count="agentProposals.length" @close="closeAnnotationPanel">
+          <template #agent><AgentPanel v-model:draft="agentDraft" :tab-label="navItems.find(item => item.id === activeNav)?.label ?? activeNav" :selected-text="agentWorkspace.context.value?.selected_text ?? ''" :connected="Boolean(agentWorkspace.binding.value)" :runtime-available="Boolean(runtimeStatus?.configured && projectSnapshot)" :running="agentBusy || runtimeRunning" :reviewing="agentBusy" :show-context="settings.device.agent.showContext" :messages="runtimeMessages.filter(message => message.role !== 'tool').map(message => ({ id: message.message_id, role: message.role, content: message.content }))" :activity="agentActivity" :proposals="agentProposals" :error="agentActionError ?? agentWorkspace.error.value" @settings="openAgentSettings" @send="sendAgentMessage" @cancel="cancelAgentRun" @clear-selection="agentWorkspace.clearSelectionContext()" @approve="reviewAgentProposal($event, true)" @reject="reviewAgentProposal($event, false)" /></template>
+          <template #annotations><AnnotationPanel v-model:active-filter="annotationFilter" :scope-key="agentProjectKey" :annotations="annotations" :selected-id="selectedAnnotationId" :readonly="!projectSnapshot || activeNav === 'history'" @select="selectedAnnotationId = $event" @open-link="openAnnotationLink" @create="createAnnotation" @edit="editAnnotation" @delete="deleteAnnotation" @resolve="resolveAnnotation" @close="closeAnnotationPanel" /></template>
+        </GlobalSidePanel>
       </aside>
     </div>
+    <CompanionGarden v-model:strolling="gardenStrolling" v-if="gardenVisible" :settings="settings.device.pet" :activity="companionActivity" :dirty-editor="dirty" :motion="effectiveMotionMode" :proposal="agentProposals[0] ?? null" :busy="agentBusy" :guidance="guidance?.label ?? ''" @approve="reviewAgentProposal($event, true)" @reject="reviewAgentProposal($event, false)" @open-agent="assistantOpen = true; rightPanelTab = 'agent'" />
+    <GuidanceOverlay :target="guidance" :animated="effectiveMotionMode === 'standard' && settings.device.pet.presentation === 'animated'" :visible="settings.device.pet.butterflyMotion && settings.device.pet.presentation !== 'hidden'" />
     <footer class="bottom-status">
       <div class="footer-context">
         <div class="footer-context-item footer-context-item--project">

@@ -122,6 +122,9 @@ const searchEntries: SearchEntry[] = [
   { label: "更大点击区域", path: "辅助功能 > 操作辅助", section: "accessibility", keywords: "按钮 点击 触控" },
   { label: "快捷键布局", path: "键盘与触控板 > 快捷键布局", section: "input", keywords: "macOS Windows Ctrl Command" },
   { label: "触控板优化", path: "键盘与触控板 > 触控板", section: "input", keywords: "滚动 拖拽" },
+  { label: "小花园呈现方式", path: "桌宠 > 注意力偏好", section: "pet", keywords: "极简 静态 图片 动画 安静 蝴蝶 猫 狗" },
+  { label: "助手与外部连接", path: "AI 与 Agent > 连接", section: "agent", keywords: "MCP AGUI Codex 模型 endpoint 本地 API" },
+  { label: "分享选中文本", path: "AI 与 Agent > 上下文", section: "agent", keywords: "选中 focus 页面 上下文 隐私" },
   { label: "保存延迟", path: "保存与历史 > 自动保存", section: "persistence", keywords: "自动保存 ChangeSet" },
   { label: "缓存清理", path: "存储空间 > 缓存", section: "storage", keywords: "cache 清理 空间" },
   { label: "本地模式", path: "隐私与安全 > 数据边界", section: "privacy", keywords: "离线 上传 隐私" },
@@ -164,7 +167,7 @@ const formatCleanupTime = computed(() => props.lastCacheCleanupAt
 </script>
 
 <template>
-  <section class="settings-view">
+  <section class="settings-view" data-agent-context="exclude">
     <header class="settings-header">
       <span class="settings-header__icon"><Settings2 :size="20" /></span>
       <div><h2>设置</h2><p>本机偏好不会写入 .jm 工程</p></div>
@@ -196,7 +199,7 @@ const formatCleanupTime = computed(() => props.lastCacheCleanupAt
           </button>
         </template>
 
-        <p class="settings-local-status"><Monitor :size="14" />本地模式 · 当前无联网传输</p>
+        <p class="settings-local-status"><Monitor :size="14" />工程保存在本地</p>
       </nav>
 
       <div class="settings-detail">
@@ -287,6 +290,34 @@ const formatCleanupTime = computed(() => props.lastCacheCleanupAt
           <div class="settings-group shortcut-grid" aria-label="当前快捷键说明"><template v-for="row in shortcutRows" :key="row[0]"><span>{{ row[0] }}</span><kbd>{{ row[1] }}</kbd></template></div>
         </section>
 
+        <section v-else-if="activeSection === 'pet'" class="settings-pane">
+          <header><p>应用偏好</p><h2>决明小花园</h2><span>猫猫、狗狗与蝴蝶陪你工作。你可以随时回到静态画面。</span></header>
+          <h3>呈现方式</h3>
+          <div class="settings-group">
+            <label class="setting-row"><span><strong>显示小花园</strong><small>在侧栏和工程状态栏中显示</small></span><input v-model="settings.device.pet.enabled" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+            <label class="setting-row"><span><strong>注意力偏好</strong><small>极简模式只显示静态图片</small></span><select v-model="settings.device.pet.presentation" @change="emit('applyUi')"><option value="static">极简 · 静态图片</option><option value="quiet">安静 · 仅操作反馈</option><option value="animated">生动 · 花园与角色动作</option><option value="hidden">隐藏花园</option></select></label>
+          </div>
+          <h3>花园成员</h3>
+          <div class="settings-group">
+            <label class="setting-row"><span><strong>橘猫</strong><small>在猫爬架、猫窝和花园休息</small></span><input v-model="settings.device.pet.catEnabled" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+            <label class="setting-row"><span><strong>金毛狗狗</strong><small>住在猫爬架下方的小屋</small></span><input v-model="settings.device.pet.dogEnabled" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+            <label class="setting-row"><span><strong>蝴蝶引导</strong><small>助手跳转完成后标记操作位置</small></span><input v-model="settings.device.pet.butterflyMotion" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+            <label class="setting-row"><span><strong>编辑时保持安静</strong><small>有编辑草稿时暂停花园动作</small></span><input v-model="settings.device.pet.quietWhileEditing" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+          </div>
+          <p class="settings-note">跟随系统的减少动态效果和后台暂停设置。隐藏花园后，修改审核仍可在助手侧栏完成。</p>
+        </section>
+
+        <section v-else-if="activeSection === 'agent'" class="settings-pane">
+          <header><p>数据与安全</p><h2>AI 与 Agent</h2><span>连接当前应用，读取上下文，并在修改前审核差异。</span></header>
+          <slot name="agent-settings" />
+          <h3>全局助手</h3>
+          <div class="settings-group">
+            <label class="setting-row"><span><strong>显示上下文</strong><small>展示当前页面和选中的文本</small></span><input v-model="settings.device.agent.showContext" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+            <label class="setting-row"><span><strong>允许读取选中内容</strong><small>关闭后，选中的正文不进入助手上下文</small></span><input v-model="settings.device.agent.shareSelection" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+            <label class="setting-row"><span><strong>有待审核修改时展开助手</strong><small>应用内和外部工具共用审核流程</small></span><input v-model="settings.device.agent.openOnRequest" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+          </div>
+        </section>
+
         <section v-else-if="activeSection === 'persistence'" class="settings-pane">
           <header><p>数据与安全</p><h2>保存与历史</h2><span>每次成功 canonical ChangeSet 都会保留完整 Revision。</span></header>
           <h3>自动保存</h3>
@@ -307,11 +338,11 @@ const formatCleanupTime = computed(() => props.lastCacheCleanupAt
         </section>
 
         <section v-else-if="activeSection === 'privacy'" class="settings-pane">
-          <header><p>数据与安全</p><h2>隐私与安全</h2><span>当前版本没有账号、上传、远程 AI 或外部插件运行时。</span></header>
+          <header><p>数据与安全</p><h2>隐私与安全</h2><span>工程保存在本机。外部工具和模型连接由你在 AI 与 Agent 中配置。</span></header>
           <h3>本地模式</h3>
           <div class="settings-group">
-            <div class="setting-row setting-row--readonly"><span><strong>工程正文与译文</strong><small>只通过 typed KernelClient 访问本地 `.jm` 工程</small></span><output>不上传</output></div>
-            <div class="setting-row setting-row--readonly"><span><strong>在线数据传输</strong><small>没有已绑定的在线能力</small></span><output>0 个服务</output></div>
+            <div class="setting-row setting-row--readonly"><span><strong>工程正文与译文</strong><small>助手仅通过应用提供的工具访问当前工程</small></span><output>本地保存</output></div>
+            <div class="setting-row setting-row--readonly"><span><strong>外部 AI 连接</strong><small>已授权客户端可以读取工具返回的内容</small></span><button class="secondary-button" type="button" @click="chooseSection('agent')">查看连接</button></div>
             <div class="setting-row setting-row--readonly"><span><strong>诊断和使用统计</strong><small>当前未接入遥测端点</small></span><output>不发送</output></div>
           </div>
         </section>

@@ -1,0 +1,22 @@
+[package]
+name = "jueming-agent-transport"
+version = "0.1.1"
+edition = "2024"
+rust-version = "1.94"
+publish = false
+
+[dependencies]
+axum = "0.8.9"
+futures-util = "0.3"
+jueming-application = { path = "../jueming-application" }
+serde.workspace = true
+serde_json.workspace = true
+subtle = "2.6"
+thiserror.workspace = true
+tokio = { version = "1", features = ["net", "rt", "sync", "time"] }
+tower-http = { version = "0.6", features = ["limit"] }
+
+[dev-dependencies]
+jueming-protocol = { path = "../jueming-protocol" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

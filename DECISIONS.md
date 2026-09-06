@@ -74,6 +74,17 @@ _更新时间：2026-09-01。本文是仓库级快速入口；正式架构依据
 - Actions 使用固定提交 SHA，默认权限为 `contents: read`；当前流程不自动创建 GitHub Release。
 - 正式 macOS 分发仍需 Developer ID 签名与 notarization；当前测试包只使用 ad-hoc 签名。
 
+### 2026-09-06 Agent / MCP / Pipeline 扩展
+
+- 当前用户已明确授权本轮 Agent、Pipeline 和小花园实施；ADR-015 与 ADR-016 记录新增领域边界。原有稳定 ID、canonical Revision、sidecar 和离线工程合同保持生效。
+- 桌面命令、MCP 和内置 runtime 共用 `Arc<LocalAppHost>`；不允许多个进程分别持有工程写入副本。外部修改生成持久化提案，只有可信本机界面可批准。
+- MCP 采用官方 Rust SDK `rmcp` 的 stdio sidecar，桥接显式开启、会话级鉴权的 loopback HTTP；AG-UI SSE 投递应用事件。没有读取或伪造 Codex 等外部工具的完整聊天记录。
+- 内置 runtime 使用独立 Rust provider/tool-loop port、SQLite 会话与系统凭据存储，支持显式配置的本机或 HTTPS OpenAI-compatible 服务。未配置不运行；可选聊天初始化失败不应阻断基础工程。没有把 Rig、CopilotKit 或外部插件运行时标记为已集成。
+- Pipeline 用 Vue Flow 展示，Rust `jueming-pipeline` 执行闭合的原文、规范化、中文 Jieba 分词和 artifact 算子。方法版本与派生结果位于 `.jm/extensions/pipeline`，不修改 canonical 原文或冒充 canonical Revision。
+- 全局侧栏位于路由页之外，助手和批注草稿按工程隔离；搜索、工程、设置、历史和 Pipeline 可保持侧栏。Pipeline 与 History 同级，设置位于 Pipeline 下方。
+- 小花园默认静态，生动模式通过懒加载 Web Animations renderer 实现有限反馈。静态、隐藏、减少动态、后台和编辑安静模式可释放渲染资源，普通 DOM 审核按钮独立工作。`CompanionRenderer` 为未来 Spine/Pixi 资源适配保留接口，当前未安装 Spine。
+- Agent 和桌宠设置页现已接入真实能力；任意外部插件运行、云协作、自动语义对齐等仍保持未绑定。声明式扩展 registry 不等于已运行插件。
+
 ## 明确延期
 
 MVP 不实现 POS、Lemma、NER、自动语义对齐、OCR、云协作和外部插件加载。新增这些能力前，应先确认 Slot/Artifact 合同、资源与安全边界，并新增 ADR，而不是直接把 Provider 逻辑嵌入 Vue 组件或现有 Segment schema。

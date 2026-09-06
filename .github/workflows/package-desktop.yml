@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - codex/agent-mcp-pipeline
     tags:
       - "v*"
   pull_request:
@@ -19,7 +20,7 @@ concurrency:
 
 jobs:
   quality:
-    name: TypeScript and Rust quality gates
+    name: Windows TypeScript and Rust quality gates
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -48,6 +49,9 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify agent UI production contracts
+        run: node scripts/verify-agent-ui.mjs
+
       - name: Verify release tag matches application version
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
@@ -58,7 +62,10 @@ jobs:
             throw "Release tag ${{ github.ref_name }} does not match application version $expectedTag."
           }
 
-      - name: Verify TypeScript and frontend production build
+      - name: Verify TypeScript types
+        run: pnpm typecheck
+
+      - name: Verify frontend production build
         run: pnpm build
 
       - name: Verify Rust formatting
@@ -70,9 +77,63 @@ jobs:
       - name: Run Rust tests
         run: cargo test --workspace
 
+      - name: Verify real MCP subprocess acceptance
+        run: node tests/agent/m1-real-subprocess-acceptance.mjs
+
+  macos-native-smoke:
+    name: macOS Universal compile and native smoke
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+        with:
+          version: 11.19.0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+
+      - name: Install Rust stable and macOS targets
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust build outputs
+        uses: swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+        with:
+          workspaces: ". -> target"
+          key: smoke-macos-universal
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify TypeScript types
+        run: pnpm typecheck
+
+      - name: Build Universal desktop binary without bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --dir apps/desktop tauri build --debug --no-bundle --target universal-apple-darwin
+          binary="target/universal-apple-darwin/debug/jueming-desktop"
+          test -x "$binary"
+          architectures="$(lipo -archs "$binary")"
+          [[ " $architectures " == *" arm64 "* ]]
+          [[ " $architectures " == *" x86_64 "* ]]
+
+      - name: Build and inspect Universal MCP server
+        if: hashFiles('crates/jueming-mcp/Cargo.toml') != ''
+        shell: bash
+        run: bash scripts/platform/build-mcp-universal-macos.sh
+
   package:
     name: ${{ matrix.name }}
-    needs: quality
+    needs:
+      - quality
+      - macos-native-smoke
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
@@ -80,16 +141,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows x64 installers and portable
+          - name: Windows x64 installers, portable app, and MCP server
             platform: windows-latest
             rust_targets: ""
             tauri_args: --bundles nsis,msi
             artifact_name: jueming-windows-x64
-          - name: macOS ARM64 DMG and portable ZIP
+          - name: macOS Universal DMG, portable app, and MCP server
             platform: macos-latest
-            rust_targets: aarch64-apple-darwin
-            tauri_args: --target aarch64-apple-darwin --bundles app,dmg
-            artifact_name: jueming-macos-arm64
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+            tauri_args: --target universal-apple-darwin --bundles app,dmg
+            artifact_name: jueming-macos-universal
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -116,6 +177,16 @@ jobs:
 
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build Windows MCP server
+        if: runner.os == 'Windows' && hashFiles('crates/jueming-mcp/Cargo.toml') != ''
+        shell: pwsh
+        run: scripts/platform/build-mcp-windows.ps1
+
+      - name: Build Universal MCP server
+        if: runner.os == 'macOS' && hashFiles('crates/jueming-mcp/Cargo.toml') != ''
+        shell: bash
+        run: bash scripts/platform/build-mcp-universal-macos.sh
 
       - name: Build and stage Windows portable executable
         if: runner.os == 'Windows'
@@ -158,7 +229,12 @@ jobs:
           Copy-Item $nsis[0].FullName (Join-Path $assets "Jueming-Aligner_${tag}_windows-x64-setup.exe")
           Copy-Item $msi[0].FullName (Join-Path $assets "Jueming-Aligner_${tag}_windows-x64.msi")
 
-      - name: Stage macOS ARM64 release assets
+      - name: Stage Windows MCP server
+        if: runner.os == 'Windows' && hashFiles('crates/jueming-mcp/Cargo.toml') != ''
+        shell: pwsh
+        run: scripts/platform/stage-mcp-windows.ps1 -Tag "${{ github.ref_name }}" -AssetsDirectory "$PWD/release-assets"
+
+      - name: Stage macOS Universal release assets
         if: runner.os == 'macOS'
         shell: bash
         run: |
@@ -166,18 +242,34 @@ jobs:
           shopt -s nullglob
           tag="${{ github.ref_name }}"
           assets="$PWD/release-assets"
-          bundle_root="target/aarch64-apple-darwin/release/bundle"
+          bundle_root="target/universal-apple-darwin/release/bundle"
           mkdir -p "$assets"
 
           dmg_files=("$bundle_root"/dmg/*.dmg)
           app_dirs=("$bundle_root"/macos/*.app)
           if [[ ${#dmg_files[@]} -ne 1 || ${#app_dirs[@]} -ne 1 ]]; then
-            echo "Expected exactly one ARM64 DMG and one application bundle." >&2
+            echo "Expected exactly one Universal DMG and one application bundle." >&2
             exit 1
           fi
 
-          cp "${dmg_files[0]}" "$assets/Jueming-Aligner_${tag}_macos-arm64.dmg"
-          ditto -c -k --sequesterRsrc --keepParent "${app_dirs[0]}" "$assets/Jueming-Aligner_${tag}_macos-arm64-portable.zip"
+          app_executables=("${app_dirs[0]}"/Contents/MacOS/*)
+          if [[ ${#app_executables[@]} -ne 1 || ! -x "${app_executables[0]}" ]]; then
+            echo "Expected exactly one executable in the Universal application bundle." >&2
+            exit 1
+          fi
+          architectures="$(lipo -archs "${app_executables[0]}")"
+          if [[ " $architectures " != *" arm64 "* || " $architectures " != *" x86_64 "* ]]; then
+            echo "Expected Universal application executable, got: $architectures" >&2
+            exit 1
+          fi
+
+          cp "${dmg_files[0]}" "$assets/Jueming-Aligner_${tag}_macos-universal.dmg"
+          ditto -c -k --sequesterRsrc --keepParent "${app_dirs[0]}" "$assets/Jueming-Aligner_${tag}_macos-universal-portable.zip"
+
+      - name: Stage macOS Universal MCP server
+        if: runner.os == 'macOS' && hashFiles('crates/jueming-mcp/Cargo.toml') != ''
+        shell: bash
+        run: bash scripts/platform/stage-mcp-universal-macos.sh "${{ github.ref_name }}" "$PWD/release-assets"
 
       - name: Upload staged release assets
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -196,6 +288,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
       - name: Download all platform assets
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
@@ -210,9 +304,15 @@ jobs:
             "Jueming-Aligner_${GITHUB_REF_NAME}_windows-x64-setup.exe"
             "Jueming-Aligner_${GITHUB_REF_NAME}_windows-x64.msi"
             "Jueming-Aligner_${GITHUB_REF_NAME}_windows-x64-portable.exe"
-            "Jueming-Aligner_${GITHUB_REF_NAME}_macos-arm64.dmg"
-            "Jueming-Aligner_${GITHUB_REF_NAME}_macos-arm64-portable.zip"
+            "Jueming-Aligner_${GITHUB_REF_NAME}_macos-universal.dmg"
+            "Jueming-Aligner_${GITHUB_REF_NAME}_macos-universal-portable.zip"
           )
+          if [[ -f crates/jueming-mcp/Cargo.toml ]]; then
+            expected+=(
+              "Jueming-MCP_${GITHUB_REF_NAME}_windows-x64.exe"
+              "Jueming-MCP_${GITHUB_REF_NAME}_macos-universal.zip"
+            )
+          fi
           for asset in "${expected[@]}"; do
             test -s "release-assets/$asset" || {
               echo "Missing or empty release asset: $asset" >&2

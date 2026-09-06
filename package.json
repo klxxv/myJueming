@@ -13,6 +13,10 @@
     "build:desktop": "pnpm --filter @jueming/desktop tauri build",
     "build:desktop:windows": "pnpm --filter @jueming/desktop tauri build --bundles nsis,msi",
     "build:desktop:macos": "pnpm --filter @jueming/desktop tauri build --target universal-apple-darwin --bundles app,dmg",
-    "typecheck": "pnpm --filter @jueming/desktop typecheck"
+    "typecheck": "pnpm --filter @jueming/desktop typecheck",
+    "test:agent-ui": "node scripts/verify-agent-ui.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }

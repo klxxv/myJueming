@@ -1,0 +1,22 @@
+[package]
+name = "jueming-application"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[dependencies]
+jueming-kernel = { path = "../jueming-kernel" }
+jueming-pipeline = { path = "../jueming-pipeline" }
+jueming-protocol = { path = "../jueming-protocol" }
+jueming-storage = { path = "../jueming-storage" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+regex = "1"
+tokio = { version = "1", features = ["sync"] }
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

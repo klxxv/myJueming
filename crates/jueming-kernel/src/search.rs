@@ -4,6 +4,7 @@ use crate::projection::alignment_by_segment;
 use crate::revision::{advance_revision, next_revision_id};
 use crate::validation::{ensure_revision, validate_snapshot};
 use crate::{KernelError, KernelService};
+use jueming_core::OperationId;
 use jueming_protocol::{
     ProjectSnapshot, ReplaceApplyRequest, ReplacePreviewItem, ReplacePreviewRequest,
     ReplacePreviewResponse, SearchSegmentsRequest, SearchSegmentsResponse, SegmentSearchHit,
@@ -94,6 +95,20 @@ impl KernelService {
         snapshot: &ProjectSnapshot,
         request: &ReplaceApplyRequest,
     ) -> Result<ProjectSnapshot, KernelError> {
+        self.apply_replace_with_operation_id(project_path, snapshot, request, OperationId::new())
+    }
+
+    /// Applies a reviewed replacement while preserving a caller-preallocated
+    /// canonical operation ID. The ID is written into the Revision before the
+    /// snapshot is persisted, so a durable application journal can reconcile a
+    /// crash without guessing from revision ordering or operation text.
+    pub fn apply_replace_with_operation_id(
+        &self,
+        project_path: impl AsRef<Path>,
+        snapshot: &ProjectSnapshot,
+        request: &ReplaceApplyRequest,
+        operation_id: OperationId,
+    ) -> Result<ProjectSnapshot, KernelError> {
         validate_snapshot(snapshot)?;
         ensure_revision(
             snapshot,
@@ -134,6 +149,10 @@ impl KernelService {
             selected.len() as u64,
             format!("Replaced text in {} segments", selected.len()),
         );
+        next.revisions
+            .last_mut()
+            .expect("advance_revision always appends a Revision")
+            .operation_id = operation_id;
         validate_snapshot(&next)?;
         self.save_project(project_path, &next)?;
         Ok(next)

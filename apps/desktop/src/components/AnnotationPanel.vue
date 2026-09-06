@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { Check, CornerUpLeft, MessageSquareText, Pencil, Plus, Save, Trash2, X } from "@lucide/vue";
 
 defineOptions({ name: "AnnotationPanel" });
@@ -37,8 +37,9 @@ const props = withDefaults(
     activeFilter?: AnnotationFilter;
     selectedId?: string | null;
     readonly?: boolean;
+    scopeKey?: string;
   }>(),
-  { activeFilter: "all", selectedId: null, readonly: false },
+  { activeFilter: "all", selectedId: null, readonly: false, scopeKey: "unbound" },
 );
 
 const emit = defineEmits<{
@@ -55,6 +56,15 @@ const emit = defineEmits<{
 const creating = ref(false);
 const editingId = ref<string | null>(null);
 const draft = ref<AnnotationDraft>({ title: "", body: "", status: "draft", links: [] });
+// The global panel survives route changes; drafts remain isolated by project.
+const projectDrafts = new Map<string, { creating: boolean; editingId: string | null; draft: AnnotationDraft }>();
+watch(() => props.scopeKey, (next, previous) => {
+  projectDrafts.set(previous, { creating: creating.value, editingId: editingId.value, draft: { ...draft.value, links: draft.value.links.map(link => ({ ...link })) } });
+  const saved = projectDrafts.get(next);
+  creating.value = saved?.creating ?? false;
+  editingId.value = saved?.editingId ?? null;
+  draft.value = saved ? { ...saved.draft, links: saved.draft.links.map(link => ({ ...link })) } : { title: "", body: "", status: "draft", links: [] };
+}, { flush: "sync" });
 
 const statusLabels: Record<AnnotationStatus, { zh: string; en: string }> = {
   draft: { zh: "草稿", en: "Draft" },
@@ -73,7 +83,7 @@ const setFilter = (filter: AnnotationFilter) => emit("update:activeFilter", filt
 const startCreate = () => { creating.value = true; editingId.value = null; draft.value = { title: "", body: "", status: "draft", links: [] }; };
 const cancelCreate = () => { creating.value = false; };
 const submitCreate = () => {
-  if (!draft.value.title.trim() || !draft.value.body.trim()) return;
+  if (props.readonly || !draft.value.title.trim() || !draft.value.body.trim()) return;
   emit("create", { ...draft.value, title: draft.value.title.trim(), body: draft.value.body.trim() });
   creating.value = false;
 };
@@ -84,7 +94,7 @@ const startEdit = (annotation: AnnotationItem) => {
 };
 const cancelEdit = () => { editingId.value = null; };
 const submitEdit = (annotationId: string) => {
-  if (!draft.value.title.trim() || !draft.value.body.trim()) return;
+  if (props.readonly || !draft.value.title.trim() || !draft.value.body.trim()) return;
   emit("edit", annotationId, { ...draft.value, title: draft.value.title.trim(), body: draft.value.body.trim() });
   editingId.value = null;
 };

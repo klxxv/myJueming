@@ -23,6 +23,12 @@ tauri = { version = "2.11.5", features = [] }
 tauri-plugin-dialog = "2.7.2"
 jueming-kernel = { path = "../../../crates/jueming-kernel" }
 jueming-protocol = { path = "../../../crates/jueming-protocol" }
+jueming-application = { path = "../../../crates/jueming-application" }
+jueming-agent-runtime = { path = "../../../crates/jueming-agent-runtime" }
+jueming-agent-transport = { path = "../../../crates/jueming-agent-transport" }
+jueming-pipeline = { path = "../../../crates/jueming-pipeline" }
 serde.workspace = true
 serde_json.workspace = true
+tokio = { version = "1", features = ["sync", "time"] }
+uuid = { version = "1", features = ["v4"] }
 tauri-plugin-store = "2.4.4"

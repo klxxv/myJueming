@@ -1,0 +1,25 @@
+[package]
+name = "jueming-agent-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+chrono.workspace = true
+jueming-application = { path = "../jueming-application" }
+keyring = { version = "3.6", features = ["apple-native", "windows-native"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
+url = "2"
+uuid.workspace = true
+
+[dev-dependencies]
+jueming-protocol = { path = "../jueming-protocol" }
+tempfile.workspace = true

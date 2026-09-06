@@ -11,6 +11,11 @@ import OrderDragOverlay from "./parallel-workspace/OrderDragOverlay.vue";
 import { useOrderDragAndDrop, type ReorderIntent } from "../composables/useOrderDragAndDrop";
 import { useTransientSegmentJump } from "../composables/useTransientSegmentJump";
 
+export interface OperationSelectionContext {
+  segmentIds: string[];
+  alignmentIds: string[];
+}
+
 const props = withDefaults(defineProps<{
   mode: WorkspaceMode;
   sourceSegments: SegmentDto[];
@@ -45,6 +50,7 @@ const emit = defineEmits<{
   bookmark: [segmentId: string, alignmentId: string | null];
   annotation: [segmentId: string, alignmentId: string | null];
   status: [message: string];
+  "selection-context": [context: OperationSelectionContext];
 }>();
 
 const bookmarked = computed(() => new Set(props.bookmarkedSegmentIds));
@@ -55,6 +61,15 @@ const selectedAlignmentIds = ref(new Set<string>());
 const orderSelection = ref<OrderSelection | null>(null);
 const hasSegmentSelection = computed(() => selectedSourceIds.value.size > 0 || selectedTargetIds.value.size > 0);
 const hasOperationSelection = computed(() => hasSegmentSelection.value || selectedAlignmentIds.value.size > 0);
+const selectionContext = computed<OperationSelectionContext>(() => ({
+  segmentIds: [...new Set([
+    ...selectedSourceIds.value,
+    ...selectedTargetIds.value,
+    ...(orderSelection.value ? [orderSelection.value.segmentId] : []),
+  ])].sort(),
+  alignmentIds: [...selectedAlignmentIds.value].sort(),
+}));
+watch(selectionContext, (context) => emit("selection-context", context), { immediate: true });
 type AlignedWorkspaceExposed = {
   focusAlignment: (alignmentId: string) => Promise<boolean>;
   focusSegment: (segmentId: string) => Promise<boolean>;

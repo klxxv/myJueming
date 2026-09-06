@@ -6,6 +6,11 @@ members = [
   "crates/jueming-storage",
   "crates/jueming-kernel",
   "crates/jueming-protocol",
+  "crates/jueming-application",
+  "crates/jueming-agent-transport",
+  "crates/jueming-mcp",
+  "crates/jueming-agent-runtime",
+  "crates/jueming-pipeline",
 ]
 
 [workspace.package]

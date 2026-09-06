@@ -1,4 +1,4 @@
-export const APP_SETTINGS_SCHEMA_VERSION = 1 as const;
+export const APP_SETTINGS_SCHEMA_VERSION = 2 as const;
 
 export type AppTheme = "light" | "eye";
 export type CacheCleanupPolicy = "startup" | "weekly" | "monthly" | "never";
@@ -16,6 +16,7 @@ export type ScreenReaderVerbosity = "concise" | "standard" | "detailed";
 export type PetCharacter = "orange-cat" | "golden-retriever" | "yellow-dog";
 export type PetActivity = "quiet" | "standard" | "lively";
 export type PetLocation = "bottom-garden" | "side-rest";
+export type CompanionPresentation = "animated" | "quiet" | "static" | "hidden";
 
 export interface AppSettingsEnvelope {
   schemaVersion: typeof APP_SETTINGS_SCHEMA_VERSION;
@@ -59,6 +60,9 @@ export interface AppSettingsEnvelope {
     };
     pet: {
       enabled: boolean;
+      presentation: CompanionPresentation;
+      catEnabled: boolean;
+      dogEnabled: boolean;
       character: PetCharacter;
       activity: PetActivity;
       location: PetLocation;
@@ -67,6 +71,11 @@ export interface AppSettingsEnvelope {
       chaseMotion: boolean;
       quietWhileEditing: boolean;
       hideForSearchAndAnnotations: boolean;
+    };
+    agent: {
+      showContext: boolean;
+      shareSelection: boolean;
+      openOnRequest: boolean;
     };
     persistence: {
       autoSaveDelayMs: number;
@@ -130,7 +139,10 @@ export const createDefaultAppSettings = (detectedMacOS: boolean): AppSettingsEnv
       pauseWhenUnfocused: true,
     },
     pet: {
-      enabled: false,
+      enabled: true,
+      presentation: "static",
+      catEnabled: true,
+      dogEnabled: true,
       character: "orange-cat",
       activity: "standard",
       location: "bottom-garden",
@@ -138,8 +150,9 @@ export const createDefaultAppSettings = (detectedMacOS: boolean): AppSettingsEnv
       butterflyMotion: true,
       chaseMotion: true,
       quietWhileEditing: true,
-      hideForSearchAndAnnotations: true,
+      hideForSearchAndAnnotations: false,
     },
+    agent: { showContext: true, shareSelection: true, openOnRequest: true },
     persistence: {
       autoSaveDelayMs: 3000,
       cacheCleanupPolicy: "weekly",
@@ -186,6 +199,7 @@ export function parseAppSettings(value: unknown, detectedMacOS: boolean): AppSet
   const input = asRecord(device.input);
   const motion = asRecord(device.motion);
   const pet = asRecord(device.pet);
+  const agent = asRecord(device.agent);
   const persistence = asRecord(device.persistence);
   const privacy = asRecord(device.privacy);
   const notifications = asRecord(device.notifications);
@@ -233,6 +247,9 @@ export function parseAppSettings(value: unknown, detectedMacOS: boolean): AppSet
       },
       pet: {
         enabled: booleanValue(pet.enabled, defaults.device.pet.enabled),
+        presentation: enumValue(pet.presentation, ["animated", "quiet", "static", "hidden"], defaults.device.pet.presentation),
+        catEnabled: booleanValue(pet.catEnabled, defaults.device.pet.catEnabled),
+        dogEnabled: booleanValue(pet.dogEnabled, defaults.device.pet.dogEnabled),
         character: enumValue(pet.character, ["orange-cat", "golden-retriever", "yellow-dog"], defaults.device.pet.character),
         activity: enumValue(pet.activity, ["quiet", "standard", "lively"], defaults.device.pet.activity),
         location: enumValue(pet.location, ["bottom-garden", "side-rest"], defaults.device.pet.location),
@@ -241,6 +258,11 @@ export function parseAppSettings(value: unknown, detectedMacOS: boolean): AppSet
         chaseMotion: booleanValue(pet.chaseMotion, defaults.device.pet.chaseMotion),
         quietWhileEditing: booleanValue(pet.quietWhileEditing, defaults.device.pet.quietWhileEditing),
         hideForSearchAndAnnotations: booleanValue(pet.hideForSearchAndAnnotations, defaults.device.pet.hideForSearchAndAnnotations),
+      },
+      agent: {
+        showContext: booleanValue(agent.showContext, defaults.device.agent.showContext),
+        shareSelection: booleanValue(agent.shareSelection, defaults.device.agent.shareSelection),
+        openOnRequest: booleanValue(agent.openOnRequest, defaults.device.agent.openOnRequest),
       },
       persistence: {
         autoSaveDelayMs: numberEnumValue(persistence.autoSaveDelayMs, [1000, 3000, 5000, 10000, 30000], defaults.device.persistence.autoSaveDelayMs),

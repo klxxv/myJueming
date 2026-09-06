@@ -1,0 +1,30 @@
+[package]
+name = "jueming-mcp"
+version = "0.1.1"
+edition = "2024"
+rust-version = "1.94"
+publish = false
+
+[lib]
+name = "jueming_mcp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "jueming-mcp"
+path = "src/main.rs"
+
+[dependencies]
+futures-util = "0.3"
+jueming-application = { path = "../jueming-application" }
+rmcp = { version = "3.2.0", features = ["client", "server", "transport-io"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+schemars = "1"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { version = "1", features = ["io-std", "io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+url = "2"
+uuid.workspace = true
+
+[dev-dependencies]
+axum = "0.8.9"

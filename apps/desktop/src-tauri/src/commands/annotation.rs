@@ -1,83 +1,58 @@
-//! Annotation IPC adapters; domain work stays in KernelService.
-
-use crate::state::{AppKernelState, lock_error};
-use jueming_kernel::KernelService;
-use jueming_protocol::{AnnotationCreateRequest, AnnotationUpdateRequest, ProjectSnapshot};
+//! Annotation sidecar commands serialized by LocalAppHost.
+use crate::state::AppKernelState;
+use jueming_protocol::{
+    AnnotationCreateRequest, AnnotationId, AnnotationUpdateRequest, HumanAnnotation,
+    ProjectSnapshot,
+};
 use tauri::State;
-
 #[tauri::command]
 pub(crate) fn create_annotation(
     request: AnnotationCreateRequest,
     state: State<'_, AppKernelState>,
 ) -> Result<ProjectSnapshot, String> {
-    let mut guard = state.current.lock().map_err(|_| lock_error())?;
-    let current = guard
-        .as_mut()
-        .ok_or_else(|| "No local project is open.".to_owned())?;
-    let next = KernelService
-        .create_annotation(&current.path, &current.snapshot, request)
-        .map_err(|error| error.to_string())?;
-    current.snapshot = next.clone();
-    Ok(next)
+    state
+        .host
+        .mutate("native", |k, s, p| k.create_annotation(p, s, request))
+        .map_err(|e| e.to_string())
 }
-
 #[tauri::command]
 pub(crate) fn list_annotations(
     state: State<'_, AppKernelState>,
-) -> Result<Vec<jueming_protocol::HumanAnnotation>, String> {
-    let guard = state.current.lock().map_err(|_| lock_error())?;
-    let current = guard
-        .as_ref()
-        .ok_or_else(|| "No local project is open.".to_owned())?;
-    KernelService
-        .list_annotations(&current.snapshot)
-        .map_err(|error| error.to_string())
+) -> Result<Vec<HumanAnnotation>, String> {
+    state
+        .host
+        .read(|k, s, _| k.list_annotations(s))
+        .map_err(|e| e.to_string())
 }
-
 #[tauri::command]
 pub(crate) fn update_annotation(
     request: AnnotationUpdateRequest,
     state: State<'_, AppKernelState>,
 ) -> Result<ProjectSnapshot, String> {
-    let mut guard = state.current.lock().map_err(|_| lock_error())?;
-    let current = guard
-        .as_mut()
-        .ok_or_else(|| "No local project is open.".to_owned())?;
-    let next = KernelService
-        .update_annotation(&current.path, &current.snapshot, request)
-        .map_err(|error| error.to_string())?;
-    current.snapshot = next.clone();
-    Ok(next)
+    state
+        .host
+        .mutate("native", |k, s, p| k.update_annotation(p, s, request))
+        .map_err(|e| e.to_string())
 }
-
 #[tauri::command]
 pub(crate) fn delete_annotation(
-    annotation_id: jueming_protocol::AnnotationId,
+    annotation_id: AnnotationId,
     state: State<'_, AppKernelState>,
 ) -> Result<ProjectSnapshot, String> {
-    let mut guard = state.current.lock().map_err(|_| lock_error())?;
-    let current = guard
-        .as_mut()
-        .ok_or_else(|| "No local project is open.".to_owned())?;
-    let next = KernelService
-        .delete_annotation(&current.path, &current.snapshot, annotation_id)
-        .map_err(|error| error.to_string())?;
-    current.snapshot = next.clone();
-    Ok(next)
+    state
+        .host
+        .mutate("native", |k, s, p| k.delete_annotation(p, s, annotation_id))
+        .map_err(|e| e.to_string())
 }
-
 #[tauri::command]
 pub(crate) fn resolve_annotation(
-    annotation_id: jueming_protocol::AnnotationId,
+    annotation_id: AnnotationId,
     state: State<'_, AppKernelState>,
 ) -> Result<ProjectSnapshot, String> {
-    let mut guard = state.current.lock().map_err(|_| lock_error())?;
-    let current = guard
-        .as_mut()
-        .ok_or_else(|| "No local project is open.".to_owned())?;
-    let next = KernelService
-        .resolve_annotation(&current.path, &current.snapshot, annotation_id)
-        .map_err(|error| error.to_string())?;
-    current.snapshot = next.clone();
-    Ok(next)
+    state
+        .host
+        .mutate("native", |k, s, p| {
+            k.resolve_annotation(p, s, annotation_id)
+        })
+        .map_err(|e| e.to_string())
 }

@@ -3,7 +3,7 @@
 mod common;
 
 use common::government_request;
-use jueming_core::RevisionId;
+use jueming_core::{OperationId, RevisionId};
 use jueming_kernel::{KernelError, KernelService};
 use jueming_protocol::{ReplaceApplyRequest, ReplacePreviewRequest, SearchSegmentsRequest};
 
@@ -99,4 +99,51 @@ fn replace_is_one_revision_stale_safe_and_undoable() {
     let undone = service.undo(&path, &replaced).expect("undo replace");
     assert_eq!(undone.project.current_revision_id, RevisionId::new(3));
     assert_eq!(undone.segments, snapshot.segments);
+}
+
+#[test]
+fn replacement_persists_the_preallocated_operation_id() {
+    let temporary = tempfile::tempdir().expect("temporary directory");
+    let path = temporary.path().join("operation-id.jm");
+    let service = KernelService;
+    let snapshot = service.create_project(&government_request(&path)).unwrap();
+    let preview = ReplacePreviewRequest {
+        project_id: snapshot.project.project_id,
+        query: "stable".into(),
+        replacement: "steady".into(),
+        regex: false,
+        case_sensitive: false,
+        language_id: Some("en".into()),
+        base_revision_id: snapshot.project.current_revision_id,
+    };
+    let selected_segment_ids = service
+        .preview_replace(&snapshot, &preview)
+        .unwrap()
+        .selected_segment_ids;
+    let operation_id = OperationId::new();
+    let replaced = service
+        .apply_replace_with_operation_id(
+            &path,
+            &snapshot,
+            &ReplaceApplyRequest {
+                preview,
+                selected_segment_ids,
+            },
+            operation_id,
+        )
+        .unwrap();
+    assert_eq!(
+        replaced.revisions.last().unwrap().operation_id,
+        operation_id
+    );
+    assert_eq!(
+        service
+            .open_project(&path)
+            .unwrap()
+            .revisions
+            .last()
+            .unwrap()
+            .operation_id,
+        operation_id
+    );
 }
