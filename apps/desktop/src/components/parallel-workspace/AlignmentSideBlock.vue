@@ -147,7 +147,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 .alignment-side-block__bracket::before { top: 0; }
 .alignment-side-block__bracket::after { bottom: 0; }
 .alignment-side-block--unlinked .alignment-side-block__bracket { color: #e5a300; }
-.alignment-side-block__pending { position: absolute; z-index: 19; right: 30px; bottom: 3px; color: #d38e00; font-size: 11px; font-weight: 650; pointer-events: none; }
+.alignment-side-block__pending { position: absolute; z-index: 19; right: 30px; bottom: 3px; color: #d38e00; font-size: var(--jm-font-size-subheadline); font-weight: var(--jm-font-weight-semibold); pointer-events: none; line-height: var(--jm-line-height-subheadline); }
 .alignment-side-block--target .alignment-side-block__pending { right: auto; left: 30px; }
 @keyframes alignment-side-highlight { 0% { box-shadow: inset 0 0 0 3px rgb(77 155 83 / 45%); } 100% { box-shadow: inset 0 0 0 0 rgb(77 155 83 / 0%); } }
 @media (prefers-reduced-motion: reduce) { .alignment-side-block { transition: none; } .alignment-side-block--highlighted { animation: none; } }

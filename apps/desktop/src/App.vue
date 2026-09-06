@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { confirm, open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Check, ChevronDown, Download, Eye, FilePlus2, Folder, FolderOpen, History, Link2, Maximize2, MessageSquareText, Minimize2, Monitor, PanelLeft, Pencil, Redo2, Save, Search, Settings2, Star, Undo2, X } from "@lucide/vue";
+import { Check, ChevronDown, Download, Eye, FilePlus2, Folder, FolderOpen, History, Link2, ListOrdered, MessageSquareText, Monitor, PanelLeft, Pencil, Redo2, Save, Search, Settings2, Star, Undo2 } from "@lucide/vue";
 import ParallelWorkspace from "./components/ParallelWorkspace.vue";
 import AnnotationPanel, { type AnnotationDraft, type AnnotationFilter, type AnnotationItem } from "./components/AnnotationPanel.vue";
 import HistoryWorkspace, { type HistoryDiff, type RevisionItem } from "./components/HistoryWorkspace.vue";
@@ -16,7 +16,6 @@ import { useViewModeController } from "./composables/useViewModeController";
 import { useStructureMutations } from "./composables/useStructureMutations";
 import { alignments as fixtureAlignments, sourceSegments, targetSegments } from "./data/governmentFixture";
 import { createKernelClient, snapshotToWorkspace, type AlignmentDto, type BookmarkPreviewDto, type ExportFormat, type LanguageSide, type ProjectSnapshot, type ProjectSummaryDto, type ReplacePreviewRequest, type RevisionComparison, type SegmentDto, type WorkspaceMode } from "./domain/kernel-client";
-import brandIcon from "../../../assets/brand/jueming-aligner-icon-master-v2.png";
 import "./styles.css";
 
 type NavId = "project" | "parallel" | "search" | "bookmarks" | "history" | "settings";
@@ -68,6 +67,7 @@ const projectSummary = ref<ProjectSummaryDto>({ project_id: "fixture-project", n
 const modeItems: Array<{ id: WorkspaceMode; label: string; hint: string; icon: typeof Eye }> = [
   { id: "review", label: "审阅排序", hint: "Review + Order", icon: Eye },
   { id: "edit", label: "编辑模式", hint: "Edit", icon: Pencil },
+  { id: "order", label: "排序模式", hint: "Order", icon: ListOrdered },
   { id: "history", label: "历史模式", hint: "History", icon: History },
 ];
 const annotationModeItem: { id: "annotation"; label: string; hint: string; icon: typeof Eye } = {
@@ -106,27 +106,38 @@ const bookmarkedSegmentIds = computed(() => (projectSnapshot.value?.bookmarks ??
 const annotatedSegmentIds = computed(() => [...new Set((projectSnapshot.value?.annotations ?? []).flatMap((annotation) => annotation.linked_segment_ids))]);
 const notify = (message: string) => { statusMessage.value = message; };
 const {
-  theme,
-  fontScale,
-  uiScale,
+  settings,
+  capabilities,
+  general,
   autoSaveDelayMs,
-  cacheCleanupPolicy,
   cacheCleaning,
   lastCacheCleanupAt,
-  shortcutProfile,
   trackpadOptimized,
   usesMacShortcuts,
   shortcutLabels,
   shortcutRows,
+  settingsSaving,
+  settingsSaveError,
+  effectiveMotionMode,
+  smoothNavigationEnabled,
+  systemReducedMotion,
+  motionSummary,
   initializeSettings,
+  disposeSettings,
+  flushSettings,
+  applyGeneralSettings,
   applyUiSettings,
+  applyAccessibilitySettings,
   applyInteractionSettings,
+  applyMotionSettings,
   applyPersistenceSettings,
+  rememberSettingsSection,
+  resetAllSettings,
   clearProjectCache,
   maybeCleanupCache,
 } = useAppSettings({
   detectedMacOS,
-  clearCache: () => kernelClient.clearCache(),
+  kernelClient,
   onStatus: notify,
 });
 const requireOpenProject = () => {
@@ -157,11 +168,22 @@ const {
   onStatus: notify,
 });
 const dirty = computed(() => hasDirtyDraft.value || isSavingDraft.value);
+const processedTotal = computed(() => Math.max(projectSummary.value.source_count, projectSummary.value.target_count));
+const progressPercentage = computed(() => Math.round(100 * projectSummary.value.alignment_count / Math.max(1, processedTotal.value)));
+const alignmentStatus = computed(() => projectSummary.value.source_unlinked_count + projectSummary.value.target_unlinked_count === 0 ? "1:1" : "待校对");
+const footerStatusMessage = computed(() => busy.value
+  ? "处理中…"
+  : isSavingDraft.value
+    ? "自动保存中…"
+    : dirty.value
+      ? `待自动保存（${autoSaveDelayMs.value / 1000}s）`
+      : statusMessage.value);
 let unlistenClose: (() => void) | null = null;
 
 const closeWindowSafely = async () => {
   const saved = await persistDraft(true, "close");
   if (!saved) return;
+  await flushSettings();
   if (projectSnapshot.value) {
     try { await kernelClient.flushProject(); } catch (error) { notify(`关闭前保存失败：${errorMessage(error)}`); return; }
   }
@@ -171,13 +193,6 @@ const closeWindowSafely = async () => {
   await currentWindow.close();
 };
 
-const windowAction = async (action: "minimize" | "maximize" | "close") => {
-  if (!("__TAURI_INTERNALS__" in window)) return;
-  const currentWindow = getCurrentWindow();
-  if (action === "minimize") await currentWindow.minimize();
-  else if (action === "maximize") await currentWindow.toggleMaximize();
-  else await closeWindowSafely();
-};
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
 const closeAnnotationPanel = () => {
   annotationOpen.value = false;
@@ -205,7 +220,7 @@ const applySnapshot = async (
       target: workspace.targetSegments.map((segment) => segment.id),
     };
     activeNav.value = "parallel";
-    forceMode("review");
+    forceMode(general.value.defaultWorkspace);
     closeAnnotationPanel();
     selectedAnnotationId.value = null;
     resetSearch();
@@ -216,18 +231,22 @@ onMounted(async () => {
   const savedAnnotationWidthValue = localStorage.getItem("jueming-annotation-width");
   const savedAnnotationWidth = savedAnnotationWidthValue === null ? Number.NaN : Number(savedAnnotationWidthValue);
   if (Number.isFinite(savedAnnotationWidth)) annotationWidth.value = Math.min(560, Math.max(300, savedAnnotationWidth));
-  initializeSettings();
+  await initializeSettings();
   try {
     await applySnapshot(await kernelClient.getCurrentProject(), true);
   } catch {
-    const recentProjectPath = isTauriRuntime ? localStorage.getItem("jueming-last-project-path") : null;
-    if (recentProjectPath) {
-      try {
-        await applySnapshot(await kernelClient.openProject(recentProjectPath), true);
-        notify(`已重新打开 ${projectSummary.value.name}`);
-      } catch {
-        localStorage.removeItem("jueming-last-project-path");
+    if (general.value.startupDestination === "last-project") {
+      const recentProjectPath = isTauriRuntime ? localStorage.getItem("jueming-last-project-path") : null;
+      if (recentProjectPath) {
+        try {
+          await applySnapshot(await kernelClient.openProject(recentProjectPath), true);
+          notify(`已重新打开 ${projectSummary.value.name}`);
+        } catch {
+          localStorage.removeItem("jueming-last-project-path");
+        }
       }
+    } else if (general.value.startupDestination === "project-picker" && isTauriRuntime) {
+      await openProject();
     }
   }
   if (projectSnapshot.value) await maybeCleanupCache();
@@ -655,20 +674,43 @@ const handleShortcut = (event: KeyboardEvent) => {
   else if ((usesMacShortcuts.value && key === "z" && event.shiftKey) || (!usesMacShortcuts.value && (key === "y" || (key === "z" && event.shiftKey)))) { event.preventDefault(); void performRedo(); }
 };
 onMounted(() => window.addEventListener("keydown", handleShortcut));
-onBeforeUnmount(() => { window.removeEventListener("keydown", handleShortcut); stopAnnotationResize(); unlistenClose?.(); });
+onBeforeUnmount(() => { window.removeEventListener("keydown", handleShortcut); stopAnnotationResize(); unlistenClose?.(); disposeSettings(); void flushSettings(); });
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'app-shell--macos': detectedMacOS }">
-    <header class="window-chrome" data-tauri-drag-region><div class="brand-lockup" data-tauri-drag-region><img :src="brandIcon" alt="" /><span class="brand-title" data-tauri-drag-region>决明对齐器 <em data-tauri-drag-region>Jueming Aligner</em></span></div><div class="window-actions"><button type="button" title="最小化" @click="windowAction('minimize')"><Minimize2 :size="16" /></button><button type="button" title="最大化" @click="windowAction('maximize')"><Maximize2 :size="15" /></button><button type="button" title="关闭" @click="windowAction('close')"><X :size="18" /></button></div></header>
+  <div class="app-shell">
     <header class="app-toolbar"><div class="toolbar-left"><button class="toolbar-button" type="button" :title="`新建工程（${shortcutLabels.newProject}）`" @click="openNewProject"><FilePlus2 :size="19" />新建</button><button class="toolbar-button" type="button" :title="`打开本地工程（${shortcutLabels.openProject}）`" @click="openProject"><FolderOpen :size="19" />打开</button><button class="toolbar-button" type="button" :title="`保存工程（${shortcutLabels.save}）`" @click="saveProject"><Save :size="19" />保存</button><div class="toolbar-divider"></div><div class="toolbar-actions"><div class="toolbar-button--export-wrap"><button class="toolbar-button toolbar-button--export" type="button" title="导出工程" @click="exportOpen = !exportOpen"><Download :size="19" />导出<ChevronDown :size="15" /></button><div v-if="exportOpen" class="export-menu"><button type="button" @click="exportProject('txt')">TXT 文本</button><button type="button" @click="exportProject('json')">JSON 工程</button><button type="button" @click="exportProject('xml')">XML 对齐</button></div></div><div class="toolbar-divider"></div><button class="toolbar-button" type="button" :disabled="!canUndo || busy" :title="`撤销（${shortcutLabels.undo}）`" @click="performUndo"><Undo2 :size="19" />撤销</button><button class="toolbar-button" type="button" :disabled="!canRedo || busy" :title="`重做（${shortcutLabels.redo}）`" @click="performRedo"><Redo2 :size="19" />重做</button><div class="toolbar-divider"></div><button class="toolbar-button" type="button" @click="setNav('settings')"><Settings2 :size="19" />设置</button></div></div><div class="mode-control" :class="`mode-control--${annotationOpen ? 'annotation' : activeMode}`"><component :is="currentMode.icon" :size="17" /><span>{{ currentMode.label }} <small>{{ currentMode.hint }}</small></span><ChevronDown :size="15" /><select :value="annotationOpen ? 'annotation' : activeMode" aria-label="切换工作模式" @change="modeSelect"><option v-for="item in modeMenuItems" :key="item.id" :value="item.id">{{ item.label }} {{ item.hint }}</option></select></div></header>
     <div class="content-grid" :class="{ 'content-grid--collapsed': sideNavCollapsed, 'content-grid--annotation': annotationOpen, 'content-grid--resizing': annotationResizing }" :style="{ '--annotation-width': `${annotationWidth}px` }">
       <nav class="side-nav" :class="{ 'side-nav--collapsed': sideNavCollapsed }"><button v-for="item in navItems" :key="item.id" class="nav-item" :class="{ 'nav-item--active': activeNav === item.id }" type="button" :title="item.label" @click="setNav(item.id)"><component :is="item.icon" :size="22" :stroke-width="activeNav === item.id ? 2.2 : 1.8" /><span class="nav-label">{{ item.label }}<small v-if="item.hint">{{ item.hint }}</small></span></button><div class="nav-collapse"><button class="nav-item" type="button" :title="sideNavCollapsed ? '展开侧栏' : '收起侧栏'" @click="toggleSideNav"><ChevronDown :size="21" :style="{ transform: sideNavCollapsed ? 'rotate(-90deg)' : 'rotate(90deg)' }" /><span class="nav-label">{{ sideNavCollapsed ? '展开' : '收起' }}</span></button></div></nav>
       <main class="main-stage">
-        <ParallelWorkspace ref="parallelWorkspaceRef" v-if="activeNav === 'parallel'" :mode="activeMode" :source-segments="sourceRows" :target-segments="targetRows" :alignments="alignmentRows" :selected-alignment-id="selectedAlignmentId" :bookmarked-segment-ids="bookmarkedSegmentIds" :annotated-segment-ids="annotatedSegmentIds" :edit-session="editSession" :trackpad-optimized="trackpadOptimized" :writable="workspaceWritable" @select="selectedAlignmentId = $event" @request-edit="requestSegmentEdit" @edit-draft="updateDraft" @commit-edit="commitSegmentEdit" @cancel-edit="cancelSegmentEdit" @escape-edit="escapeSegmentEdit" @move="moveSegment" @reorder="reorderSegment" @insert-gap="insertAlignmentGap" @reset-order="resetOrder" @link="linkSegments" @unlink="unlinkAlignment" @merge-segments="mergeSegmentContent" @split-segment="splitSegmentContent" @group="groupAlignments" @ungroup="ungroupAlignment" @bookmark="toggleBookmark" @annotation="openAnnotationPanel" @status="notify" />
+        <ParallelWorkspace ref="parallelWorkspaceRef" v-if="activeNav === 'parallel'" :mode="activeMode" :source-segments="sourceRows" :target-segments="targetRows" :alignments="alignmentRows" :selected-alignment-id="selectedAlignmentId" :bookmarked-segment-ids="bookmarkedSegmentIds" :annotated-segment-ids="annotatedSegmentIds" :edit-session="editSession" :trackpad-optimized="trackpadOptimized" :smooth-navigation="smoothNavigationEnabled" :writable="workspaceWritable" @select="selectedAlignmentId = $event" @request-edit="requestSegmentEdit" @edit-draft="updateDraft" @commit-edit="commitSegmentEdit" @cancel-edit="cancelSegmentEdit" @escape-edit="escapeSegmentEdit" @move="moveSegment" @reorder="reorderSegment" @insert-gap="insertAlignmentGap" @reset-order="resetOrder" @link="linkSegments" @unlink="unlinkAlignment" @merge-segments="mergeSegmentContent" @split-segment="splitSegmentContent" @group="groupAlignments" @ungroup="ungroupAlignment" @bookmark="toggleBookmark" @annotation="openAnnotationPanel" @status="notify" />
         <SearchReplaceWorkspace v-else-if="activeNav === 'search'" v-model:query="searchQuery" v-model:side="searchSide" v-model:regex="searchRegex" v-model:case-sensitive="searchCaseSensitive" v-model:replacement="replacement" :results="searchResults" :project-label="projectSummary.name" :loading="busy" @search="runSearch" @select-result="selectSearchResult" @replace-preview="previewReplacement" @apply-replace="applyReplacement" @reset="resetSearch" />
         <HistoryWorkspace v-else-if="activeNav === 'history'" :revisions="revisionItems" :diff="historyDiff" :base-revision-id="baseRevisionId" :selected-revision-id="selectedRevisionId" :current-revision-id="projectSummary.revision_id" :loading="busy" @select-revision="selectHistoryRevision" @compare="compareHistory" @restore="restoreHistory" @copy-value="copyHistoryValue" />
-        <SettingsWorkspace v-else-if="activeNav === 'settings'" v-model:theme="theme" v-model:font-scale="fontScale" v-model:ui-scale="uiScale" v-model:shortcut-profile="shortcutProfile" v-model:trackpad-optimized="trackpadOptimized" v-model:auto-save-delay-ms="autoSaveDelayMs" v-model:cache-cleanup-policy="cacheCleanupPolicy" :uses-mac-shortcuts="usesMacShortcuts" :shortcut-rows="shortcutRows" :cache-cleaning="cacheCleaning" :last-cache-cleanup-at="lastCacheCleanupAt" @apply-ui="applyUiSettings" @apply-interaction="applyInteractionSettings" @apply-persistence="applyPersistenceSettings" @clear-cache="clearProjectCache(true)" />
+        <SettingsWorkspace
+          v-else-if="activeNav === 'settings'"
+          v-model:settings="settings"
+          :capabilities="capabilities"
+          :uses-mac-shortcuts="usesMacShortcuts"
+          :shortcut-rows="shortcutRows"
+          :cache-cleaning="cacheCleaning"
+          :last-cache-cleanup-at="lastCacheCleanupAt"
+          :settings-saving="settingsSaving"
+          :settings-save-error="settingsSaveError"
+          :effective-motion-mode="effectiveMotionMode"
+          :motion-summary="motionSummary"
+          :system-reduced-motion="systemReducedMotion"
+          :project-open="Boolean(projectSnapshot)"
+          app-version="0.1.1"
+          @apply-general="applyGeneralSettings"
+          @apply-ui="applyUiSettings"
+          @apply-accessibility="applyAccessibilitySettings"
+          @apply-interaction="applyInteractionSettings"
+          @apply-motion="applyMotionSettings"
+          @apply-persistence="applyPersistenceSettings"
+          @clear-cache="clearProjectCache(true)"
+          @remember-section="rememberSettingsSection"
+          @reset-all="resetAllSettings"
+        />
         <BookmarksWorkspace v-else-if="activeNav === 'bookmarks'" :bookmarks="projectSnapshot?.bookmarks ?? []" :previews="bookmarkPreviews" :source-segments="sourceRows" :target-segments="targetRows" :alignments="alignmentRows" :segment-labels="segmentLabels" :alignment-labels="alignmentLabels" @open="openBookmark" @remove="removeBookmark" />
         <section v-else class="aux-view project-view"><Folder :size="28" /><h2>项目</h2><p>{{ projectSummary.name }}</p><div class="project-summary-card"><span>{{ projectSummary.source_count }}</span><small>中文句段</small><span>{{ projectSummary.target_count }}</span><small>English segments</small><span>{{ projectSummary.alignment_count }}</span><small>Alignment</small></div><div class="project-actions"><button type="button" class="primary-button" @click="openProject">打开工程</button><button type="button" class="secondary-button" @click="openNewProject">新建工程</button></div></section>
       </main>
@@ -677,24 +719,55 @@ onBeforeUnmount(() => { window.removeEventListener("keydown", handleShortcut); s
         <AnnotationPanel v-model:active-filter="annotationFilter" :annotations="annotations" :selected-id="selectedAnnotationId" :readonly="!workspaceWritable" @select="selectedAnnotationId = $event" @open-link="openAnnotationLink" @create="createAnnotation" @edit="editAnnotation" @delete="deleteAnnotation" @resolve="resolveAnnotation" @close="closeAnnotationPanel" />
       </aside>
     </div>
-    <footer class="bottom-status"><div class="footer-left"><div class="footer-project"><strong>项目：</strong>{{ projectSummary.name }}</div><div class="footer-separator"></div><div class="footer-project">文件：<span>{{ projectSummary.source_label }}</span><Link2 :size="14" /><span>{{ projectSummary.target_label }}</span></div><div class="footer-separator"></div><div>对齐状态：<span class="footer-status-pill">{{ projectSummary.source_unlinked_count + projectSummary.target_unlinked_count === 0 ? '1:1' : '待校对' }}</span></div></div><div class="footer-right"><span class="save-state" :class="{ 'save-state--dirty': dirty }"><Monitor :size="14" />{{ busy ? '处理中…' : isSavingDraft ? '自动保存中…' : dirty ? `待自动保存（${autoSaveDelayMs / 1000}s）` : statusMessage }}</span><span>已处理：{{ projectSummary.alignment_count }} / {{ Math.max(projectSummary.source_count, projectSummary.target_count) }}</span><span>进度：</span><div class="progress-track"><span :style="{ width: `${Math.round(100 * projectSummary.alignment_count / Math.max(1, projectSummary.source_count, projectSummary.target_count))}%` }"></span></div><span>{{ Math.round(100 * projectSummary.alignment_count / Math.max(1, projectSummary.source_count, projectSummary.target_count)) }}%</span></div></footer>
+    <footer class="bottom-status">
+      <div class="footer-context">
+        <div class="footer-context-item footer-context-item--project">
+          <strong class="footer-context-label">项目</strong>
+          <span class="footer-ellipsis" :title="projectSummary.name">{{ projectSummary.name }}</span>
+        </div>
+        <div class="footer-context-separator" aria-hidden="true"></div>
+        <div class="footer-context-item footer-context-item--files">
+          <strong class="footer-context-label">文件</strong>
+          <span class="footer-file-name footer-file-name--source" :title="projectSummary.source_label">{{ projectSummary.source_label }}</span>
+          <Link2 :size="13" aria-hidden="true" />
+          <span class="footer-file-name footer-file-name--target" :title="projectSummary.target_label">{{ projectSummary.target_label }}</span>
+        </div>
+        <div class="footer-context-separator" aria-hidden="true"></div>
+        <div class="footer-context-item footer-context-item--alignment">
+          <span class="footer-context-label">对齐</span>
+          <span class="footer-status-pill">{{ alignmentStatus }}</span>
+        </div>
+      </div>
+      <div class="footer-save-state">
+        <span :key="footerStatusMessage" class="save-state" :class="{ 'save-state--dirty': dirty }" :title="footerStatusMessage">
+          <Monitor :size="14" aria-hidden="true" />
+          <span class="footer-ellipsis">{{ footerStatusMessage }}</span>
+        </span>
+      </div>
+      <div class="footer-progress">
+        <span class="footer-processed"><span class="footer-processed-label">已处理</span><strong>{{ projectSummary.alignment_count }} / {{ processedTotal }}</strong></span>
+        <span class="footer-progress-label">进度</span>
+        <div class="progress-track" role="progressbar" aria-label="工程处理进度" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="progressPercentage"><span :style="{ width: `${progressPercentage}%` }"></span></div>
+        <strong class="footer-progress-percent">{{ progressPercentage }}%</strong>
+      </div>
+    </footer>
     <div v-if="pendingTransition" class="modal-backdrop mode-guard-backdrop"><section class="mode-guard" role="dialog" aria-modal="true" aria-labelledby="mode-guard-title"><span class="eyebrow">UNSAVED EDIT</span><h2 id="mode-guard-title">当前句段还有未保存编辑</h2><p>保存会创建一个完整 Revision；放弃只撤销最近一次自动保存之后的草稿。</p><div><button class="secondary-button" type="button" @click="stayInEdit">继续编辑</button><button class="secondary-button danger-button" type="button" @click="discardPendingTransition">放弃草稿</button><button class="primary-button" type="button" @click="savePendingTransition"><Check :size="15" />保存并切换</button></div></section></div>
     <NewProjectDialog ref="newProjectDialogRef" v-model:busy="busy" :kernel-client="kernelClient" @created="handleProjectCreated" @status="notify" />
   </div>
 </template>
 
 <style scoped>
-.toolbar-button--export-wrap { position: relative; }.export-menu { position: absolute; z-index: 8; top: 41px; left: 0; width: 142px; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: #fff; box-shadow: 0 10px 25px rgb(35 55 38 / 14%); }.export-menu button { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; }.export-menu button:hover { color: var(--green-900); background: var(--green-050); }.mode-control small { margin-left: 2px; color: var(--green-700); font-size: 12px; font-weight: 500; }.mode-control--edit { border-color: #e6d19d; color: #916714; background: #fffaf0; }.mode-control--edit small { color: #af8321; }.mode-control--history { border-color: #c7d4df; color: #536b7a; background: #f8fbfd; }
+.toolbar-button--export-wrap { position: relative; }.export-menu { position: absolute; z-index: 8; top: 41px; left: 0; width: 142px; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: #fff; box-shadow: 0 10px 25px rgb(35 55 38 / 14%); }.export-menu button { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; }.export-menu button:hover { color: var(--green-900); background: var(--green-050); }.mode-control small { margin-left: 2px; color: var(--green-700); font-size: var(--jm-font-size-callout); font-weight: var(--jm-font-weight-regular); line-height: var(--jm-line-height-callout); }.mode-control--edit { border-color: #e6d19d; color: #916714; background: #fffaf0; }.mode-control--edit small { color: #af8321; }.mode-control--history { border-color: #c7d4df; color: #536b7a; background: #f8fbfd; }
 .annotation-drawer { position: relative; z-index: 6; width: var(--annotation-width); height: 100%; min-width: 0; opacity: 0; visibility: hidden; transform: translateX(100%); transition: opacity 180ms ease, transform 240ms cubic-bezier(.2, .8, .2, 1), visibility 0s linear 240ms; }
 .annotation-drawer--open { opacity: 1; visibility: visible; transform: translateX(0); transition-delay: 0s; }
 .content-grid--resizing .annotation-drawer { transition: none; }
 .annotation-resize-handle { position: absolute; z-index: 8; top: 16px; bottom: 16px; left: 0; width: 1px; background: #ccd9cd; cursor: col-resize; touch-action: none; }
 .annotation-resize-handle::before { position: absolute; inset: 0 -5px; content: ""; }
 .annotation-resize-handle:hover, .annotation-resize-handle:focus-visible, .content-grid--resizing .annotation-resize-handle { background: var(--green-700); box-shadow: 0 0 0 1px rgb(47 129 67 / 12%); }
-.search-view { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 25px 28px; }.search-bar { display: flex; align-items: center; gap: 10px; }.search-bar > label { width: 42px; font-size: 14px; }.search-input-wrap { display: flex; align-items: center; width: min(570px, 48vw); height: 42px; padding: 0 12px; border: 1px solid #c9d1ca; border-radius: 7px 0 0 7px; color: var(--ink-500); }.search-input-wrap input { flex: 1; min-width: 0; padding: 0 9px; border: 0; outline: none; }.search-input-wrap button { padding: 3px; border: 0; background: transparent; color: var(--ink-500); cursor: pointer; }.primary-search, .primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 42px; padding: 0 22px; border: 1px solid var(--green-900); border-radius: 0 6px 6px 0; color: #fff; background: var(--green-900); cursor: pointer; }.filter-button { height: 42px; margin-left: -10px; padding: 0 12px; border: 1px solid #c9d1ca; border-radius: 0 7px 7px 0; background: #fff; cursor: pointer; }.check-label { display: inline-flex; align-items: center; gap: 6px; margin-left: 22px; color: var(--ink-700); font-size: 13px; }.current-project { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--green-900); font-size: 13px; }.search-summary { padding: 15px 5px 12px; color: var(--ink-700); font-size: 13px; }.search-summary strong { color: var(--green-900); }.search-summary span { color: var(--ink-500); }.search-table { min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 7px; }.search-table-head, .search-row { display: grid; grid-template-columns: 85px 1.2fr 95px 1.45fr 90px; align-items: center; gap: 14px; padding: 0 17px; }.search-table-head { height: 43px; color: var(--ink-700); background: #f8faf8; font-size: 12px; }.search-row { width: 100%; min-height: 57px; border: 0; border-top: 1px solid var(--line); background: #fff; color: var(--ink-900); font-size: 13px; text-align: left; cursor: pointer; }.search-row:hover { background: #f5fbf3; }.search-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.search-row mark { width: max-content; padding: 2px 7px; color: #72591b; background: #fff1c9; font-weight: 660; }
-.aux-view { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 13px; max-width: 540px; height: 100%; margin: auto; padding: 32px; color: var(--green-900); }.aux-view h2 { margin: 0; color: var(--ink-900); font-size: 22px; }.aux-view p { margin: 0; color: var(--ink-700); line-height: 1.6; }.secondary-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 17px; border: 1px solid #bdcabf; border-radius: 6px; color: var(--ink-700); background: #fff; cursor: pointer; }.aux-view .primary-button { border-radius: 6px; }.project-summary-card { display: grid; grid-template-columns: auto auto; gap: 3px 14px; margin: 4px 0; padding: 14px 18px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink-900); }.project-summary-card span { font-size: 23px; color: var(--green-900); }.project-summary-card small { color: var(--ink-500); font-size: 11px; }
-.bookmark-list { display: grid; gap: 8px; width: min(560px, 72vw); max-height: 420px; overflow: auto; }.bookmark-list article { display: grid; grid-template-columns: 1fr 36px; align-items: center; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); }.bookmark-list button { display: flex; align-items: center; gap: 11px; min-width: 0; padding: 11px 13px; border: 0; color: var(--green-900); background: transparent; text-align: left; cursor: pointer; }.bookmark-list button:last-child { justify-content: center; padding-inline: 8px; color: var(--ink-500); }.bookmark-list span { display: grid; gap: 3px; }.bookmark-list small { color: var(--ink-500); font-family: ui-monospace, Consolas, monospace; }.bookmark-list em { overflow: hidden; color: var(--ink-700); font-size: 12px; font-style: normal; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }.empty-copy { padding: 20px; border: 1px dashed #c8d3c9; border-radius: 7px; }.project-actions { display: flex; align-items: center; gap: 9px; }.project-actions > button { height: 42px; }
-.modal-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; background: rgb(31 42 34 / 22%); }.eyebrow { color: var(--green-700); font-size: 10px; font-weight: 700; letter-spacing: .1em; }
-.annotation-panel { position: fixed; z-index: 10; top: 116px; right: 0; bottom: 58px; display: flex; flex-direction: column; width: 355px; overflow: auto; border-left: 1px solid #ccd9cd; background: #fbfdfb; box-shadow: -12px 0 30px rgb(32 51 35 / 10%); }.annotation-panel header { display: flex; align-items: flex-start; justify-content: space-between; padding: 19px 18px 12px; }.annotation-panel header button { padding: 5px; border: 0; background: transparent; color: var(--ink-500); cursor: pointer; }.annotation-panel h2 { margin: 4px 0 0; color: var(--ink-900); font-size: 16px; }.annotation-panel h2 small { display: inline-block; margin-left: 3px; padding: 2px 6px; border-radius: 10px; color: var(--green-900); background: var(--green-100); font-size: 11px; }.annotation-filter { display: flex; gap: 4px; padding: 0 13px 13px; border-bottom: 1px solid var(--line); }.annotation-filter button { padding: 7px 8px; border: 1px solid transparent; border-radius: 5px; color: var(--ink-500); background: transparent; font-size: 12px; cursor: pointer; }.annotation-filter button.active { border-color: #b3d5b7; color: var(--green-900); background: #f3faf1; }.annotation-card { display: grid; grid-template-columns: 25px 1fr; gap: 7px; margin: 13px 13px 0; padding: 13px 11px; border: 1px solid #d3dde5; border-radius: 8px; background: #fff; }.annotation-card--draft { border-color: #d3c4ec; }.annotation-number { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: #fff; background: #9864d5; font-size: 12px; }.annotation-number--green { background: #3c9a5a; }.annotation-state { display: flex; align-items: center; gap: 7px; color: var(--ink-900); font-size: 12px; font-weight: 650; }.annotation-state span { color: var(--ink-500); font-weight: 500; }.annotation-state time { margin-left: auto; color: var(--ink-500); font-size: 10px; font-weight: 400; }.annotation-card h3 { margin: 12px 0 7px; color: var(--ink-900); font-size: 14px; }.annotation-card p { margin: 0; color: var(--ink-700); font-size: 12px; line-height: 1.55; }.annotation-links { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; padding: 8px; border-radius: 5px; background: #f8faf8; color: var(--ink-700); font-size: 11px; }.annotation-links b { float: right; color: var(--ink-500); font-weight: 500; }.annotation-card footer { display: flex; gap: 15px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }.annotation-card footer button, .resolve-button, .new-annotation { display: inline-flex; align-items: center; gap: 5px; border: 0; color: var(--ink-700); background: transparent; font-size: 12px; cursor: pointer; }.resolve-button { margin-top: 11px; padding: 6px 9px; border: 1px solid #b5dab9; border-radius: 5px; color: var(--green-900); background: #f2faf1; }.new-annotation { justify-content: center; margin: 13px; padding: 10px; border: 1px solid #abd1af; border-radius: 6px; color: var(--green-900); background: #f4fbf2; }
-.mode-guard-backdrop { z-index: 30; }.mode-guard { width: min(460px, calc(100vw - 60px)); padding: 24px; border: 1px solid #d6c58f; border-radius: 10px; background: #fff; box-shadow: 0 22px 70px rgb(29 48 32 / 23%); }.mode-guard h2 { margin: 5px 0 9px; color: var(--ink-900); font-size: 20px; }.mode-guard p { margin: 0; color: var(--ink-700); font-size: 13px; line-height: 1.6; }.mode-guard > div { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }.mode-guard .primary-button { height: 38px; border-radius: 6px; }.danger-button { border-color: #dab7b7; color: #9b4e4e; }
+.search-view { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 25px 28px; }.search-bar { display: flex; align-items: center; gap: 10px; }.search-bar > label { width: 42px; font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }.search-input-wrap { display: flex; align-items: center; width: min(570px, 48vw); height: 42px; padding: 0 12px; border: 1px solid #c9d1ca; border-radius: 7px 0 0 7px; color: var(--ink-500); }.search-input-wrap input { flex: 1; min-width: 0; padding: 0 9px; border: 0; outline: none; }.search-input-wrap button { padding: 3px; border: 0; background: transparent; color: var(--ink-500); cursor: pointer; }.primary-search, .primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 42px; padding: 0 22px; border: 1px solid var(--green-900); border-radius: 0 6px 6px 0; color: #fff; background: var(--green-900); cursor: pointer; }.filter-button { height: 42px; margin-left: -10px; padding: 0 12px; border: 1px solid #c9d1ca; border-radius: 0 7px 7px 0; background: #fff; cursor: pointer; }.check-label { display: inline-flex; align-items: center; gap: 6px; margin-left: 22px; color: var(--ink-700); font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }.current-project { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--green-900); font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }.search-summary { padding: 15px 5px 12px; color: var(--ink-700); font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }.search-summary strong { color: var(--green-900); }.search-summary span { color: var(--ink-500); }.search-table { min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 7px; }.search-table-head, .search-row { display: grid; grid-template-columns: 85px 1.2fr 95px 1.45fr 90px; align-items: center; gap: 14px; padding: 0 17px; }.search-table-head { height: 43px; color: var(--ink-700); background: #f8faf8; font-size: var(--jm-font-size-callout); line-height: var(--jm-line-height-callout); }.search-row { width: 100%; min-height: 57px; border: 0; border-top: 1px solid var(--line); background: #fff; color: var(--ink-900); font-size: var(--jm-font-size-body); text-align: left; cursor: pointer; line-height: var(--jm-line-height-body); }.search-row:hover { background: #f5fbf3; }.search-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.search-row mark { width: max-content; padding: 2px 7px; color: #72591b; background: #fff1c9; font-weight: var(--jm-font-weight-semibold); }
+.aux-view { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 13px; max-width: 540px; height: 100%; margin: auto; padding: 32px; color: var(--green-900); }.aux-view h2 { margin: 0; color: var(--ink-900); font-size: var(--jm-font-size-title-2); line-height: var(--jm-line-height-title-2); font-weight: var(--jm-font-weight-regular); }.aux-view p { margin: 0; color: var(--ink-700); line-height: 1.6; }.secondary-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 17px; border: 1px solid #bdcabf; border-radius: 6px; color: var(--ink-700); background: #fff; cursor: pointer; }.aux-view .primary-button { border-radius: 6px; }.project-summary-card { display: grid; grid-template-columns: auto auto; gap: 3px 14px; margin: 4px 0; padding: 14px 18px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink-900); }.project-summary-card span { font-size: var(--jm-font-size-title-1); color: var(--green-900); line-height: var(--jm-line-height-title-1); }.project-summary-card small { color: var(--ink-500); font-size: var(--jm-font-size-subheadline); line-height: var(--jm-line-height-subheadline); }
+.bookmark-list { display: grid; gap: 8px; width: min(560px, 72vw); max-height: 420px; overflow: auto; }.bookmark-list article { display: grid; grid-template-columns: 1fr 36px; align-items: center; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); }.bookmark-list button { display: flex; align-items: center; gap: 11px; min-width: 0; padding: 11px 13px; border: 0; color: var(--green-900); background: transparent; text-align: left; cursor: pointer; }.bookmark-list button:last-child { justify-content: center; padding-inline: 8px; color: var(--ink-500); }.bookmark-list span { display: grid; gap: 3px; }.bookmark-list small { color: var(--ink-500); font-family: var(--jm-font-mono); }.bookmark-list em { overflow: hidden; color: var(--ink-700); font-size: var(--jm-font-size-callout); font-style: normal; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }.empty-copy { padding: 20px; border: 1px dashed #c8d3c9; border-radius: 7px; }.project-actions { display: flex; align-items: center; gap: 9px; }.project-actions > button { height: 42px; }
+.modal-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; background: rgb(31 42 34 / 22%); }.eyebrow { color: var(--green-700); font-size: var(--jm-font-size-subheadline); font-weight: var(--jm-font-weight-semibold); letter-spacing: .1em; line-height: var(--jm-line-height-subheadline); }
+.annotation-panel { position: fixed; z-index: 10; top: 116px; right: 0; bottom: 58px; display: flex; flex-direction: column; width: 355px; overflow: auto; border-left: 1px solid #ccd9cd; background: #fbfdfb; box-shadow: -12px 0 30px rgb(32 51 35 / 10%); }.annotation-panel header { display: flex; align-items: flex-start; justify-content: space-between; padding: 19px 18px 12px; }.annotation-panel header button { padding: 5px; border: 0; background: transparent; color: var(--ink-500); cursor: pointer; }.annotation-panel h2 { margin: 4px 0 0; color: var(--ink-900); font-size: var(--jm-font-size-title-3); line-height: var(--jm-line-height-title-3); font-weight: var(--jm-font-weight-semibold); }.annotation-panel h2 small { display: inline-block; margin-left: 3px; padding: 2px 6px; border-radius: 10px; color: var(--green-900); background: var(--green-100); font-size: var(--jm-font-size-subheadline); line-height: var(--jm-line-height-subheadline); }.annotation-filter { display: flex; gap: 4px; padding: 0 13px 13px; border-bottom: 1px solid var(--line); }.annotation-filter button { padding: 7px 8px; border: 1px solid transparent; border-radius: 5px; color: var(--ink-500); background: transparent; font-size: var(--jm-font-size-callout); cursor: pointer; line-height: var(--jm-line-height-callout); }.annotation-filter button.active { border-color: #b3d5b7; color: var(--green-900); background: #f3faf1; }.annotation-card { display: grid; grid-template-columns: 25px 1fr; gap: 7px; margin: 13px 13px 0; padding: 13px 11px; border: 1px solid #d3dde5; border-radius: 8px; background: #fff; }.annotation-card--draft { border-color: #d3c4ec; }.annotation-number { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: #fff; background: #9864d5; font-size: var(--jm-font-size-callout); line-height: var(--jm-line-height-callout); }.annotation-number--green { background: #3c9a5a; }.annotation-state { display: flex; align-items: center; gap: 7px; color: var(--ink-900); font-size: var(--jm-font-size-callout); font-weight: var(--jm-font-weight-semibold); line-height: var(--jm-line-height-callout); }.annotation-state span { color: var(--ink-500); font-weight: var(--jm-font-weight-medium); }.annotation-state time { margin-left: auto; color: var(--ink-500); font-size: var(--jm-font-size-subheadline); font-weight: var(--jm-font-weight-regular); line-height: var(--jm-line-height-subheadline); }.annotation-card h3 { margin: 12px 0 7px; color: var(--ink-900); font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); font-weight: var(--jm-font-weight-semibold); }.annotation-card p { margin: 0; color: var(--ink-700); font-size: var(--jm-font-size-body); line-height: 1.55; }.annotation-links { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; padding: 8px; border-radius: 5px; background: #f8faf8; color: var(--ink-700); font-size: var(--jm-font-size-subheadline); line-height: var(--jm-line-height-subheadline); }.annotation-links b { float: right; color: var(--ink-500); font-weight: var(--jm-font-weight-medium); }.annotation-card footer { display: flex; gap: 15px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }.annotation-card footer button, .resolve-button, .new-annotation { display: inline-flex; align-items: center; gap: 5px; border: 0; color: var(--ink-700); background: transparent; font-size: var(--jm-font-size-callout); cursor: pointer; line-height: var(--jm-line-height-callout); }.resolve-button { margin-top: 11px; padding: 6px 9px; border: 1px solid #b5dab9; border-radius: 5px; color: var(--green-900); background: #f2faf1; }.new-annotation { justify-content: center; margin: 13px; padding: 10px; border: 1px solid #abd1af; border-radius: 6px; color: var(--green-900); background: #f4fbf2; }
+.mode-guard-backdrop { z-index: 30; }.mode-guard { width: min(460px, calc(100vw - 60px)); padding: 24px; border: 1px solid #d6c58f; border-radius: 10px; background: #fff; box-shadow: 0 22px 70px rgb(29 48 32 / 23%); }.mode-guard h2 { margin: 5px 0 9px; color: var(--ink-900); font-size: var(--jm-font-size-title-2); line-height: var(--jm-line-height-title-2); font-weight: var(--jm-font-weight-regular); }.mode-guard p { margin: 0; color: var(--ink-700); font-size: var(--jm-font-size-body); line-height: 1.6; }.mode-guard > div { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }.mode-guard .primary-button { height: 38px; border-radius: 6px; }.danger-button { border-color: #dab7b7; color: #9b4e4e; }
 </style>

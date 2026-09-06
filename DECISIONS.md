@@ -1,6 +1,6 @@
 # 决明对齐器决策总览
 
-_更新时间：2026-08-29。本文是仓库级快速入口；正式架构依据仍是 [`docs/adr/`](docs/adr/000-index.md) 与 [Phase 0 合同](docs/architecture/mvp-phase0-contracts-v0.1.md)。_
+_更新时间：2026-09-01。本文是仓库级快速入口；正式架构依据仍是 [`docs/adr/`](docs/adr/000-index.md) 与 [Phase 0 合同](docs/architecture/mvp-phase0-contracts-v0.1.md)。_
 
 ## 已接受的架构决策
 
@@ -21,6 +21,17 @@ _更新时间：2026-08-29。本文是仓库级快速入口；正式架构依据
 
 ## 当前实施约定
 
+### Rust crate 与模块边界
+
+- 保留现有 `core / protocol / storage / kernel / desktop` 分层，不为文件拆分新增 crate，也不改变领域合同、DTO wire shape 或 `.jm` 格式。
+- 各库 `lib.rs` 只声明私有模块并显式重导出现有公共 API；`KernelService` 仍是无状态的统一 façade，功能模块不建立第二份工程状态。Tauri `lib.rs` 仅保留应用装配与命令注册。
+- `jueming-core` 按稳定 ID、Project/Document、Segment、Order、Alignment、Revision 和 import 原语拆分；领域校验与相应对象放在一起，解码与文本分段分别维护。
+- `jueming-protocol` 按导入、工程、命令、事件、历史、搜索、sidecar、导出和 Slice 组织 DTO。旧的 crate 根路径与兼容别名保持可用；新内部模块显式依赖 `jueming-core` 类型，不依赖根模块的通配导入。
+- `jueming-storage` 只处理目录布局、通用 JSON 快照、原子写入和派生缓存，不依赖 Core、Protocol 或 Kernel；历史提交语义由 Kernel 决定。
+- `jueming-kernel/commands` 按内容结构、顺序、对齐关系、gap、书签和批注拆分。导入、工程生命周期、搜索替换、导出和历史各自成模块；共享的 `validation`、`projection`、`revision`、`persistence`、`sidecar` 保持单一实现，内部 helper 使用受限可见性。
+- 桌面 `commands/` 仅做 typed IPC 适配，`state.rs` 保存当前工程会话；命令名、参数、返回值和成功持久化后才替换会话快照的顺序不变。
+- 黑盒回归测试放在各 crate 的 `tests/`，通过原有根路径 API 调用；仅需要私有提交步骤的故障注入测试保留在持久化模块中。新增功能沿职责模块扩展，不再堆回 `lib.rs`，也不通过 `use super::*` 形成隐式生产依赖。
+
 ### 工程与持久化
 
 - `.jm` v0.1 使用原子 JSON snapshot 加逐 Revision 文件，由 `jueming-storage` 隔离格式细节。
@@ -37,10 +48,14 @@ _更新时间：2026-08-29。本文是仓库级快速入口；正式架构依据
 - 拖拽使用 `@atlaskit/pragmatic-drag-and-drop`，只从中文侧显式手柄启动；虚拟行卸载时注销监听。
 - 长列表使用 `@tanstack/vue-virtual`，不把全工程 Segment 常驻 DOM。
 - UI 图标使用 Lucide；桌面品牌图标统一从 `assets/brand/jueming-aligner-icon-master-v2.png` 生成。
+- 设备设置使用版本化 TypeScript Schema 和 Pinia 单一 Store；Vue 组件不直接读写持久化。桌面端经 typed `KernelClient` 调用 Rust 适配器并写入 Tauri Store，浏览器预览仅使用独立 localStorage fallback；设置数据永远不进入 `.jm`。
+- 设置导航由 capability registry 驱动。只有 `available` 能力显示可操作页面；`UNBOUND` 的账号、桌宠、语料库服务、上传、社区、Agent、插件和通知不显示假按钮。动效由同一 `MotionPolicy` 汇总系统辅助功能、全局模式、后台状态和局部开关。
 
 ### 主题与视觉
 
 - 当前项目不使用 Tailwind；主题由全局语义 CSS 变量和组件 scoped CSS 组成。
+- 字体优先系统 UI 字体；字号、行高和字重由 `styles.css` 的 `--jm-font-*` / `--jm-line-height-*` token 管理，采用 Apple HIG macOS 的 13/16（Body）、12/15（Callout）、11/14（Subheadline）、15/20（Title 3）、17/22（Title 2）层级，在 WebView 中使用 CSS px 而非 CSS pt。UI 使用 400/500/600，17 px 页面与弹窗标题保持 Regular；有意强调的 15 px 区域标题使用 Semibold。
+- 中文辅助信息至少使用 11 px，不再使用 9 px 小字；多行说明保留适合中文的行距。双语正文独立使用 16/15.5 px 和现有阅读缩放，不随 UI 密度缩成 13 px；编号、键盘提示复用系统等宽字体栈。排版调整不改变控件点击尺寸、模式状态机或虚拟列表机制。
 - 明亮与护眼模式共享 `paper/surface/input/hover/status` 表面色合同。新增组件不得硬编码 `#fff` 作为中性表面，应复用 `apps/desktop/src/styles.css` 中的变量。
 - 护眼模式覆盖框架、工具栏、列表、卡片、输入区、弹窗、批注、搜索和历史 Diff，同时保留但柔化成功、警告和错误语义色。
 - Review 跳转高亮是短时、可取消动画；系统减少动态效果或用户触控滚动时立即终止。

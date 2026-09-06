@@ -21,8 +21,9 @@ const props = withDefaults(defineProps<{
   selectedAlignmentId: string;
   editSession?: EditSession | null;
   trackpadOptimized?: boolean;
+  smoothNavigation?: boolean;
   writable?: boolean;
-}>(), { bookmarkedSegmentIds: () => [], annotatedSegmentIds: () => [], selectedAlignmentId: "", editSession: null, trackpadOptimized: false, writable: false });
+}>(), { bookmarkedSegmentIds: () => [], annotatedSegmentIds: () => [], selectedAlignmentId: "", editSession: null, trackpadOptimized: false, smoothNavigation: true, writable: false });
 
 const emit = defineEmits<{
   select: [alignmentId: string];
@@ -465,16 +466,16 @@ onBeforeUnmount(() => {
   <section class="workspace" :class="[`workspace--${mode}`, { 'workspace--trackpad': trackpadOptimized }]" aria-label="双语平行工作区">
     <div v-if="mode === 'review' || mode === 'order'" class="unified-toolbar" aria-label="审阅与排序工具">
       <section class="unified-toolbar__group" aria-label="顺序操作">
-      <button class="tool-button tool-button--active" type="button" title="从中文或英文编号手柄拖动 Segment"><GripVertical :size="15" />拖动排序</button>
-      <button class="tool-button" type="button" :disabled="!writable || !orderSelection" @click="orderSelection && emit('move', orderSelection.side, orderSelection.segmentId, 'up')"><ArrowUp :size="15" />上移</button>
-      <button class="tool-button" type="button" :disabled="!writable || !orderSelection" @click="orderSelection && emit('move', orderSelection.side, orderSelection.segmentId, 'down')"><ArrowDown :size="15" />下移</button>
-      <button class="tool-button" type="button" :disabled="!writable" @click="emit('resetOrder')"><RotateCcw :size="15" />恢复顺序</button>
+        <button class="tool-button tool-button--active" type="button" title="从中文或英文编号手柄拖动 Segment"><GripVertical :size="15" /><span class="tool-button__label">拖动排序</span></button>
+        <button class="tool-button" type="button" :disabled="!writable || !orderSelection" title="上移所选 Segment" @click="orderSelection && emit('move', orderSelection.side, orderSelection.segmentId, 'up')"><ArrowUp :size="15" /><span class="tool-button__label">上移</span></button>
+        <button class="tool-button" type="button" :disabled="!writable || !orderSelection" title="下移所选 Segment" @click="orderSelection && emit('move', orderSelection.side, orderSelection.segmentId, 'down')"><ArrowDown :size="15" /><span class="tool-button__label">下移</span></button>
+        <button class="tool-button" type="button" :disabled="!writable" title="恢复 Segment 顺序" @click="emit('resetOrder')"><RotateCcw :size="15" /><span class="tool-button__label">恢复顺序</span></button>
       </section>
       <section class="unified-toolbar__group unified-toolbar__group--relations" aria-label="Alignment 关系操作">
-        <button class="tool-button tool-button--link" type="button" :disabled="!writable || selectedAlignmentIds.size > 0 || hasAlignedSegmentSelection || !selectedSourceIds.size || !selectedTargetIds.size" :title="hasAlignedSegmentSelection ? '已对齐句段须先 Unlink；Link 不会静默抢占关系' : '分别选择至少一条未对齐中文和英文 Segment'" @click="emit('link', [...selectedSourceIds], [...selectedTargetIds])"><Link2 :size="15" />Link</button>
-        <button class="tool-button" type="button" :disabled="!writable || !selectedUnlinkableId" title="在中间关系轨选择一个 Alignment" @click="selectedUnlinkableId && emit('unlink', selectedUnlinkableId)"><Link2Off :size="15" />Unlink</button>
-        <button class="tool-button" type="button" :disabled="!writable || !groupPlan" :title="groupHint" @click="groupPlan && emit('group', groupPlan.alignmentIds, groupPlan.unlinkedSegmentIds)"><Merge :size="15" />Group</button>
-        <button class="tool-button" type="button" :disabled="!writable || !ungroupableAlignment" title="编辑两侧的明确分组边界" @click="openUngroupDialog"><Scissors :size="15" />Ungroup</button>
+        <button class="tool-button tool-button--link" type="button" :disabled="!writable || selectedAlignmentIds.size > 0 || hasAlignedSegmentSelection || !selectedSourceIds.size || !selectedTargetIds.size" :title="hasAlignedSegmentSelection ? '已对齐句段须先 Unlink；Link 不会静默抢占关系' : '分别选择至少一条未对齐中文和英文 Segment'" @click="emit('link', [...selectedSourceIds], [...selectedTargetIds])"><Link2 :size="15" /><span class="tool-button__label">Link</span></button>
+        <button class="tool-button" type="button" :disabled="!writable || !selectedUnlinkableId" title="在中间关系轨选择一个 Alignment" @click="selectedUnlinkableId && emit('unlink', selectedUnlinkableId)"><Link2Off :size="15" /><span class="tool-button__label">Unlink</span></button>
+        <button class="tool-button" type="button" :disabled="!writable || !groupPlan" :title="groupHint" @click="groupPlan && emit('group', groupPlan.alignmentIds, groupPlan.unlinkedSegmentIds)"><Merge :size="15" /><span class="tool-button__label">Group</span></button>
+        <button class="tool-button" type="button" :disabled="!writable || !ungroupableAlignment" title="编辑两侧的明确分组边界" @click="openUngroupDialog"><Scissors :size="15" /><span class="tool-button__label">Ungroup</span></button>
       </section>
       <section class="unified-toolbar__group unified-toolbar__group--unlinked-nav" aria-label="上一未匹配">
         <span class="unlinked-nav__label">上一未匹配</span>
@@ -487,8 +488,8 @@ onBeforeUnmount(() => {
         <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" title="下一连续未匹配段" aria-label="下一连续未匹配段" @click="navigateUnlinked(1, true)"><ChevronsDown :size="16" /></button>
       </section>
       <section v-if="selectedSegments.length" class="unified-toolbar__group unified-toolbar__group--content" aria-label="Segment 内容操作">
-        <button class="tool-button" type="button" :disabled="!writable || !segmentMergePlan" :title="segmentMergeIssue ?? '合并内容会保留首个 Segment ID'" @click="openMergeContent"><Merge :size="15" />Merge 内容</button>
-        <button class="tool-button" type="button" :disabled="!writable || !segmentSplitPlan" :title="segmentSplitIssue ?? '以无损 parts 拆分当前内容'" @click="openSplitContent"><Scissors :size="15" />Split 内容</button>
+        <button class="tool-button" type="button" :disabled="!writable || !segmentMergePlan" :title="segmentMergeIssue ?? '合并内容会保留首个 Segment ID'" @click="openMergeContent"><Merge :size="15" /><span class="tool-button__label">Merge 内容</span></button>
+        <button class="tool-button" type="button" :disabled="!writable || !segmentSplitPlan" :title="segmentSplitIssue ?? '以无损 parts 拆分当前内容'" @click="openSplitContent"><Scissors :size="15" /><span class="tool-button__label">Split 内容</span></button>
       </section>
       <span v-if="groupWarning || (segmentMergeIssue && selectedSegments.length)" class="unified-toolbar__warning">{{ groupWarning ?? segmentMergeIssue }}</span>
       <button v-if="hasOperationSelection || orderSelection" class="selection-clear" type="button" @click="clearSelection">清除选择</button>
@@ -505,6 +506,7 @@ onBeforeUnmount(() => {
       :rows="rows"
       :mode="mode"
       :writable="writable"
+      :smooth-navigation="smoothNavigation"
       :reorder-enabled="mode === 'review' || mode === 'order'"
       :selected-alignment-id="selectedAlignmentId"
       :selected-alignment-ids="selectedAlignmentIds"
@@ -546,19 +548,26 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .workspace { --alignment-gutter: 176px; }
-.unified-toolbar { display: flex; min-height: 55px; align-items: center; gap: 0; overflow-x: auto; padding: 0 28px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); scrollbar-width: thin; }
+.unified-toolbar { display: flex; min-width: 0; min-height: 55px; align-items: center; gap: 0; overflow: hidden; padding: 0 28px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
 .unified-toolbar__group { display: flex; flex: 0 0 auto; align-items: center; gap: 9px; padding-right: 16px; }
 .unified-toolbar__group + .unified-toolbar__group { padding-left: 16px; border-left: 1px solid var(--line); }
-.unified-toolbar .tool-button { height: 34px; white-space: nowrap; }
+.unified-toolbar .tool-button { min-width: 34px; height: 34px; justify-content: center; white-space: nowrap; transition: gap 180ms ease, padding 180ms ease; }
+.unified-toolbar .tool-button svg { flex: 0 0 auto; }
+.tool-button__label { display: inline-block; max-width: 9rem; overflow: hidden; opacity: 1; transform: translateX(0); transition: max-width 180ms ease, opacity 120ms ease, transform 180ms ease; }
 .tool-button--link:not(:disabled) { border-color: #a8d0ad; color: var(--green-900); background: var(--surface-green-soft); }
 .unified-toolbar__group--unlinked-nav { gap: 5px; padding-right: 10px; }
 .unified-toolbar__group + .unified-toolbar__group--unlinked-nav { padding-left: 10px; }
-.unlinked-nav__label { margin-right: 2px; color: var(--ink-600); font-size: 11px; white-space: nowrap; }
+.unlinked-nav__label { margin-right: 2px; color: var(--ink-600); font-size: var(--jm-font-size-subheadline); white-space: nowrap; line-height: var(--jm-line-height-subheadline); }
 .unified-toolbar .tool-button--icon { width: 34px; padding-inline: 0; justify-content: center; }
-.unified-toolbar__warning { flex: 0 1 230px; margin-left: 12px; color: #916714; font-size: 10px; line-height: 1.3; }
-.unified-toolbar__summary { margin-left: auto; color: var(--ink-500); font-size: 11px; white-space: nowrap; }
-.selection-clear { margin-left: auto; padding: 5px 9px; border: 0; color: var(--ink-500); background: transparent; font-size: 12px; white-space: nowrap; cursor: pointer; }
-.view-find { display: flex; align-items: center; gap: 7px; min-height: 45px; padding: 0 18px; border-bottom: 1px solid #b8d5bb; color: var(--green-900); background: #f4faf2; }.view-find input { flex: 1; min-width: 140px; height: 31px; padding: 0 10px; border: 1px solid #b8cdb9; border-radius: 5px; outline: none; background: #fff; }.view-find input:focus { border-color: var(--green-700); box-shadow: 0 0 0 2px rgb(55 127 66 / 14%); }.view-find span { min-width: 70px; color: var(--ink-500); font-size: 11px; text-align: right; }.view-find button { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid transparent; border-radius: 5px; color: var(--ink-700); background: transparent; cursor: pointer; }.view-find button:hover:not(:disabled) { border-color: #bad2bd; background: #fff; }
-.column-headings { height: 44px; flex: 0 0 44px; grid-template-columns: minmax(0, 1fr) var(--alignment-gutter) minmax(0, 1fr); }
-@media (max-width: 1280px) { .workspace { --alignment-gutter: 138px; } .unified-toolbar { padding-inline: 16px; } }
+.unified-toolbar__warning { min-width: 0; flex: 0 1 230px; overflow: hidden; margin-left: 12px; color: #916714; font-size: var(--jm-font-size-body); line-height: 1.3; }
+.unified-toolbar__summary { min-width: 0; overflow: hidden; margin-left: auto; color: var(--ink-500); font-size: var(--jm-font-size-subheadline); text-overflow: ellipsis; white-space: nowrap; line-height: var(--jm-line-height-subheadline); }
+.selection-clear { margin-left: auto; padding: 5px 9px; border: 0; color: var(--ink-500); background: transparent; font-size: var(--jm-font-size-callout); white-space: nowrap; cursor: pointer; line-height: var(--jm-line-height-callout); }
+.view-find { display: flex; align-items: center; gap: 7px; min-height: 45px; padding: 0 18px; border-bottom: 1px solid #b8d5bb; color: var(--green-900); background: #f4faf2; }.view-find input { flex: 1; min-width: 140px; height: 31px; padding: 0 10px; border: 1px solid #b8cdb9; border-radius: 5px; outline: none; background: #fff; }.view-find input:focus { border-color: var(--green-700); box-shadow: 0 0 0 2px rgb(55 127 66 / 14%); }.view-find span { min-width: 70px; color: var(--ink-500); font-size: var(--jm-font-size-subheadline); text-align: right; line-height: var(--jm-line-height-subheadline); }.view-find button { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid transparent; border-radius: 5px; color: var(--ink-700); background: transparent; cursor: pointer; }.view-find button:hover:not(:disabled) { border-color: #bad2bd; background: #fff; }
+.column-headings { height: 44px; flex: 0 0 44px; grid-template-columns: minmax(0, var(--source-column-fr)) var(--alignment-gutter) minmax(0, var(--target-column-fr)); }
+@media (max-width: 1360px) {
+  .workspace { --alignment-gutter: 138px; }
+  .unified-toolbar { padding-inline: 16px; }
+  .unified-toolbar .tool-button:not(.tool-button--icon) { gap: 0; padding-inline: 0; }
+  .tool-button__label { max-width: 0; opacity: 0; transform: translateX(-4px); }
+}
 </style>

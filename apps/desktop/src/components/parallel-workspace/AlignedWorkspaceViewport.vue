@@ -17,6 +17,7 @@ const props = withDefaults(defineProps<{
   rows: AlignmentBlockView[];
   mode: WorkspaceMode;
   writable: boolean;
+  smoothNavigation?: boolean;
   reorderEnabled?: boolean;
   selectedAlignmentId?: string;
   selectedAlignmentIds: Set<string>;
@@ -37,6 +38,7 @@ const props = withDefaults(defineProps<{
   canInsertGap: (side: LanguageSide, segmentId: string, edge: AlignmentGapEdge) => boolean;
 }>(), {
   reorderEnabled: false,
+  smoothNavigation: true,
   selectedAlignmentId: "",
   hasOperationSelection: false,
   orderSelection: null,
@@ -190,7 +192,7 @@ const focusPosition = (alignmentId: string) => {
   const target = Math.max(0, position.bandTop - (viewport.clientHeight - position.bandHeight) / 2);
   viewport.scrollTo({
     top: target,
-    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    behavior: props.smoothNavigation ? "smooth" : "auto",
   });
   return true;
 };
@@ -232,7 +234,7 @@ const focusSegments = async (sourceIds: string[], targetIds: string[]) => {
   const target = Math.min(maximumScrollTop, Math.max(0, combinedCenter - viewport.clientHeight / 2));
   viewport.scrollTo({
     top: target,
-    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    behavior: props.smoothNavigation ? "smooth" : "auto",
   });
   return true;
 };
@@ -373,7 +375,7 @@ defineExpose({ focusAlignment, focusSegment, focusSegments, focusViewport, measu
 
 <style scoped>
 .aligned-workspace-viewport { --alignment-gutter: 176px; min-height: 0; flex: 1 1 auto; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; background: var(--surface-raised); }
-.aligned-workspace-canvas { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--alignment-gutter) minmax(0, 1fr); width: 100%; min-height: 100%; }
+.aligned-workspace-canvas { position: relative; display: grid; grid-template-columns: minmax(0, var(--source-column-fr)) var(--alignment-gutter) minmax(0, var(--target-column-fr)); width: 100%; min-height: 100%; }
 .aligned-workspace-column, .aligned-workspace-relations { position: relative; min-width: 0; height: 100%; }
 .aligned-workspace-relations { border-right: 1px solid var(--line); border-left: 1px solid var(--line); background: var(--surface-subtle); }
 .aligned-workspace-positioned-block, .aligned-workspace-positioned-relation { position: absolute; z-index: 3; top: 0; right: 0; left: 0; }

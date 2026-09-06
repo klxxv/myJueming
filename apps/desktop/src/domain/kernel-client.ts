@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { fallbackLanguages } from "./languages";
+import type { AppSettingsEnvelope } from "../settings/schema";
 
 export type LanguageSide = "source" | "target";
 export type WorkspaceMode = "review" | "edit" | "order" | "history";
@@ -288,9 +289,13 @@ export interface KernelClient {
   deleteAnnotation(annotationId: string): Promise<ProjectSnapshot>;
   resolveAnnotation(annotationId: string): Promise<ProjectSnapshot>;
   exportProject(format: ExportFormat, outputPath: string): Promise<void>;
+  loadAppSettings(): Promise<unknown | null>;
+  saveAppSettings(settings: AppSettingsEnvelope): Promise<void>;
+  resetAppSettings(): Promise<void>;
 }
 
 const inTauri = () => "__TAURI_INTERNALS__" in window;
+const browserSettingsKey = "jueming-app-settings-v1";
 
 const placeholderSummary: ProjectSummaryDto = {
   project_id: "fixture-project",
@@ -413,6 +418,20 @@ export const createKernelClient = (): KernelClient => ({
   async deleteAnnotation(annotationId) { return invoke<ProjectSnapshot>("delete_annotation", { annotationId }); },
   async resolveAnnotation(annotationId) { return invoke<ProjectSnapshot>("resolve_annotation", { annotationId }); },
   async exportProject(format, outputPath) { await invoke("export_project", { request: { format, output_path: outputPath, include_unlinked: true, side_separator: " " } }); },
+  async loadAppSettings() {
+    if (inTauri()) return invoke<unknown | null>("load_app_settings");
+    const raw = localStorage.getItem(browserSettingsKey);
+    if (!raw) return null;
+    try { return JSON.parse(raw) as unknown; } catch { return null; }
+  },
+  async saveAppSettings(settings) {
+    if (inTauri()) { await invoke("save_app_settings", { settings }); return; }
+    localStorage.setItem(browserSettingsKey, JSON.stringify(settings));
+  },
+  async resetAppSettings() {
+    if (inTauri()) { await invoke("reset_app_settings"); return; }
+    localStorage.removeItem(browserSettingsKey);
+  },
 });
 
 export const snapshotToWorkspace = (snapshot: ProjectSnapshot) => {

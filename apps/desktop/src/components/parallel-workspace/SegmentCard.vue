@@ -203,15 +203,15 @@ onBeforeUnmount(() => cleanupOrderDrag?.());
 .segment-card--drop-before::before, .segment-card--drop-after::after { position: absolute; z-index: 16; right: 0; left: 0; height: 3px; background: var(--green-700); box-shadow: 0 0 0 3px rgb(55 127 66 / 14%); content: ""; }
 .segment-card--drop-before::before { top: -2px; }
 .segment-card--drop-after::after { bottom: -2px; }
-.segment-card__index { display: flex; min-width: 0; grid-column: 1; grid-row: 1; align-items: center; justify-content: center; gap: 5px; padding: 28px 8px 0; border: 0; border-right: 1px solid var(--line); color: var(--ink-500); background: var(--surface-muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; cursor: pointer; }
+.segment-card__index { display: flex; min-width: 0; grid-column: 1; grid-row: 1; align-items: center; justify-content: center; gap: 5px; padding: 28px 8px 0; border: 0; border-right: 1px solid var(--line); color: var(--ink-500); background: var(--surface-muted); font-family: var(--jm-font-mono); font-size: var(--jm-font-size-callout); cursor: pointer; line-height: var(--jm-line-height-callout); }
 .segment-card--source .segment-card__index { grid-column: 2; border-right: 0; border-left: 1px solid var(--line); }
 .segment-card__drag-handle { position: relative; z-index: 2; color: #68756c; cursor: grab; touch-action: none; }
 .segment-card__drag-handle:active { cursor: grabbing; }
 .segment-card__drag-handle:disabled { cursor: not-allowed; opacity: .5; }
-.segment-card__order-number { font-size: 14px; }
-.segment-card__text { display: block; width: 100%; min-width: 0; grid-column: 2; grid-row: 1; padding: 18px 26px; border: 0; color: var(--ink-900); background: transparent; font-size: calc(16px * var(--reading-font-scale)); line-height: 1.62; text-align: left; cursor: pointer; }
+.segment-card__order-number { font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }
+.segment-card__text { display: block; width: 100%; min-width: 0; grid-column: 2; grid-row: 1; padding: 18px 26px; border: 0; color: var(--ink-900); background: transparent; font-size: calc(var(--jm-reading-source-size) * var(--reading-font-scale)); line-height: var(--jm-reading-line-height); text-align: left; cursor: pointer; font-weight: var(--jm-font-weight-regular); }
 .segment-card--source .segment-card__text { grid-column: 1; }
-.segment-card--target .segment-card__text { font-size: calc(15.5px * var(--reading-font-scale)); }
+.segment-card--target .segment-card__text { font-size: calc(var(--jm-reading-target-size) * var(--reading-font-scale)); }
 .segment-card__context-actions { position: absolute; z-index: 30; top: 7px; left: 34px; display: flex; align-items: center; gap: 1px; }
 .segment-card--source .segment-card__context-actions { right: 34px; left: auto; }
 .segment-card__context-action { display: grid; width: 25px; height: 25px; place-items: center; padding: 0; border: 0; border-radius: 6px; color: #aeb8b0; background: transparent; cursor: pointer; opacity: 0; transition: color 140ms ease, background-color 140ms ease, opacity 140ms ease; }
@@ -219,14 +219,14 @@ onBeforeUnmount(() => cleanupOrderDrag?.());
 .segment-card__context-action:hover:not(:disabled) { color: var(--green-900); background: var(--surface-hover); }
 .segment-card__context-action--highlighted { color: #e5a300; opacity: 1; }
 .segment-card__context-action--highlighted:hover:not(:disabled) { color: #d38e00; background: var(--surface-warm-soft); }
-.segment-card__fragment-warning { position: absolute; z-index: 4; right: calc(var(--segment-control-width) + 10px); bottom: 8px; padding: 2px 6px; border: 1px solid #9cc9a2; border-radius: 999px; color: var(--green-900); background: var(--surface-green-soft); font-size: 9px; font-weight: 700; pointer-events: none; }
+.segment-card__fragment-warning { position: absolute; z-index: 4; right: calc(var(--segment-control-width) + 10px); bottom: 8px; padding: 2px 6px; border: 1px solid #9cc9a2; border-radius: 999px; color: var(--green-900); background: var(--surface-green-soft); font-size: var(--jm-font-size-subheadline); font-weight: var(--jm-font-weight-semibold); pointer-events: none; line-height: var(--jm-line-height-subheadline); }
 .segment-card--target .segment-card__fragment-warning { right: auto; left: calc(var(--segment-control-width) + 10px); }
 .segment-card__editor { min-width: 0; grid-column: 2; grid-row: 1; margin: 10px 16px; overflow: hidden; border: 1px solid #b9c6bc; border-radius: 4px; background: var(--surface-raised); box-shadow: var(--shadow-soft); }
 .segment-card--source .segment-card__editor { grid-column: 1; }
-.segment-card__editor textarea { display: block; width: 100%; min-height: 100px; resize: vertical; padding: 14px 15px; border: 0; border-bottom: 1px solid var(--line); color: var(--ink-900); background: transparent; font-size: calc(16px * var(--reading-font-scale)); line-height: 1.52; }
-.segment-card__edit-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; color: var(--ink-500); font-size: 12px; }
+.segment-card__editor textarea { display: block; width: 100%; min-height: 100px; resize: vertical; padding: 14px 15px; border: 0; border-bottom: 1px solid var(--line); color: var(--ink-900); background: transparent; font-size: calc(var(--jm-reading-source-size) * var(--reading-font-scale)); line-height: var(--jm-editing-line-height); font-weight: var(--jm-font-weight-regular); }
+.segment-card__edit-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; color: var(--ink-500); font-size: var(--jm-font-size-callout); line-height: var(--jm-line-height-callout); }
 .segment-card__save-state { display: inline-flex; align-items: center; gap: 5px; color: var(--green-700); }
-.segment-card__edit-error { margin: 0; padding: 6px 12px; color: #a24c4c; background: var(--surface-danger-soft); font-size: 11px; }
+.segment-card__edit-error { margin: 0; padding: 6px 12px; color: #a24c4c; background: var(--surface-danger-soft); font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }
 .segment-card__edit-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 0 12px 11px; }
 .segment-card__edit-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 13px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-raised); cursor: pointer; }
 .segment-card__edit-actions .primary-button { border-color: var(--green-700); color: #fff; background: var(--green-700); }

@@ -102,27 +102,33 @@ Light 主题为默认主题。Eye Care 主题只调整底色、正文和边界�
 
 ### 3.2 字体与文字层级
 
-推荐字体栈：
+2026-08-31 按当前用户要求采用 Apple HIG macOS 排版层级；本节替代原 Windows 示意图中的字号建议。所有尺寸为 WebView 的 CSS px，不能写成 CSS pt。来源为 [Apple Typography](https://developer.apple.com/design/human-interface-guidelines/typography)；微信资料范围与单位解释见 [macOS 排版研究](wechat-macos-design-language-and-typography-v0.1.md)。
+
+字体和字号由 `apps/desktop/src/styles.css` 的共享 token 管理。系统字体栈：
 
 ```css
-font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei",
-  "PingFang SC", "Noto Sans CJK SC", sans-serif;
+font-family: system-ui, -apple-system, BlinkMacSystemFont,
+  "PingFang SC", "Segoe UI", "Microsoft YaHei UI", sans-serif;
 ```
 
 | 层级 | 字号/行高参考 | 字重 | 用途 |
 |---|---:|---:|---|
-| App title | 20–22 / 28 px | 600 | “决明对齐器 Jueming Aligner” |
-| TopBar/Nav | 15–16 / 24 px | 500 | 命令、导航、模式名称 |
-| Workspace heading | 16–18 / 24 px | 600 | “中文（原文）”“English（译文）” |
-| Segment ID | 12–13 / 20 px | 400 | 000101 等稳定 ID |
-| Chinese body | 17–18 / 30–32 px | 400/600 | Review/Order 原文 |
-| English body | 14–16 / 24–28 px | 400/600 | Review/Order 译文 |
-| Edit body | 18 / 28 px | 400 | CodeMirror 编辑正文 |
-| Meta/caption | 12–13 / 18–20 px | 400 | 状态、时间、字数、路径 |
-| Button label | 14–15 / 22 px | 500 | 主次按钮 |
-| Annotation title | 14–15 / 22 px | 600 | 批注标题 |
+| App title / Workspace heading | 15 / 20 px | 600 | 品牌标题、双栏栏目、批注面板标题；Title 3 强调样式 |
+| Page / Dialog title | 17 / 22 px | 400 | 设置、书签、历史、导入与操作弹窗；Title 2 |
+| TopBar/Nav / Button label | 13 / 16 px | 400；当前导航 600 | 命令、导航、模式名称；Body |
+| Secondary / Meta | 12 / 15 px | 400 | 副文字、摘要、底栏、字数；Callout |
+| Auxiliary | 11 / 14 px | 400；徽标可 500/600 | 时间、附属标签；Subheadline，不使用 9 px 小字 |
+| Segment ID | 12 / 15 px | 400 | 可见编号，使用系统等宽字体；不是 canonical ID 生成规则 |
+| Chinese body | 16 px / 1.62 | 400 | Review/Order 原文，乘以用户阅读缩放 |
+| English body | 15.5 px / 1.62 | 400 | Review/Order 译文，乘以用户阅读缩放 |
+| Edit body | 16 px / 1.52 | 400 | 当前 textarea 编辑正文，保留阅读缩放 |
+| Annotation title | 13 / 16 px | 600 | 批注卡片内部标题 |
 
-中文正文和英文正文可使用不同字号以达到视觉高度接近，但同一 Segment 的首行和底部边界必须稳定。正文中不要使用全大写作为状态唯一表达；英文模式名称可以保留截图中的 Title Case。
+常用字重限定为 Regular 400、Medium 500、Semibold 600；Bold 700 作为明确强调的保留 token，不再散落 570/620/650/670/750 等数值。主字号用于界面操作，阅读正文独立管理；多行中文说明可保留 1.4–1.65 行距，不能把短控件的行高强加给所有段落。
+
+中文正文和英文正文可使用不同字号以达到视觉高度接近，但同一 Segment 的首行和底部边界必须稳定。字号与字体变化后由既有 ResizeObserver 重新测量虚拟行。正文中不要使用全大写作为状态唯一表达；英文模式名称可以保留截图中的 Title Case。macOS 的 SF / 中文回退实际观感仍需在 Mac 上验证，Windows 预览不能替代。
+
+本次验证（2026-08-31）：前端 typecheck、build 通过；在 Windows 浏览器预览中检查审阅排序、编辑、历史空态、批注侧栏、设置、搜索空态、书签空态和新建弹窗，覆盖明亮与护眼主题。阅读缩放 130% 时中英文正文分别为 20.8 / 20.15 px，工具栏仍为 13 px；编辑框在 100% 时为 16 px / 400。未进行 macOS 实机字体渲染验收，也未以浏览器演示数据替代本地工程功能验证。
 
 ### 3.3 间距、尺寸、边界
 
@@ -149,7 +155,7 @@ font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei",
 
 ### 4.1 TopBar
 
-左侧从 x≈28 开始依次为新建、打开、保存、导出；随后以竖分隔线分组撤销、重做和设置。图标为线性图标，常规 20–22 px，文字 15–16 px。按钮在 hover/focus 时只加浅色底和 focus ring，不改变布局。保存中状态应在按钮或底栏同时以文字显示，禁用重做使用低对比灰色。
+左侧从 x≈28 开始依次为新建、打开、保存、导出；随后以竖分隔线分组撤销、重做和设置。图标为线性图标，常规 20–22 px，文字采用第 3.2 节的 13 px / 16 px、Regular 400。按钮在 hover/focus 时只加浅色底和 focus ring，不改变布局。保存中状态应在按钮或底栏同时以文字显示，禁用重做使用低对比灰色。
 
 右侧为 ModeSwitcher，参考 V1–V6 右上角约 180–210 px 宽的描边 pill：左侧图标、中文模式名、英文副标题、下拉 chevron。Review/Annotation/Order/Edit/History/Search 使用各自语义 icon，但模式切换后正文宿主仍为同一 `ParallelWorkspace`。V6 另在右侧显示“本地模式·离线”，该状态必须明确且不应伪装为云连接。
 
@@ -159,7 +165,7 @@ font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei",
 
 ### 4.3 FooterStatusBar
 
-底部固定、上边框 1 px；按截图从左至右显示工程名、双侧文件名、对齐状态（如 1:1）、已处理数量、进度条/百分比、项目路径。各块使用 14 px 文本，分隔符为竖线或足够的空白；路径过长时截断并提供 tooltip。保存状态应优先显示“未保存 / 保存中 / 已保存 / 保存失败”，进度条不能覆盖状态文字。
+底部固定、上边框 1 px；按截图从左至右显示工程名、双侧文件名、对齐状态（如 1:1）、已处理数量、进度条/百分比、项目路径。各块使用 12 px / 15 px 文本，分隔符为竖线或足够的空白；路径过长时截断并提供 tooltip。保存状态应优先显示“未保存 / 保存中 / 已保存 / 保存失败”，进度条不能覆盖状态文字。
 
 ### 4.4 正文工作区
 

@@ -25,3 +25,4 @@ jueming-kernel = { path = "../../../crates/jueming-kernel" }
 jueming-protocol = { path = "../../../crates/jueming-protocol" }
 serde.workspace = true
 serde_json.workspace = true
+tauri-plugin-store = "2.4.4"
