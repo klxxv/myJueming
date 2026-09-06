@@ -22,6 +22,7 @@ _Phase 0 的 14 项架构决策索引；状态以本地单机 MVP 的合同冻�
 | [ADR-012](ADR-012-find-search-separation.md) | View Find 与 Project Search 分离 | Accepted | `Ctrl+F` 不扫描全工程 |
 | [ADR-013](ADR-013-order-alignment-gap.md) | Order 空位使用原子关系重建 | Accepted | 不创建假 Segment/空 Alignment |
 | [ADR-014](ADR-014-segment-structure-and-alignment-groups.md) | Segment 内容结构与 Alignment 分组解耦 | Accepted | Merge/Split 改内容；Group/Ungroup 改关系 |
+| [ADR-015](ADR-015-local-agent-application-host.md) | 全局应用宿主与 MCP / AG-UI 适配器 | Accepted | 单一工程写入者、版本绑定提案、可信原生批准、可卸载呈现层 |
 
 ### 决策依赖
 
