@@ -1,6 +1,5 @@
 //! Content edits and lossless segment merge/split.
 
-use crate::projection::alignment_by_segment;
 use crate::revision::{advance_revision, next_revision_id};
 use crate::sidecar::{migrate_annotation_links_after_split, migrate_segment_metadata_after_merge};
 use crate::validation::{has_duplicate_ids, validate_snapshot};
@@ -93,19 +92,32 @@ impl KernelService {
             .map(|index| order.entries[*index].segment_id)
             .collect::<Vec<_>>();
         let survivor = ordered_selected[0];
-        let memberships = alignment_by_segment(snapshot);
-        let selected_alignment_ids = ordered_selected
+        // Every relation touching a selected segment must contain all selected IDs.
+        // This is the original same-alignment rule, applied independently to every translation.
+        let selected_alignment_ids = snapshot
+            .alignments
             .iter()
-            .filter_map(|id| memberships.get(id).copied())
-            .collect::<HashSet<_>>();
-        if !(selected_alignment_ids.is_empty()
-            || (selected_alignment_ids.len() == 1
-                && ordered_selected
+            .filter_map(|alignment| {
+                let refs = if document_id == snapshot.documents[0].document_id {
+                    &alignment.source_segment_ids
+                } else {
+                    &alignment.target_segment_ids
+                };
+                refs.iter()
+                    .any(|id| selected.contains(id))
+                    .then_some((alignment.alignment_id, refs))
+            })
+            .map(|(id, refs)| {
+                if ordered_selected
                     .iter()
-                    .all(|id| memberships.contains_key(id))))
-        {
-            return Err(KernelError::MergeSegmentsAlignmentConflict);
-        }
+                    .all(|segment_id| refs.contains(segment_id))
+                {
+                    Ok(id)
+                } else {
+                    Err(KernelError::MergeSegmentsAlignmentConflict)
+                }
+            })
+            .collect::<Result<HashSet<_>, _>>()?;
 
         let revision_id = next_revision_id(snapshot);
         let mut next = snapshot.clone();
@@ -132,12 +144,11 @@ impl KernelService {
             .entries
             .retain(|entry| !selected.contains(&entry.segment_id) || entry.segment_id == survivor);
         rekey_order(next_order, revision_id);
-        if let Some(alignment_id) = selected_alignment_ids.iter().next().copied() {
-            let alignment = next
-                .alignments
-                .iter_mut()
-                .find(|alignment| alignment.alignment_id == alignment_id)
-                .ok_or(KernelError::AlignmentNotFound(alignment_id))?;
+        for alignment in next
+            .alignments
+            .iter_mut()
+            .filter(|alignment| selected_alignment_ids.contains(&alignment.alignment_id))
+        {
             replace_alignment_segment_refs(alignment, &selected, survivor, revision_id);
         }
         migrate_segment_metadata_after_merge(&mut next, &selected, survivor);
@@ -169,7 +180,7 @@ impl KernelService {
         if parts.concat() != original.content {
             return Err(KernelError::SplitContentMismatch);
         }
-        let original_alignment_id = alignment_by_segment(snapshot).get(&segment_id).copied();
+
         let revision_id = next_revision_id(snapshot);
         let mut next = snapshot.clone();
         advance_revision(
@@ -220,12 +231,10 @@ impl KernelService {
             );
         }
         rekey_order(order, revision_id);
-        if let Some(alignment_id) = original_alignment_id {
-            let alignment = next
-                .alignments
-                .iter_mut()
-                .find(|alignment| alignment.alignment_id == alignment_id)
-                .ok_or(KernelError::AlignmentNotFound(alignment_id))?;
+        for alignment in next.alignments.iter_mut().filter(|alignment| {
+            alignment.source_segment_ids.contains(&segment_id)
+                || alignment.target_segment_ids.contains(&segment_id)
+        }) {
             insert_alignment_segment_refs(alignment, segment_id, &inserted_ids, revision_id);
         }
         migrate_annotation_links_after_split(&mut next, segment_id, &inserted_ids);

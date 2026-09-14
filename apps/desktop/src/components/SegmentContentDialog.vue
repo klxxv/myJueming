@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { Check, X } from "@lucide/vue";
+import { t } from "../i18n";
 
 export type ContentOperationRequest =
   | { kind: "merge"; segmentIds: string[]; initialValue: string }
@@ -13,7 +14,7 @@ const emit = defineEmits<{
   split: [segmentId: string, parts: string[]];
 }>();
 
-const splitMarker = "\n[[切分点：此标记不会写入文本]]\n";
+const splitMarker = "\n[[ ✂ ]]\n";
 const value = ref("");
 
 const resetValue = () => {
@@ -36,14 +37,14 @@ const confirm = () => {
 
 <template>
   <Teleport to="body">
-    <section class="content-operation-backdrop" role="dialog" aria-modal="true" :aria-label="operation.kind === 'merge' ? '合并 Segment 内容' : '拆分 Segment 内容'" @click.self="emit('close')">
+    <section class="content-operation-backdrop" role="dialog" aria-modal="true" :aria-label="t(operation.kind === 'merge' ? 'puiMergeDialogAria' : 'puiSplitDialogAria')" @click.self="emit('close')">
       <div class="content-operation-dialog">
-        <header><div><small>SEGMENT CONTENT</small><h2>{{ operation.kind === 'merge' ? 'Merge 内容' : 'Split 内容' }}</h2></div><button type="button" title="关闭" @click="emit('close')"><X :size="17" /></button></header>
-        <p v-if="operation.kind === 'merge'">将 {{ operation.segmentIds.length }} 个连续 Segment 合为一个内容单元；首个 Segment ID、批注与书签锚点会保留。</p>
-        <p v-else>在保留原文每一个字符的前提下插入切分点。切分后的 parts 拼接必须等于原内容。</p>
-        <textarea v-model="value" :aria-label="operation.kind === 'merge' ? '合并后的内容' : '包含切分点的原始内容'" />
-        <div v-if="operation.kind === 'split'" class="split-validation"><button type="button" @click="insertSplitMarker">插入切分点</button><span :class="{ 'split-validation--valid': splitIsLossless }">{{ splitIsLossless ? `可无损拆分为 ${splitParts.length} 段` : '至少插入一个切分点；不可增删原文' }}</span></div>
-        <footer><button class="secondary-button" type="button" @click="emit('close')">取消</button><button class="primary-button" type="button" :disabled="operation.kind === 'split' && !splitIsLossless" @click="confirm"><Check :size="15" />确认{{ operation.kind === 'merge' ? '合并' : '拆分' }}</button></footer>
+        <header><div><small>{{ t("puiSegmentContentEyebrow") }}</small><h2>{{ t(operation.kind === 'merge' ? "puiMergeContent" : "puiSplitContent") }}</h2></div><button type="button" :title="t('puiClose')" @click="emit('close')"><X :size="17" /></button></header>
+        <p v-if="operation.kind === 'merge'">{{ t("puiMergeDescription", { p0: operation.segmentIds.length }) }}</p>
+        <p v-else>{{ t("puiSplitDescription") }}</p>
+        <textarea v-model="value" :aria-label="t(operation.kind === 'merge' ? 'puiMergedContentAria' : 'puiSplitContentAria')" />
+        <div v-if="operation.kind === 'split'" class="split-validation"><button type="button" @click="insertSplitMarker">{{ t("puiInsertSplitPoint") }}</button><span :class="{ 'split-validation--valid': splitIsLossless }">{{ splitIsLossless ? t("puiSplitValid", { p0: splitParts.length }) : t("puiSplitInvalid") }}</span></div>
+        <footer><button class="secondary-button" type="button" @click="emit('close')">{{ t("puiCancel") }}</button><button class="primary-button" type="button" :disabled="operation.kind === 'split' && !splitIsLossless" @click="confirm"><Check :size="15" />{{ t(operation.kind === 'merge' ? "puiConfirmMerge" : "puiConfirmSplit") }}</button></footer>
       </div>
     </section>
   </Teleport>

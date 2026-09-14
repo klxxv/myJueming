@@ -9,3 +9,8 @@ mod types;
 
 pub use host::LocalAppHost;
 pub use types::{AgentCall, AgentReply, AppError, AppEvent, ContextSnapshot, SearchSpec};
+mod feature;
+mod graph;
+mod methods;
+mod research;
+pub use methods::{MethodDescriptor, RESEARCH_METHODS, research_method};

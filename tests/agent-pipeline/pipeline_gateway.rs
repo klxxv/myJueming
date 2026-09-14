@@ -22,9 +22,11 @@ fn pipeline_request_with_source(
 ) -> CreateProjectRequest {
     let profile = ImportProfile::new(Encoding::Utf8, SegmentationMode::NonEmptyLine);
     CreateProjectRequest {
+        additional_targets: Vec::new(),
         project_path: path.to_string_lossy().into_owned(),
         name: "pipeline".into(),
         source: ImportSideRequest {
+            expected_sha256: None,
             language_id: "zh-CN".into(),
             title: "source".into(),
             input: TextInput::Paste {
@@ -34,6 +36,7 @@ fn pipeline_request_with_source(
             profile: profile.clone(),
         },
         target: ImportSideRequest {
+            expected_sha256: None,
             language_id: "en".into(),
             title: "target".into(),
             input: TextInput::Paste {

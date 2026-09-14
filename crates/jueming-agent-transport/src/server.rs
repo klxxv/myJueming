@@ -475,6 +475,9 @@ async fn dispatch_call(
 }
 
 fn is_native_only(method: &str) -> bool {
+    if let Some(descriptor) = jueming_application::research_method(method) {
+        return descriptor.native_only;
+    }
     matches!(
         method,
         "app.get_projection" | "ui.publish_context" | "ui.ack" | "proposal.approve"
@@ -482,6 +485,12 @@ fn is_native_only(method: &str) -> bool {
 }
 
 fn requires_binding(method: &str) -> bool {
+    if let Some(descriptor) = jueming_application::research_method(method) {
+        return descriptor.requires_binding;
+    }
+    if method == "research.call" {
+        return false;
+    }
     !matches!(method, "app.describe" | "app.bind_session")
 }
 

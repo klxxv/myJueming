@@ -7,6 +7,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
+    #[error("project is already in use by another writer: {0}")]
+    ProjectLocked(PathBuf),
     #[error("project directory must use the .jm extension: {0}")]
     InvalidProjectRoot(PathBuf),
     #[error("path has no parent directory: {0}")]

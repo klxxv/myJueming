@@ -97,6 +97,38 @@
 html, body, #app { width: 100%; min-width: 0; height: 100%; min-height: 0; margin: 0; }
 body { overflow: hidden; color: var(--ink-900); background: var(--surface-app); }
 button, input, textarea, select { font: inherit; }
+/* WebKit's native button uses fixed font/padding metrics and overlaps its arrow
+   when enlarged. Style only the closed select; the option popup, keyboard and
+   value semantics remain native. Components should only adjust layout/size. */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 34px;
+  padding: 6px 36px 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink-900);
+  background-color: var(--surface-input);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='24' viewBox='0 0 20 24'%3E%3Crect width='20' height='24' rx='4' fill='%23007aff'/%3E%3Cpath d='m7 9 3-3 3 3m-6 6 3 3 3-3' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  background-size: 20px 24px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+  font-family: var(--jm-font-ui);
+  font-size: var(--jm-font-size-body);
+  font-weight: var(--jm-font-weight-regular);
+  line-height: var(--jm-line-height-body);
+  vertical-align: middle;
+  cursor: default;
+}
+select:hover:not(:disabled) { border-color: var(--ink-500); }
+select:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+select:disabled { opacity: .55; filter: grayscale(1); }
+@media (forced-colors: active) {
+  select { -webkit-appearance: menulist; appearance: auto; background-image: none; box-shadow: none; }
+}
 /* Avoid browser heading/small defaults creating a second type scale. */
 h1 { font-size: var(--jm-font-size-title-1); line-height: var(--jm-line-height-title-1); font-weight: var(--jm-font-weight-regular); }
 h2 { font-size: var(--jm-font-size-title-2); line-height: var(--jm-line-height-title-2); font-weight: var(--jm-font-weight-regular); }
@@ -104,11 +136,10 @@ h3 { font-size: var(--jm-font-size-title-3); line-height: var(--jm-line-height-t
 strong, b { font-weight: var(--jm-font-weight-semibold); }
 small { font-size: var(--jm-font-size-subheadline); line-height: var(--jm-line-height-subheadline); }
 button { color: inherit; }
-button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid rgb(47 129 67 / 45%); outline-offset: 2px; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline: 2px solid rgb(47 129 67 / 45%); outline-offset: 2px; }
 button:disabled { cursor: not-allowed; opacity: .42; }
 
 .app-shell { display: grid; grid-template-rows: 68px minmax(0, 1fr) 58px; width: 100%; min-width: 0; height: 100%; min-height: 0; overflow: hidden; background: var(--paper); }
-.app-shell--garden { grid-template-rows: 68px minmax(0, 1fr) auto 58px; }
 .global-panel-buttons { display: flex; align-items: center; margin-left: auto; margin-right: 14px; }
 .pending-count { display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding-inline: 3px; border-radius: 8px; background: var(--surface-green-soft); color: var(--green-900); font-size: 10px; }
 .toolbar-left, .toolbar-actions, .toolbar-status, .mode-control, .nav-item, .edit-tip, .tool-button, .order-label, .order-hint, .edit-meta, .edit-actions, .search-options, .annotation-filter, .history-actions { display: flex; align-items: center; }
@@ -116,18 +147,19 @@ button:disabled { cursor: not-allowed; opacity: .42; }
 .toolbar-left, .toolbar-actions { gap: 8px; }
 .toolbar-button { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; font-size: var(--jm-font-size-body); cursor: pointer; line-height: var(--jm-line-height-body); }
 .toolbar-button:hover:not(:disabled) { background: var(--surface-hover); color: var(--green-900); }
+.toolbar-button--help { width: 34px; height: 34px; justify-content: center; padding: 0; border: 1px solid var(--line); border-radius: 50%; color: var(--green-900); }
+.toolbar-button--help[aria-pressed="true"] { border-color: #9ec5a3; background: var(--surface-green-soft); box-shadow: 0 0 0 3px rgb(47 129 67 / 10%); }
 .toolbar-divider { width: 1px; height: 26px; margin: 0 11px; background: var(--line); }
-.toolbar-button--export { padding-right: 6px; }
-.mode-control { position: relative; gap: 8px; height: 38px; padding: 0 10px 0 12px; border: 1px solid #b7d9bb; border-radius: 7px; color: var(--green-900); background: var(--surface-green-soft); font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }
-.mode-control select { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
-.content-grid { --side-nav-width: 168px; --annotation-width: 355px; --annotation-track-width: 0px; display: grid; grid-template-columns: var(--side-nav-width) minmax(0, 1fr) var(--annotation-track-width); min-height: 0; overflow: hidden; transition: grid-template-columns 240ms cubic-bezier(.2, .8, .2, 1); }
+.toolbar-export { display: flex; align-items: center; gap: 6px; }
+.mode-control { flex: 0 0 auto; }
+.content-grid { --side-nav-width: 168px; --annotation-width: 355px; --annotation-track-width: 0px; position: relative; display: grid; grid-template-columns: var(--side-nav-width) minmax(0, 1fr) var(--annotation-track-width); min-height: 0; overflow: hidden; isolation: isolate; transition: grid-template-columns 240ms cubic-bezier(.2, .8, .2, 1); }
 .content-grid--collapsed { --side-nav-width: 68px; }
 .content-grid { grid-template-rows: minmax(0, 1fr); }
-.annotation-drawer { min-height: 0; }
+.annotation-drawer { grid-column: 3; grid-row: 1; min-height: 0; }
 .content-grid--annotation { --annotation-track-width: var(--annotation-width); }
 .content-grid--resizing { transition: none; }
 .content-grid--resizing, .content-grid--resizing * { cursor: col-resize !important; user-select: none; }
-.side-nav { display: flex; flex-direction: column; gap: 10px; padding: 22px 12px; border-right: 1px solid var(--line); background: var(--surface-subtle); }
+.side-nav { display: flex; grid-column: 1; grid-row: 1; flex-direction: column; gap: 10px; padding: 22px 12px; border-right: 1px solid var(--line); background: var(--surface-subtle); }
 .side-nav--collapsed { padding-inline: 7px; }
 .side-nav--collapsed .nav-item { justify-content: center; padding-inline: 0; }
 .side-nav--collapsed .nav-label { display: none; }
@@ -145,7 +177,7 @@ button:disabled { cursor: not-allowed; opacity: .42; }
   .nav-collapse { padding-top: 6px; }
   .nav-collapse .nav-item { height: 34px; }
 }
-.main-stage { min-width: 0; overflow: hidden; background: var(--paper); }
+.main-stage { grid-column: 2; grid-row: 1; min-width: 0; overflow: hidden; background: var(--paper); }
 .workspace { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .column-headings { display: grid; grid-template-columns: minmax(0, var(--source-column-fr)) 66px minmax(0, var(--target-column-fr)); height: 58px; align-items: center; border-bottom: 1px solid var(--line); }
 .column-headings h2 { margin: 0; padding: 0 28px; color: var(--green-900); font-size: var(--jm-font-size-title-3); font-weight: var(--jm-font-weight-semibold); line-height: var(--jm-line-height-title-3); }
@@ -187,6 +219,10 @@ button:disabled { cursor: not-allowed; opacity: .42; }
 
 .bottom-status { display: grid; min-width: 0; grid-template-columns: minmax(0, 1.65fr) minmax(180px, .75fr) auto; align-items: center; gap: 16px; overflow: hidden; padding: 0 24px; border-top: 1px solid var(--line); color: var(--ink-700); background: var(--surface-subtle); font-size: var(--jm-font-size-callout); line-height: var(--jm-line-height-callout); }
 .footer-context { display: flex; min-width: 0; align-items: center; gap: 12px; overflow: hidden; }
+.garden-status-button { display: grid; width: 42px; height: 42px; flex: 0 0 42px; place-items: center; padding: 4px; border: 1px solid transparent; border-radius: 12px; color: var(--green-900); background: transparent; cursor: pointer; transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease; }
+.garden-status-button img { display: block; width: 34px; height: 34px; object-fit: contain; }
+.garden-status-button:hover { border-color: #b8d2ba; background: var(--surface-hover); transform: translateY(-1px); }
+.garden-status-button--open { border-color: #9ec5a3; background: var(--surface-green-soft); box-shadow: 0 0 0 3px rgb(47 129 67 / 9%); }
 .footer-context-item { display: flex; min-width: 0; align-items: center; gap: 6px; white-space: nowrap; }
 .footer-context-item--project { min-width: 80px; flex: 1 1 210px; }
 .footer-context-item--files { display: grid; min-width: 130px; flex: 1 1 260px; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); }
@@ -210,20 +246,17 @@ button:disabled { cursor: not-allowed; opacity: .42; }
 /* Theme bridge for scoped component styles. Keep every neutral surface on the
    shared palette so eye-comfort mode does not leave isolated white panels. */
 html[data-theme="eye"] body :is(
-  .export-menu,
   .filter-button,
   .secondary-button,
   .shortcut-grid kbd,
   .import-modal,
   .import-path button,
-  .import-settings select,
   .import-project-grid > label > input,
   .compact-picker,
   .compact-picker button,
   .annotation-card,
   .annotation-editor input,
   .annotation-editor textarea,
-  .annotation-editor select,
   .annotation-secondary,
   .mode-guard,
   .history-tool,
@@ -232,7 +265,6 @@ html[data-theme="eye"] body :is(
   .view-find input,
   .view-find button:hover:not(:disabled),
   .sr-secondary,
-  .sr-side-button,
   .sr-reset,
   .sr-row,
   .sr-preview
@@ -263,7 +295,6 @@ html[data-theme="eye"] body :is(
 ) { background-color: var(--surface-input); }
 
 html[data-theme="eye"] body :is(
-  .mode-control,
   .annotation-filter button.active,
   .annotation-new,
   .annotation-editor--new,
@@ -273,8 +304,6 @@ html[data-theme="eye"] body :is(
 ) { background-color: var(--surface-green-soft); }
 
 html[data-theme="eye"] body .segment-cell--multi-selected { background-color: var(--surface-green-selected); }
-html[data-theme="eye"] body .mode-control--edit { background-color: var(--surface-warm-soft); }
-html[data-theme="eye"] body .mode-control--history { background-color: var(--surface-cool-soft); }
 html[data-theme="eye"] body .settings-card code { background-color: var(--surface-code); }
 html[data-theme="eye"] body :is(.search-row mark, .sr-row mark, .sr-match) { background-color: var(--surface-mark); }
 html[data-theme="eye"] body :is(.diff-old, .edit-error) { background-color: var(--surface-danger-soft); }
@@ -303,7 +332,7 @@ html[data-alignment-hints="off"] .alignment-relation__label { width: 20px; paddi
 html[data-enhanced-focus="on"] :is(button, input, textarea, select, [tabindex]):focus-visible { outline-width: 3px; box-shadow: 0 0 0 2px rgb(47 129 67 / 12%); }
 html[data-larger-targets="on"] :is(.toolbar-button, .tool-button, .segment-card__context-action, .alignment-relation__quick, .view-find button) { min-width: 42px; min-height: 42px; }
 html[data-larger-targets="on"] .segment-card__drag-handle { padding: 10px; margin: -10px; }
-html[data-reduce-transparency="on"] :is(.annotation-drawer, .export-menu, .modal-backdrop, .mode-guard-backdrop) { opacity: 1; backdrop-filter: none; box-shadow: none; }
+html[data-reduce-transparency="on"] :is(.annotation-drawer, .modal-backdrop, .mode-guard-backdrop) { opacity: 1; backdrop-filter: none; box-shadow: none; }
 html[data-reduce-transparency="on"] .modal-backdrop { background: var(--surface-app); }
 
 html[data-contrast="increased"] {
@@ -348,7 +377,6 @@ html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="
 
 @media (max-width: 1280px) {
   .app-shell { grid-template-rows: 62px minmax(0, 1fr) 54px; }
-  .app-shell--garden { grid-template-rows: 62px minmax(0, 1fr) auto 54px; }
   .side-nav { width: 150px; }
   .side-nav--collapsed { width: 68px; }
   .content-grid { --side-nav-width: 150px; }

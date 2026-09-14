@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { t, type LocalizedMessage } from "../i18n";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, GripVertical, Link2, Link2Off, LockKeyhole, Merge, RotateCcw, Scissors, Search, X } from "@lucide/vue";
 import type { EditSession } from "../composables/useViewModeController";
 import type { AlignmentDto, AlignmentGapEdge, LanguageSide, SegmentDto, WorkspaceMode } from "../domain/kernel-client";
+import type { TutorialPreset } from "../domain/parallel-tutorial";
 import { buildAlignmentBlocks, type AlignmentBlockView, type OrderSelection } from "../domain/workspace-projection";
 import SegmentContentDialog, { type ContentOperationRequest } from "./SegmentContentDialog.vue";
 import AlignmentUngroupDialog from "./AlignmentUngroupDialog.vue";
@@ -10,6 +12,7 @@ import AlignedWorkspaceViewport from "./parallel-workspace/AlignedWorkspaceViewp
 import OrderDragOverlay from "./parallel-workspace/OrderDragOverlay.vue";
 import { useOrderDragAndDrop, type ReorderIntent } from "../composables/useOrderDragAndDrop";
 import { useTransientSegmentJump } from "../composables/useTransientSegmentJump";
+import { formatError, rawErrorMessage } from "../i18n/kernel-messages";
 
 export interface OperationSelectionContext {
   segmentIds: string[];
@@ -18,6 +21,11 @@ export interface OperationSelectionContext {
 
 const props = withDefaults(defineProps<{
   mode: WorkspaceMode;
+  sourceTitle?: string;
+  targetTitle?: string;
+  revisionKey?: string;
+  ensureSegments?: (ids: string[]) => Promise<void>;
+  findInView?: (query: string, cancelled: () => boolean) => Promise<string[]>;
   sourceSegments: SegmentDto[];
   targetSegments: SegmentDto[];
   alignments: AlignmentDto[];
@@ -28,9 +36,11 @@ const props = withDefaults(defineProps<{
   trackpadOptimized?: boolean;
   smoothNavigation?: boolean;
   writable?: boolean;
-}>(), { bookmarkedSegmentIds: () => [], annotatedSegmentIds: () => [], selectedAlignmentId: "", editSession: null, trackpadOptimized: false, smoothNavigation: true, writable: false });
+  readonlyActionLabel?: string;
+}>(), { sourceTitle: "", targetTitle: "", bookmarkedSegmentIds: () => [], annotatedSegmentIds: () => [], selectedAlignmentId: "", editSession: null, trackpadOptimized: false, smoothNavigation: true, writable: false, readonlyActionLabel: "" });
 
 const emit = defineEmits<{
+  visibleSegments: [ids: string[]];
   select: [alignmentId: string];
   requestEdit: [segmentId: string, alignmentId: string];
   editDraft: [draft: string];
@@ -49,12 +59,15 @@ const emit = defineEmits<{
   ungroup: [alignmentId: string, sourceGroups: string[][], targetGroups: string[][]];
   bookmark: [segmentId: string, alignmentId: string | null];
   annotation: [segmentId: string, alignmentId: string | null];
-  status: [message: string];
+  status: [message: LocalizedMessage];
+  readonlyAction: [];
   "selection-context": [context: OperationSelectionContext];
 }>();
 
 const bookmarked = computed(() => new Set(props.bookmarkedSegmentIds));
 const annotated = computed(() => new Set(props.annotatedSegmentIds));
+const sourceDisplayTitle = computed(() => props.sourceTitle || t("puiDefaultSourceTitle"));
+const targetDisplayTitle = computed(() => props.targetTitle || t("puiDefaultTargetTitle"));
 const selectedSourceIds = ref(new Set<string>());
 const selectedTargetIds = ref(new Set<string>());
 const selectedAlignmentIds = ref(new Set<string>());
@@ -86,6 +99,7 @@ const deferredFindQuery = ref("");
 const findCursor = ref(-1);
 const transientHighlightIds = ref(new Set<string>());
 const contentDialog = ref<ContentOperationRequest | null>(null);
+let contentDialogRevision: string | undefined;
 const ungroupDialogAlignment = ref<AlignmentDto | null>(null);
 const suppressedSelectionFocusId = ref("");
 let highlightTimer: ReturnType<typeof setTimeout> | null = null;
@@ -110,12 +124,15 @@ const searchableSegments = computed(() => [...props.sourceSegments, ...props.tar
   segmentId: segment.id,
   normalizedText: segment.text.toLocaleLowerCase(),
 })));
-const findPending = computed(() => findQuery.value.trim().toLocaleLowerCase() !== deferredFindQuery.value);
+const sliceFindMatches = ref<string[]>([]);
+const sliceFindLoading = ref(false);
+let findGeneration = 0;
+const findPending = computed(() => sliceFindLoading.value || findQuery.value.trim().toLocaleLowerCase() !== deferredFindQuery.value);
 const findMatches = computed(() => {
   const query = deferredFindQuery.value;
   if (!query) return [];
   return searchableSegments.value
-    .filter((segment) => segment.normalizedText.includes(query))
+    .filter((segment) => props.findInView ? sliceFindMatches.value.includes(segment.segmentId) : segment.normalizedText.includes(query))
     .map((segment) => ({ segmentId: segment.segmentId, alignmentId: rowBySegmentId.value.get(segment.segmentId)?.alignmentId ?? "" }))
     .filter((match) => match.alignmentId);
 });
@@ -135,7 +152,7 @@ const focusAlignment = async (alignmentId: string) => {
 };
 const { highlightedSegmentId: jumpHighlightSegmentId, jumpToSegment } = useTransientSegmentJump({
   focus: async (segmentId) => alignedWorkspaceRef.value?.focusSegment(segmentId),
-  onMissing: () => emit("status", "未找到跳转锚定的句段"),
+  onMissing: () => emit("status", () => t("parallelStatusMissingAnchor")),
 });
 const focusSegment = jumpToSegment;
 
@@ -151,7 +168,7 @@ const unlinkedRuns = computed(() => {
 });
 const navigateUnlinked = async (direction: -1 | 1, byRun: boolean) => {
   const candidates = byRun ? unlinkedRuns.value : rows.value.filter((row) => !row.linked).map((row) => [row]);
-  if (!candidates.length) { emit("status", "当前视图没有未匹配 Segment"); return; }
+  if (!candidates.length) { emit("status", () => t("parallelStatusNoUnmatched")); return; }
   const currentRowIndex = rows.value.findIndex((row) => row.alignmentId === props.selectedAlignmentId);
   const currentCandidateIndex = candidates.findIndex((candidate) => candidate.some((row) => row.index === currentRowIndex));
   let targetIndex: number;
@@ -166,7 +183,7 @@ const navigateUnlinked = async (direction: -1 | 1, byRun: boolean) => {
   if (targetIndex < 0) targetIndex = direction > 0 ? 0 : candidates.length - 1;
   const target = candidates[targetIndex];
   const targetSegmentId = target[0].sourceSegments[0]?.id ?? target[0].targetSegments[0]?.id;
-  if (!targetSegmentId) { emit("status", "未找到跳转锚定的句段"); return; }
+  if (!targetSegmentId) { emit("status", () => t("parallelStatusMissingAnchor")); return; }
   clearSelection();
   suppressedSelectionFocusId.value = target[0].alignmentId;
   emit("select", target[0].alignmentId);
@@ -200,7 +217,21 @@ watch(findQuery, (query) => {
     deferredFindQuery.value = normalizedQuery;
   }, 120);
 });
-watch(deferredFindQuery, () => activateFindMatch(0));
+watch([deferredFindQuery, () => props.revisionKey], async ([query]) => {
+  const generation = ++findGeneration;
+  sliceFindLoading.value = Boolean(query && props.findInView);
+  try {
+    const matches = query && props.findInView ? await props.findInView(query, () => generation !== findGeneration) : [];
+    if (generation !== findGeneration) return;
+    sliceFindMatches.value = matches;
+    await nextTick();
+    activateFindMatch(0);
+  } catch (error) {
+    const detail = rawErrorMessage(error);
+    if (generation === findGeneration) emit("status", () => t("parallelStatusFindFailed", { error: formatError(detail) }));
+  }
+  finally { if (generation === findGeneration) sliceFindLoading.value = false; }
+});
 
 const openFind = async () => { findOpen.value = true; await nextTick(); findInputRef.value?.focus(); findInputRef.value?.select(); };
 const closeFind = () => { findOpen.value = false; findInputRef.value?.blur(); alignedWorkspaceRef.value?.focusViewport(); };
@@ -224,12 +255,26 @@ const revealSegments = async (sourceIds: string[], targetIds: string[]) => {
   await nextTick();
   await alignedWorkspaceRef.value?.focusSegments(sourceIds, targetIds);
 };
-defineExpose({ openFind, closeFind, navigateFind, clearSelection, focusSegment, revealSegments });
+const prepareTutorial = async (preset: TutorialPreset) => {
+  closeFind();
+  clearSelection();
+  if (preset === "complex-relation") selectedAlignmentIds.value = new Set(["tutorial-alignment-complex"]);
+  if (preset === "content") selectedSourceIds.value = new Set(["tutorial-source-3", "tutorial-source-4"]);
+  if (preset === "unlinked") {
+    selectedSourceIds.value = new Set(["tutorial-source-5"]);
+    selectedTargetIds.value = new Set(["tutorial-target-5"]);
+  }
+  if (preset === "order") orderSelection.value = { side: "source", segmentId: "tutorial-source-2" };
+  if (preset === "context") selectedSourceIds.value = new Set(["tutorial-source-1"]);
+  if (preset === "find") await openFind();
+  if (preset !== "find") await focusSegment(preset === "content" ? "tutorial-source-3" : preset === "unlinked" ? "tutorial-source-5" : "tutorial-source-1");
+};
+defineExpose({ openFind, closeFind, navigateFind, clearSelection, focusSegment, revealSegments, prepareTutorial });
 
 const requestEdit = (segmentId: string, alignmentId: string) => {
   const segment = [...props.sourceSegments, ...props.targetSegments].find((candidate) => candidate.id === segmentId);
   if (!segment) return;
-  if (!props.writable) { emit("status", "当前为演示预览，请先新建或打开工程"); return; }
+  if (!props.writable) { emit("status", () => t("parallelStatusDemo")); return; }
   // A browser double-click dispatches two click events first. Those clicks are
   // valid for alignment operations in Review, but must not leak into Edit.
   clearSelection();
@@ -237,7 +282,7 @@ const requestEdit = (segmentId: string, alignmentId: string) => {
   emit("requestEdit", segmentId, alignmentId);
 };
 const toggleBookmark = (segmentId: string, alignmentId: string | null) => {
-  if (!props.writable) { emit("status", "当前为演示预览，请先新建或打开工程"); return; }
+  if (!props.writable) { emit("status", () => t("parallelStatusDemo")); return; }
   emit("bookmark", segmentId, alignmentId);
 };
 const toggleSegment = (side: "source" | "target", id: string, alignmentId: string, event: MouseEvent) => {
@@ -325,7 +370,7 @@ const quickRelationAction = (row: AlignmentBlockView) => {
     targetIds: row.targetSegments.map((segment) => segment.id),
   });
   if (!props.writable) {
-    emit("status", "当前为演示预览，请先新建或打开工程");
+    emit("status", () => t("parallelStatusDemo"));
     return;
   }
   if (row.linked) {
@@ -343,7 +388,7 @@ const quickRelationAction = (row: AlignmentBlockView) => {
   clearSelection();
   selectedSourceIds.value = new Set(sourceIds);
   selectedTargetIds.value = new Set(targetIds);
-  emit("status", "已选中待匹配 Segment；请在另一侧选择句段后使用 Link");
+  emit("status", () => t("parallelStatusSelectOtherSide"));
 };
 watch(() => props.mode, (mode, previousMode) => {
   if (mode === "edit" || previousMode === "edit") clearSelection();
@@ -381,16 +426,16 @@ const groupPlan = computed(() => {
   };
 });
 const groupHint = computed(() => {
-  if (hasAlignedSegmentSelection.value) return "已对齐句段请通过中间关系图标选择整个 Alignment";
-  if (!selectedGroupable.value.length && groupSelectionSize.value) return "仅选择未对齐句段时请使用 Link";
-  if (groupSelectionSize.value < 2) return "按 Ctrl/⌘ 多选至少两个完整 Alignment，或一个 Alignment 加未对齐句段";
-  if (!groupSourceIds.value.size || !groupTargetIds.value.size) return "分组结果必须同时包含左右语言句段";
-  return `分组 ${selectedGroupable.value.length} 个 Alignment 与 ${selectedUnlinkedSourceIds.value.length + selectedUnlinkedTargetIds.value.length} 条未对齐句段`;
+  if (hasAlignedSegmentSelection.value) return t("puiAlignedSelectWhole");
+  if (!selectedGroupable.value.length && groupSelectionSize.value) return t("puiUnlinkedUseLink");
+  if (groupSelectionSize.value < 2) return t("puiGroupSelectionHint");
+  if (!groupSourceIds.value.size || !groupTargetIds.value.size) return t("puiGroupBothSides");
+  return t("puiGroupPlan", { p0: selectedGroupable.value.length, p1: selectedUnlinkedSourceIds.value.length + selectedUnlinkedTargetIds.value.length });
 });
 const groupWarning = computed(() => {
   if (!groupPlan.value) return null;
   const indexes = selectedGroupRowIndexes.value;
-  if (indexes.length > 1 && indexes[indexes.length - 1] - indexes[0] + 1 !== indexes.length) return "所选块在当前视图投影中不连续；仍会按稳定 Segment ID 分组。";
+  if (indexes.length > 1 && indexes[indexes.length - 1] - indexes[0] + 1 !== indexes.length) return t("puiGroupNoncontiguous");
   const positions = selectedGroupable.value.map((id) => {
     const alignment = props.alignments.find((candidate) => candidate.id === id);
     const source = Math.min(...(alignment?.sourceIds.map((segmentId) => props.sourceSegments.find((segment) => segment.id === segmentId)?.order ?? Number.MAX_SAFE_INTEGER) ?? []));
@@ -398,7 +443,7 @@ const groupWarning = computed(() => {
     return { source, target };
   }).sort((a, b) => a.source - b.source);
   return positions.some((position, index) => index > 0 && position.target < positions[index - 1].target)
-    ? "所选 Alignment 的两侧顺序可能交叉；请确认 Group 后的阅读顺序。"
+    ? t("puiGroupCrossed")
     : null;
 });
 const ungroupableAlignment = computed(() => {
@@ -415,38 +460,53 @@ const selectedSegments = computed(() => ([
 ]));
 const segmentMergeIssue = computed(() => {
   const segments = selectedSegments.value;
-  if (segments.length < 2) return "选择同一侧至少两个连续 Segment";
-  if (new Set(segments.map((segment) => segment.side)).size !== 1) return "Merge 内容只能合并同一语言侧的 Segment";
+  if (segments.length < 2) return t("puiMergeSelectTwo");
+  if (new Set(segments.map((segment) => segment.side)).size !== 1) return t("puiMergeSameSide");
   const ordered = [...segments].sort((a, b) => a.order - b.order);
-  if (ordered.some((segment, index) => index > 0 && segment.order !== ordered[index - 1].order + 1)) return "Merge 内容要求 Segment 在当前顺序中连续";
+  if (ordered.some((segment, index) => index > 0 && segment.order !== ordered[index - 1].order + 1)) return t("puiMergeConsecutive");
   const alignmentIds = new Set(segments.map((segment) => alignmentBySegmentId.value.get(segment.id) ?? null));
-  if (alignmentIds.size > 1) return "选中的 Segment 跨越多个 Alignment Block；请先 Group，再合并内容";
+  if (alignmentIds.size > 1) return t("puiMergeAcrossBlocks");
   return null;
 });
 const segmentMergePlan = computed(() => segmentMergeIssue.value ? null : [...selectedSegments.value].sort((a, b) => a.order - b.order));
 const segmentSplitPlan = computed(() => selectedSegments.value.length === 1 ? selectedSegments.value[0] : null);
 const segmentSplitIssue = computed(() => {
-  if (!selectedSegments.value.length) return "选择一个 Segment 后拆分内容";
-  if (selectedSegments.value.length > 1) return "Split 内容一次只能拆分一个 Segment";
+  if (!selectedSegments.value.length) return t("puiSplitSelectOne");
+  if (selectedSegments.value.length > 1) return t("puiSplitOnlyOne");
   return null;
 });
-const openMergeContent = () => {
+const openMergeContent = async () => {
+  const requestedIds = segmentMergePlan.value?.map(segment => segment.id) ?? [];
+  const revision = props.revisionKey;
+  try { await props.ensureSegments?.(requestedIds); } catch (error) { const detail = rawErrorMessage(error); emit("status", () => formatError(detail)); return; }
+  await nextTick();
+  if (revision !== props.revisionKey) return;
   const segments = segmentMergePlan.value;
   if (!segments) return;
+  contentDialogRevision = props.revisionKey;
   contentDialog.value = { kind: "merge", segmentIds: segments.map((segment) => segment.id), initialValue: segments.map((segment) => segment.text).join("\n") };
 };
-const openSplitContent = () => {
+const openSplitContent = async () => {
+  const requestedId = segmentSplitPlan.value?.id;
+  const revision = props.revisionKey;
+  if (!requestedId) return;
+  try { await props.ensureSegments?.([requestedId]); } catch (error) { const detail = rawErrorMessage(error); emit("status", () => formatError(detail)); return; }
+  await nextTick();
+  if (revision !== props.revisionKey) return;
   const segment = segmentSplitPlan.value;
   if (!segment) return;
+  contentDialogRevision = props.revisionKey;
   contentDialog.value = { kind: "split", segmentId: segment.id, original: segment.text };
 };
 const closeContentDialog = () => { contentDialog.value = null; };
 const confirmMergeContent = (segmentIds: string[], mergedContent: string) => {
+  if (contentDialogRevision !== props.revisionKey) { emit("status", () => t("parallelStatusRevisionChanged")); return; }
   emit("mergeSegments", segmentIds, mergedContent);
   contentDialog.value = null;
   clearSelection();
 };
 const confirmSplitContent = (segmentId: string, parts: string[]) => {
+  if (contentDialogRevision !== props.revisionKey) { emit("status", () => t("parallelStatusRevisionChanged")); return; }
   emit("splitSegment", segmentId, parts);
   contentDialog.value = null;
   clearSelection();
@@ -478,45 +538,46 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="workspace" :class="[`workspace--${mode}`, { 'workspace--trackpad': trackpadOptimized }]" aria-label="双语平行工作区">
-    <div v-if="mode === 'review' || mode === 'order'" class="unified-toolbar" aria-label="审阅与排序工具">
-      <section class="unified-toolbar__group" aria-label="顺序操作">
-        <button class="tool-button tool-button--active" type="button" title="从中文或英文编号手柄拖动 Segment"><GripVertical :size="15" /><span class="tool-button__label">拖动排序</span></button>
-        <button class="tool-button" type="button" :disabled="!writable || !orderSelection" title="上移所选 Segment" @click="orderSelection && emit('move', orderSelection.side, orderSelection.segmentId, 'up')"><ArrowUp :size="15" /><span class="tool-button__label">上移</span></button>
-        <button class="tool-button" type="button" :disabled="!writable || !orderSelection" title="下移所选 Segment" @click="orderSelection && emit('move', orderSelection.side, orderSelection.segmentId, 'down')"><ArrowDown :size="15" /><span class="tool-button__label">下移</span></button>
-        <button class="tool-button" type="button" :disabled="!writable" title="恢复 Segment 顺序" @click="emit('resetOrder')"><RotateCcw :size="15" /><span class="tool-button__label">恢复顺序</span></button>
+  <section class="workspace" :class="[`workspace--${mode}`, { 'workspace--trackpad': trackpadOptimized }]" :aria-label="t('puiWorkspaceAria')" data-tutorial="parallel-workspace">
+    <div v-if="mode === 'review' || mode === 'order'" class="unified-toolbar" :aria-label="t('puiReviewOrderTools')">
+      <section class="unified-toolbar__group" :aria-label="t('puiOrderActions')" data-tutorial="order-tools">
+        <button class="tool-button tool-button--active" type="button" :title="t('puiDragOrderTitle')"><GripVertical :size="15" /><span class="tool-button__label">{{ t("puiDragOrder") }}</span></button>
+        <button class="tool-button" type="button" :disabled="!writable || !orderSelection" :title="t('puiMoveUpTitle')" @click="orderSelection && emit('move', orderSelection.side, orderSelection.segmentId, 'up')"><ArrowUp :size="15" /><span class="tool-button__label">{{ t("puiMoveUp") }}</span></button>
+        <button class="tool-button" type="button" :disabled="!writable || !orderSelection" :title="t('puiMoveDownTitle')" @click="orderSelection && emit('move', orderSelection.side, orderSelection.segmentId, 'down')"><ArrowDown :size="15" /><span class="tool-button__label">{{ t("puiMoveDown") }}</span></button>
+        <button class="tool-button" type="button" :disabled="!writable" :title="t('puiResetOrderTitle')" @click="emit('resetOrder')"><RotateCcw :size="15" /><span class="tool-button__label">{{ t("puiResetOrder") }}</span></button>
       </section>
-      <section class="unified-toolbar__group unified-toolbar__group--relations" aria-label="Alignment 关系操作">
-        <button class="tool-button tool-button--link" type="button" :disabled="!writable || selectedAlignmentIds.size > 0 || hasAlignedSegmentSelection || !selectedSourceIds.size || !selectedTargetIds.size" :title="hasAlignedSegmentSelection ? '已对齐句段须先 Unlink；Link 不会静默抢占关系' : '分别选择至少一条未对齐中文和英文 Segment'" @click="emit('link', [...selectedSourceIds], [...selectedTargetIds])"><Link2 :size="15" /><span class="tool-button__label">Link</span></button>
-        <button class="tool-button" type="button" :disabled="!writable || !selectedUnlinkableId" title="在中间关系轨选择一个 Alignment" @click="selectedUnlinkableId && emit('unlink', selectedUnlinkableId)"><Link2Off :size="15" /><span class="tool-button__label">Unlink</span></button>
+      <section class="unified-toolbar__group unified-toolbar__group--relations" :aria-label="t('puiRelationActions')" data-tutorial="relation-tools">
+        <button class="tool-button tool-button--link" type="button" :disabled="!writable || selectedAlignmentIds.size > 0 || hasAlignedSegmentSelection || !selectedSourceIds.size || !selectedTargetIds.size" :title="t(hasAlignedSegmentSelection ? 'puiLinkAlignedTitle' : 'puiLinkSelectTitle')" @click="emit('link', [...selectedSourceIds], [...selectedTargetIds])"><Link2 :size="15" /><span class="tool-button__label">Link</span></button>
+        <button class="tool-button" type="button" :disabled="!writable || !selectedUnlinkableId" :title="t('puiUnlinkTitle')" @click="selectedUnlinkableId && emit('unlink', selectedUnlinkableId)"><Link2Off :size="15" /><span class="tool-button__label">Unlink</span></button>
         <button class="tool-button" type="button" :disabled="!writable || !groupPlan" :title="groupHint" @click="groupPlan && emit('group', groupPlan.alignmentIds, groupPlan.unlinkedSegmentIds)"><Merge :size="15" /><span class="tool-button__label">Group</span></button>
-        <button class="tool-button" type="button" :disabled="!writable || !ungroupableAlignment" title="编辑两侧的明确分组边界" @click="openUngroupDialog"><Scissors :size="15" /><span class="tool-button__label">Ungroup</span></button>
+        <button class="tool-button" type="button" :disabled="!writable || !ungroupableAlignment" :title="t('puiUngroupTitle')" @click="openUngroupDialog"><Scissors :size="15" /><span class="tool-button__label">Ungroup</span></button>
       </section>
-      <section class="unified-toolbar__group unified-toolbar__group--unlinked-nav" aria-label="上一未匹配">
-        <span class="unlinked-nav__label">上一未匹配</span>
-        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" title="上一未匹配 Segment" aria-label="上一未匹配 Segment" @click="navigateUnlinked(-1, false)"><ArrowUp :size="16" /></button>
-        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" title="上一连续未匹配段" aria-label="上一连续未匹配段" @click="navigateUnlinked(-1, true)"><ChevronsUp :size="16" /></button>
+      <section class="unified-toolbar__group unified-toolbar__group--unlinked-nav" :aria-label="t('puiPreviousUnmatched')" data-tutorial="unmatched-nav">
+        <span class="unlinked-nav__label">{{ t("puiPreviousUnmatched") }}</span>
+        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" :title="t('puiPreviousUnmatchedSegment')" :aria-label="t('puiPreviousUnmatchedSegment')" @click="navigateUnlinked(-1, false)"><ArrowUp :size="16" /></button>
+        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" :title="t('puiPreviousUnmatchedRun')" :aria-label="t('puiPreviousUnmatchedRun')" @click="navigateUnlinked(-1, true)"><ChevronsUp :size="16" /></button>
       </section>
-      <section class="unified-toolbar__group unified-toolbar__group--unlinked-nav" aria-label="下一未匹配">
-        <span class="unlinked-nav__label">下一未匹配</span>
-        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" title="下一未匹配 Segment" aria-label="下一未匹配 Segment" @click="navigateUnlinked(1, false)"><ArrowDown :size="16" /></button>
-        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" title="下一连续未匹配段" aria-label="下一连续未匹配段" @click="navigateUnlinked(1, true)"><ChevronsDown :size="16" /></button>
+      <section class="unified-toolbar__group unified-toolbar__group--unlinked-nav" :aria-label="t('puiNextUnmatched')">
+        <span class="unlinked-nav__label">{{ t("puiNextUnmatched") }}</span>
+        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" :title="t('puiNextUnmatchedSegment')" :aria-label="t('puiNextUnmatchedSegment')" @click="navigateUnlinked(1, false)"><ArrowDown :size="16" /></button>
+        <button class="tool-button tool-button--icon" type="button" :disabled="!unlinkedRuns.length" :title="t('puiNextUnmatchedRun')" :aria-label="t('puiNextUnmatchedRun')" @click="navigateUnlinked(1, true)"><ChevronsDown :size="16" /></button>
       </section>
-      <section v-if="selectedSegments.length" class="unified-toolbar__group unified-toolbar__group--content" aria-label="Segment 内容操作">
-        <button class="tool-button" type="button" :disabled="!writable || !segmentMergePlan" :title="segmentMergeIssue ?? '合并内容会保留首个 Segment ID'" @click="openMergeContent"><Merge :size="15" /><span class="tool-button__label">Merge 内容</span></button>
-        <button class="tool-button" type="button" :disabled="!writable || !segmentSplitPlan" :title="segmentSplitIssue ?? '以无损 parts 拆分当前内容'" @click="openSplitContent"><Scissors :size="15" /><span class="tool-button__label">Split 内容</span></button>
+      <section v-if="selectedSegments.length" class="unified-toolbar__group unified-toolbar__group--content" :aria-label="t('puiContentActions')" data-tutorial="content-tools">
+        <button class="tool-button" type="button" :disabled="!writable || !segmentMergePlan" :title="segmentMergeIssue ?? t('puiMergeKeepsId')" @click="openMergeContent"><Merge :size="15" /><span class="tool-button__label">{{ t("puiMergeContent") }}</span></button>
+        <button class="tool-button" type="button" :disabled="!writable || !segmentSplitPlan" :title="segmentSplitIssue ?? t('puiSplitLossless')" @click="openSplitContent"><Scissors :size="15" /><span class="tool-button__label">{{ t("puiSplitContent") }}</span></button>
       </section>
       <span v-if="groupWarning || (segmentMergeIssue && selectedSegments.length)" class="unified-toolbar__warning">{{ groupWarning ?? segmentMergeIssue }}</span>
-      <button v-if="hasOperationSelection || orderSelection" class="selection-clear" type="button" @click="clearSelection">清除选择</button>
-      <span v-else class="unified-toolbar__summary">{{ writable ? `中文 ${sourceSegments.length} 段 · 英文 ${targetSegments.length} 段` : '演示预览 · 打开工程后可操作' }}</span>
+      <button v-if="hasOperationSelection || orderSelection" class="selection-clear" type="button" @click="clearSelection">{{ t("puiClearSelection") }}</button>
+      <span v-else-if="writable" class="unified-toolbar__summary">{{ t("puiSegmentSummary", { p0: sourceDisplayTitle, p1: sourceSegments.length, p2: targetDisplayTitle, p3: targetSegments.length }) }}</span>
+      <span v-else class="unified-toolbar__summary unified-toolbar__summary--readonly">{{ t("puiReadonlyPreview") }}<button v-if="readonlyActionLabel" type="button" @click="emit('readonlyAction')">{{ readonlyActionLabel }}</button><span v-else>{{ t("puiOpenProjectToEdit") }}</span></span>
     </div>
-    <div v-if="findOpen && mode === 'review'" class="view-find" role="search" aria-label="审阅模式快速查找">
-      <Search :size="16" /><input ref="findInputRef" v-model="findQuery" aria-label="查找当前平行视图" placeholder="查找中文或英文…" @keydown.enter.prevent="activateFindMatch(findCursor + ($event.shiftKey ? -1 : 1))" @keydown.esc.prevent="closeFind" />
-      <span>{{ findPending ? '查找中…' : findMatches.length ? `${findCursor + 1} / ${findMatches.length}` : findQuery ? '无结果' : '输入关键词' }}</span>
-      <button type="button" title="上一处" :disabled="!findMatches.length" @click="activateFindMatch(findCursor - 1)"><ArrowUp :size="15" /></button><button type="button" title="下一处" :disabled="!findMatches.length" @click="activateFindMatch(findCursor + 1)"><ArrowDown :size="15" /></button><button type="button" title="关闭查找" @click="closeFind"><X :size="16" /></button>
+    <div v-if="findOpen && mode === 'review'" class="view-find" role="search" :aria-label="t('puiReviewFindAria')" data-tutorial="view-find">
+      <Search :size="16" /><input ref="findInputRef" v-model="findQuery" :aria-label="t('puiFindCurrentAria')" :placeholder="t('puiFindPlaceholder')" @keydown.enter.prevent="activateFindMatch(findCursor + ($event.shiftKey ? -1 : 1))" @keydown.esc.prevent="closeFind" />
+      <span>{{ findPending ? t("puiFinding") : findMatches.length ? t("puiFindPosition", { p0: findCursor + 1, p1: findMatches.length }) : findQuery ? t("puiNoResults") : t("puiEnterKeyword") }}</span>
+      <button type="button" :title="t('puiPreviousMatch')" :disabled="!findMatches.length" @click="activateFindMatch(findCursor - 1)"><ArrowUp :size="15" /></button><button type="button" :title="t('puiNextMatch')" :disabled="!findMatches.length" @click="activateFindMatch(findCursor + 1)"><ArrowDown :size="15" /></button><button type="button" :title="t('puiCloseFind')" @click="closeFind"><X :size="16" /></button>
     </div>
-    <div class="column-headings" :style="{ paddingRight: `${listScrollbarWidth}px` }"><h2>中文 <span>（原文）</span></h2><div class="heading-divider" aria-hidden="true"></div><h2>English <span>（译文）</span></h2></div>
-    <AlignedWorkspaceViewport
+    <div class="column-headings" data-tutorial="parallel-columns" :style="{ paddingRight: `${listScrollbarWidth}px` }"><h2>{{ sourceDisplayTitle }} <span>{{ t("puiSourceSuffix") }}</span></h2><div class="heading-divider" aria-hidden="true"></div><h2>{{ targetDisplayTitle }} <span>{{ t("puiTargetSuffix") }}</span></h2></div>
+    <AlignedWorkspaceViewport :revision-key="revisionKey" @visible-segments="emit('visibleSegments', $event)"
       ref="alignedWorkspaceRef"
       :rows="rows"
       :mode="mode"
@@ -554,7 +615,7 @@ onBeforeUnmount(() => {
       @escape-edit="emit('escapeEdit')"
       @scrollbar-width="listScrollbarWidth = $event"
     />
-    <div v-if="mode === 'edit' && !editSession" class="edit-tip"><LockKeyhole :size="15" />双击任意句子进入编辑；Esc 保存并退出，Ctrl/⌘+Enter 保存并退出。</div>
+    <div v-if="mode === 'edit' && !editSession" class="edit-tip"><LockKeyhole :size="15" />{{ t("puiEditTip") }}</div>
     <OrderDragOverlay :dragged-segment="draggedSegment" :drag-pointer="dragPointer" />
     <SegmentContentDialog v-if="contentDialog" :operation="contentDialog" @close="closeContentDialog" @merge="confirmMergeContent" @split="confirmSplitContent" />
     <AlignmentUngroupDialog v-if="ungroupDialogAlignment" :alignment="ungroupDialogAlignment" :source-segments="sourceSegments" :target-segments="targetSegments" @close="ungroupDialogAlignment = null" @confirm="confirmUngroup" />
@@ -576,6 +637,9 @@ onBeforeUnmount(() => {
 .unified-toolbar .tool-button--icon { width: 34px; padding-inline: 0; justify-content: center; }
 .unified-toolbar__warning { min-width: 0; flex: 0 1 230px; overflow: hidden; margin-left: 12px; color: #916714; font-size: var(--jm-font-size-body); line-height: 1.3; }
 .unified-toolbar__summary { min-width: 0; overflow: hidden; margin-left: auto; color: var(--ink-500); font-size: var(--jm-font-size-subheadline); text-overflow: ellipsis; white-space: nowrap; line-height: var(--jm-line-height-subheadline); }
+.unified-toolbar__summary--readonly { display: inline-flex; align-items: center; gap: 8px; overflow: visible; }
+.unified-toolbar__summary--readonly button { min-height: 28px; padding: 3px 9px; border: 1px solid var(--green-700); border-radius: 6px; color: var(--green-900); background: var(--surface-green-soft); cursor: pointer; font: inherit; }
+.unified-toolbar__summary--readonly button:hover { background: var(--surface-hover); }
 .selection-clear { margin-left: auto; padding: 5px 9px; border: 0; color: var(--ink-500); background: transparent; font-size: var(--jm-font-size-callout); white-space: nowrap; cursor: pointer; line-height: var(--jm-line-height-callout); }
 .view-find { display: flex; align-items: center; gap: 7px; min-height: 45px; padding: 0 18px; border-bottom: 1px solid #b8d5bb; color: var(--green-900); background: #f4faf2; }.view-find input { flex: 1; min-width: 140px; height: 31px; padding: 0 10px; border: 1px solid #b8cdb9; border-radius: 5px; outline: none; background: #fff; }.view-find input:focus { border-color: var(--green-700); box-shadow: 0 0 0 2px rgb(55 127 66 / 14%); }.view-find span { min-width: 70px; color: var(--ink-500); font-size: var(--jm-font-size-subheadline); text-align: right; line-height: var(--jm-line-height-subheadline); }.view-find button { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid transparent; border-radius: 5px; color: var(--ink-700); background: transparent; cursor: pointer; }.view-find button:hover:not(:disabled) { border-color: #bad2bd; background: #fff; }
 .column-headings { height: 44px; flex: 0 0 44px; grid-template-columns: minmax(0, var(--source-column-fr)) var(--alignment-gutter) minmax(0, var(--target-column-fr)); }

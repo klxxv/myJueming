@@ -16,6 +16,7 @@ fn search_supports_literal_regex_language_and_invalid_regex_errors() {
         .create_project(&government_request(&path))
         .expect("create project");
     let request = SearchSegmentsRequest {
+        document_ids: None,
         project_id: snapshot.project.project_id,
         query: "government".into(),
         regex: false,
@@ -32,6 +33,7 @@ fn search_supports_literal_regex_language_and_invalid_regex_errors() {
         .search_segments(
             &snapshot,
             &SearchSegmentsRequest {
+                document_ids: None,
                 query: "^Employment.*stable".into(),
                 regex: true,
                 ..request.clone()
@@ -43,6 +45,7 @@ fn search_supports_literal_regex_language_and_invalid_regex_errors() {
         .search_segments(
             &snapshot,
             &SearchSegmentsRequest {
+                document_ids: None,
                 query: "[".into(),
                 regex: true,
                 ..request
@@ -61,6 +64,7 @@ fn replace_is_one_revision_stale_safe_and_undoable() {
         .create_project(&government_request(&path))
         .expect("create project");
     let request = ReplacePreviewRequest {
+        document_ids: None,
         project_id: snapshot.project.project_id,
         query: "stable".into(),
         replacement: "steady".into(),
@@ -108,6 +112,7 @@ fn replacement_persists_the_preallocated_operation_id() {
     let service = KernelService;
     let snapshot = service.create_project(&government_request(&path)).unwrap();
     let preview = ReplacePreviewRequest {
+        document_ids: None,
         project_id: snapshot.project.project_id,
         query: "stable".into(),
         replacement: "steady".into(),

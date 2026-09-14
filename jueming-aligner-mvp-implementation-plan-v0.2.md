@@ -37,7 +37,7 @@ MVP 不实现自动 NLP 或云能力。完整架构中相关能力只注册稳�
 3. Canonical Data、Derived Data、Index、UI State 分离；
 4. 所有 canonical 修改通过 Command / ChangeSet / Revision 进入持久化与历史，不允许 UI 直接改数据库。
 
-前端不按每个功能重新建一套正文页面，而是围绕统一的 `ParallelWorkspace` 构建 Review、Edit、Order、History 四种模式。前端研发投入集中在决明特有的平行交互；编辑器、查找、Diff、虚拟滚动、弹层、Dock 和原生窗口能力直接复用成熟库。
+前端不按每个功能重新建一套正文页面，而是围绕统一的 `ParallelWorkspace` 构建 Review、Edit、Order、History 四种模式。前端研发投入集中在决明特有的平行交互；主平行视图保留现有 Alignment 布局、可视区裁剪和高度测量实现。搜索虚拟列表、拖拽输入、图标和原生窗口能力复用已引入的库。
 
 实现采用“窄垂直切片”：先打通 `Import → Decode → Segment → Parallel → Manual Alignment → Edit/Order → Save/Open → Export`，再在同一 Command/Revision 骨架上增加 Search/Replace、Bookmark、Human Annotation 和持久 History。MVP 的 Provider Registry 只含内置、进程内 Provider；不为延期功能提前实现 Python/WASM/网络加载器。
 
@@ -102,7 +102,7 @@ MVP 不实现自动 NLP 或云能力。完整架构中相关能力只注册稳�
 | Epic | MVP 能力 | 完成判据 |
 |---|---|---|
 | 工程管理 | 新建、打开、最近工程、保存、另存为、关闭恢复 | 关闭应用后重新打开，文本、顺序、对齐、书签、批注和版本均一致 |
-| 双语导入 | 粘贴、选择左右 TXT、十种 curated LTR 语言选择、UTF-8 / UTF-8 BOM、显式 GB18030 | 语言代码来自 BCP-47 LTR 白名单；左右文本可独立导入，解码候选有明确预览和来源，RTL 被拒绝，失败时不产生半成品工程 |
+| 双语导入 | 粘贴、选择左右 TXT、十种 curated LTR 语言选择、自动编码识别、UTF-8 / UTF-16、GB18030 / Big5 等历史编码及手动覆盖（ADR-019） | 语言代码来自 BCP-47 LTR 白名单；左右文本可独立导入，解码候选有明确预览和来源，RTL 被拒绝，失败时不产生半成品工程 |
 | 分段 | 非空行即 Segment、中文/英文规则分句、旧版 `<seg>` 标注行预处理、规则编辑、预览、应用 | 可保留已对齐 TXT 的行边界，可对连续正文分句，也可在预览中剔除旧版包装/POS 后缀；应用后每个 Segment 有稳定 ID |
 | 初始布局 | 按左右顺序形成暂定 1:1 配对，多余项保持未对齐 | 不宣称语义自动对齐；用户可清楚识别 provisional 与 unlinked 状态 |
 | 平行阅读 | 双栏虚拟列表、当前 Alignment 高亮、双向定位、Context Lens | 点击任一侧 Segment 能定位另一侧；上下文扩展不丢失当前 Alignment anchor |
@@ -123,7 +123,7 @@ MVP 不实现自动 NLP 或云能力。完整架构中相关能力只注册稳�
 
 - Bookmark tags；
 - 搜索结果的更多上下文筛选；
-- 导入 Big5 及 GB18030 以外的额外编码；
+- UTF-32 导入与无 BOM UTF-16 的自动识别（无 BOM UTF-16 现支持手动指定字节序）；
 - XML 方言兼容选项；
 - Dockview Context Pane；
 - Tauri 原生多窗口 Context；
@@ -232,7 +232,7 @@ P0 不因 Dockview 或多窗口延期而阻塞；inline expand 是完整可用�
 - 选中任一真实已对齐 Segment 后可在上方/下方插入同侧视觉空位；该显式命令不改变 SegmentOrder，而是原子打断边界关系并按当前顺序重建后续 1:1 manual Alignment；
 - 一次拖拽产生一个 ChangeSet。
 
-拖拽输入使用 `@atlaskit/pragmatic-drag-and-drop` 的 element adapter，并由决明自研 domain command adapter 把拖放结果解释为 stable SegmentId 排列；不把库内部 index 直接提交给 Kernel。最新官方 PDD 文档将 `onDrag` 定义为节流高频回调；虚拟化中原 draggable 可卸载，因此须用 monitor/稳定 target 以 ID 接续。拖动手柄至少 24px，原项 opacity 约 .4；Windows 原生 preview 超过 280px 会显著变淡时使用受控 Overlay。TanStack Virtual 3.x 动态高度用默认 `measureElement`（`getBoundingClientRect` + `ResizeObserver`），不得对同一 index 同时使用 `resizeItem`。Overlay 以 Vue 3.5 `Teleport` 脱离父级 DOM/stacking context。拖拽手柄必须有上移/下移等价键盘操作，并与虚拟行挂载/卸载生命周期绑定。
+拖拽输入使用 `@atlaskit/pragmatic-drag-and-drop` 的 element adapter，并由决明自研 domain command adapter 把拖放结果解释为 stable SegmentId 排列；不把库内部 index 直接提交给 Kernel。最新官方 PDD 文档将 `onDrag` 定义为节流高频回调；虚拟化中原 draggable 可卸载，因此须用 monitor/稳定 target 以 ID 接续。拖动手柄至少 24px，原项 opacity 约 .4；Windows 原生 preview 超过 280px 会显著变淡时使用受控 Overlay。主平行视图使用既有 `AlignedWorkspaceViewport` / `useAlignedBlockLayout`，通过 ResizeObserver 测量两侧 Alignment Block 高度并按可视区裁剪；搜索结果继续使用 TanStack Virtual。Overlay 以 Vue 3.5 `Teleport` 脱离父级 DOM/stacking context。拖拽手柄必须有上移/下移等价键盘操作，并与虚拟行挂载/卸载生命周期绑定。
 
 Drag 的自动化 E2E 与视觉回归暂缓；本次仍测试 stable-ID 顺序命令、端点跟随和 drop 后重测量的契约，不将暂缓标为已通过。
 
@@ -406,10 +406,10 @@ UI State 不得写入 canonical 表；有价值的布局偏好进入用户设置
 | 路由 | Vue Router | Project、Parallel、Search、Bookmarks、Annotations、Project History、Settings 顶层工作区；mode 不做成独立 route |
 | 前端状态 | Pinia | 只保存 session、workspace、selection、panel、用户设置和轻量 Slice cache；Kernel 仍是 canonical source of truth |
 | IPC | Tauri commands + events/channels，封装为 `KernelClient` | 小型控制 DTO 走 Command/Query；进度和变更走 Event/Channel；UI 不直接调用零散 Tauri command |
-| 虚拟滚动 | `@tanstack/vue-virtual` | `ParallelViewport`、搜索结果、书签/批注/历史长列表；item key 必须使用 stable ID |
+| 虚拟滚动 | 主平行视图：`AlignedWorkspaceViewport` + `useAlignedBlockLayout`；搜索：`@tanstack/vue-virtual` | 保留当前计算对齐、可视区裁剪与高度测量实现；item key 必须使用 stable ID |
 | 排序拖拽 | `@atlaskit/pragmatic-drag-and-drop` | element adapter 绑定虚拟行，提供拖动源、drop target 和插入边；决明只实现 stable ID 领域适配 |
 | Segment 编辑器 | 原生 `textarea`（MVP） | 单 Segment 编辑、输入法、脏状态与快捷退出；CodeMirror 6 作为复杂编辑需求出现后的替换实现 |
-| View Find | 自研轻量控制器 + TanStack Virtual 定位 | Review 下 `Ctrl+F`、上一处/下一处、stable AlignmentId 跳转；不承担 Kernel Project Search |
+| View Find | 自研轻量控制器 + 当前布局的稳定 ID 定位 | Review 下 `Ctrl+F`、上一处/下一处、stable AlignmentId 跳转；不承担 Kernel Project Search |
 | Diff | Kernel 结构化 compare + 自研双栏 History 外壳 | MVP 展示 Segment / 顺序 / Alignment 结构化差异；CodeMirror MergeView 留作更复杂文本 diff 的可替换呈现层 |
 | 无样式交互原语 | Reka UI | Dialog、Popover、Menu、Tooltip、Select、Tabs、焦点管理和键盘可访问性 |
 | Dock | `dockview-vue` | P1 Context Pane 与可序列化辅助布局；不接管正文双栏核心布局 |
@@ -469,9 +469,9 @@ SQLite Catalog + Operation Log + Chunk/Slice Storage + Rebuildable Index
 | 基础能力 | 库/平台 |
 |---|---|
 | 单句文本编辑 | 浏览器原生 `textarea`（MVP）；CodeMirror 6 作为可替换升级路径 |
-| Review 当前 View 查找 | 轻量输入控件 + `@tanstack/vue-virtual` stable ID 定位 |
+| Review 当前 View 查找 | 轻量输入控件 + `AlignedWorkspaceViewport` stable ID 定位 |
 | 文本 Diff | Kernel compare + 当前 History 双栏呈现；`@codemirror/merge` 延后 |
-| 长列表虚拟化 | `@tanstack/vue-virtual` |
+| 长列表虚拟化 | 主平行视图使用现有布局裁剪；搜索结果使用 `@tanstack/vue-virtual` |
 | 排序拖拽 | `@atlaskit/pragmatic-drag-and-drop` |
 | Dialog/Menu/Popover/Tooltip | Reka UI |
 | Context Dock | `dockview-vue`（P1） |
@@ -527,7 +527,7 @@ Segment 全文、Alignment 真值、Revision 历史不得镜像成一个长期�
 
 虚拟化与同步规则：
 
-- `@tanstack/vue-virtual` 的 item key 使用 `AlignmentId` 或稳定的 display-row key，禁止 index key；
+- 主平行视图与搜索列表的 item key 使用 `AlignmentId` 或稳定的 display-row key，禁止 index key；
 - 可变高度 Segment 使用测量缓存；切换 mode 时按内容/字号变化精确失效；
 - 左右两侧不各自实现一个互相监听的 scroll handler；只允许 `AlignmentViewportController` 发起语义定位；
 - 用户主动滚动优先，程序跟随带 source token，避免左右滚动反馈回路；
@@ -770,7 +770,7 @@ UI 的 domain store 只响应 DTO 与 Event，不复制 Kernel 规则。
 
 实现状态（2026-08-28）：核心垂直链路已实现并通过真实桌面验证。Tauri 文件选择器可分别选择原文/译文，Rust Kernel 支持 UTF-8、UTF-8 BOM、Windows 严格 GB18030、非空行/规则分句/SISU 标记行 profile；创建工程会生成稳定 UUIDv7 ID、暂定 1:1 布局与原子写入的 `.jm/project.json`，打开、显式保存、编辑自动保存、顺序变更自动保存均经过 Tauri `KernelClient` 边界并追加 Revision。政府报告 fixture 的 create/open、编辑重开、重排稳定 ID 与多余目标段未链接均已有单元测试；真实“阿古顿巴”已从 UI 导入为 source 307、target 308、307 个 Alignment 和 1 个 target unlinked，并在关闭应用后从 `.jm` 文件夹重开成功。
 
-实现：Tauri 2 + Vue 3 应用壳、KernelClient、工程创建/打开、TXT/Paste、UTF-8/BOM/GB18030 解码预览、普通行/规则分句/旧版标注行三种导入 profile、稳定 ID、初始布局、工程目录、保存与重开、TanStack Virtual 最小列表。
+实现：Tauri 2 + Vue 3 应用壳、KernelClient、工程创建/打开、TXT/Paste、UTF-8/BOM/GB18030 解码预览、普通行/规则分句/旧版标注行三种导入 profile、稳定 ID、初始布局、工程目录、保存与重开、TanStack Virtual 最小列表（Phase 1 历史实现；当前主平行视图以 `AlignedWorkspaceViewport` 为准）。
 
 依赖：Phase 0。
 
@@ -992,7 +992,7 @@ MVP 只有在以下条件全部满足时才算完成：
 - [Vue 3 TypeScript Composition API](https://vuejs.org/guide/typescript/composition-api)：固定 `<script setup lang="ts">` 与严格类型组件路线；
 - [Pinia](https://pinia.vuejs.org/introduction.html)：用于跨组件 UI / workspace state，不承担 canonical data；
 - [Vue Router](https://router.vuejs.org/introduction.html)：只管理顶层工作区，Parallel mode 留在工作区内部；
-- [TanStack Virtual Vue adapter](https://tanstack.com/virtual/latest/docs/installation)：用于可变高度正文和长结果列表；[Virtualizer API](https://tanstack.com/virtual/latest/docs/api/virtualizer)规定动态尺寸优先 `measureElement` 与 `ResizeObserver`，同一 index 不混用 `resizeItem`；
+- [TanStack Virtual Vue adapter](https://tanstack.com/virtual/latest/docs/installation)：用于搜索结果列表；主平行视图以现有自研布局实现为准；[Virtualizer API](https://tanstack.com/virtual/latest/docs/api/virtualizer)规定动态尺寸优先 `measureElement` 与 `ResizeObserver`，同一 index 不混用 `resizeItem`；
 - [Pragmatic drag and drop core](https://atlassian.design/components/pragmatic-drag-and-drop/core-package/)：用于虚拟行的轻量拖动源、drop target 与 monitor；[Virtualization recipe](https://atlassian.design/components/pragmatic-drag-and-drop/core-package/recipes/virtualization)规定原 draggable 卸载后的稳定接续；[Design guidelines](https://atlassian.design/components/pragmatic-drag-and-drop/design-guidelines)给出至少 24px handle 等交互约束；
 - [Vue Teleport](https://vuejs.org/guide/built-ins/teleport)：将 DragOverlay 放到 workspace 根层，避开父级 overflow/transform 的 stacking context；
 - [Unicode CLDR](https://cldr.unicode.org/)：维护 MVP curated top-ten LTR 语言的语言/书写系统/方向依据；实际写入使用 BCP-47 基础代码。

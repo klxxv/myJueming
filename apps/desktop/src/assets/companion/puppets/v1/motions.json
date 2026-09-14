@@ -1,0 +1,1670 @@
+{
+  "version": 1,
+  "clips": {
+    "rest": {
+      "label": "站立",
+      "durationMs": 1000,
+      "tracks": {},
+      "expressions": [
+        {
+          "at": 0,
+          "value": "awake"
+        }
+      ]
+    },
+    "walk": {
+      "label": "四足步态",
+      "durationMs": 900,
+      "tracks": {
+        "body": [
+          {
+            "at": 0.0,
+            "y": 0
+          },
+          {
+            "at": 0.25,
+            "y": -3
+          },
+          {
+            "at": 0.5,
+            "y": 0
+          },
+          {
+            "at": 0.75,
+            "y": -3
+          },
+          {
+            "at": 1.0,
+            "y": 0
+          }
+        ],
+        "head": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 1
+          },
+          {
+            "at": 0.5,
+            "rotation": -2
+          },
+          {
+            "at": 0.75,
+            "rotation": 1
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "tail-base": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 3
+          },
+          {
+            "at": 0.5,
+            "rotation": 8
+          },
+          {
+            "at": 0.75,
+            "rotation": 3
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "tail-mid": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": -3
+          },
+          {
+            "at": 0.5,
+            "rotation": -6
+          },
+          {
+            "at": 0.75,
+            "rotation": -3
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "ear-near": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 4
+          },
+          {
+            "at": 0.5,
+            "rotation": 0
+          },
+          {
+            "at": 0.75,
+            "rotation": -3
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "ear-far": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": -3
+          },
+          {
+            "at": 0.5,
+            "rotation": 0
+          },
+          {
+            "at": 0.75,
+            "rotation": 4
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "front-near-upper": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 25
+          },
+          {
+            "at": 0.5,
+            "rotation": 0
+          },
+          {
+            "at": 0.75,
+            "rotation": -25
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "front-near-lower": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": -18
+          },
+          {
+            "at": 0.5,
+            "rotation": 0
+          },
+          {
+            "at": 0.75,
+            "rotation": 18
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "front-near-paw": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": -7
+          },
+          {
+            "at": 0.5,
+            "rotation": 0
+          },
+          {
+            "at": 0.75,
+            "rotation": 7
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "hind-far-upper": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 25
+          },
+          {
+            "at": 0.5,
+            "rotation": 0
+          },
+          {
+            "at": 0.75,
+            "rotation": -25
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "hind-far-lower": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": -18
+          },
+          {
+            "at": 0.5,
+            "rotation": 0
+          },
+          {
+            "at": 0.75,
+            "rotation": 18
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "hind-far-paw": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": -7
+          },
+          {
+            "at": 0.5,
+            "rotation": 0
+          },
+          {
+            "at": 0.75,
+            "rotation": 7
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "front-far-upper": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": -25
+          },
+          {
+            "at": 0.5,
+            "rotation": 0
+          },
+          {
+            "at": 0.75,
+            "rotation": 25
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "front-far-lower": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 18
+          },
+          {
+            "at": 0.5,
+            "rotation": 0
+          },
+          {
+            "at": 0.75,
+            "rotation": -18
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "front-far-paw": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 7
+          },
+          {
+            "at": 0.5,
+            "rotation": 0
+          },
+          {
+            "at": 0.75,
+            "rotation": -7
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "hind-near-upper": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": -25
+          },
+          {
+            "at": 0.5,
+            "rotation": 0
+          },
+          {
+            "at": 0.75,
+            "rotation": 25
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "hind-near-lower": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 18
+          },
+          {
+            "at": 0.5,
+            "rotation": 0
+          },
+          {
+            "at": 0.75,
+            "rotation": -18
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "hind-near-paw": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 7
+          },
+          {
+            "at": 0.5,
+            "rotation": 0
+          },
+          {
+            "at": 0.75,
+            "rotation": -7
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ]
+      },
+      "expressions": [
+        {
+          "at": 0,
+          "value": "awake"
+        }
+      ]
+    },
+    "jump": {
+      "label": "蓄力 · 腾空 · 落地",
+      "durationMs": 1700,
+      "tracks": {
+        "body": [
+          {
+            "at": 0,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          },
+          {
+            "at": 0.22,
+            "y": 14,
+            "rotation": -5,
+            "scaleX": 1.06,
+            "scaleY": 0.88
+          },
+          {
+            "at": 0.42,
+            "y": -3,
+            "rotation": -14,
+            "scaleX": 0.98,
+            "scaleY": 1.02
+          },
+          {
+            "at": 0.7,
+            "y": 0,
+            "rotation": 6,
+            "scaleX": 1,
+            "scaleY": 1
+          },
+          {
+            "at": 0.85,
+            "y": 10,
+            "rotation": 0,
+            "scaleX": 1.04,
+            "scaleY": 0.93
+          },
+          {
+            "at": 1,
+            "y": 0,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          }
+        ],
+        "head": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": -6
+          },
+          {
+            "at": 0.5,
+            "rotation": -3
+          },
+          {
+            "at": 0.75,
+            "rotation": 6
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "tail-base": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 12
+          },
+          {
+            "at": 0.5,
+            "rotation": 35
+          },
+          {
+            "at": 0.75,
+            "rotation": 10
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "tail-mid": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 8
+          },
+          {
+            "at": 0.5,
+            "rotation": 14
+          },
+          {
+            "at": 0.75,
+            "rotation": 5
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "ear-near": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 5
+          },
+          {
+            "at": 0.5,
+            "rotation": 13
+          },
+          {
+            "at": 0.75,
+            "rotation": -6
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "ear-far": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": -5
+          },
+          {
+            "at": 0.5,
+            "rotation": -9
+          },
+          {
+            "at": 0.75,
+            "rotation": 6
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "front-near-upper": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.22,
+            "rotation": -35
+          },
+          {
+            "at": 0.45,
+            "rotation": -52
+          },
+          {
+            "at": 0.68,
+            "rotation": -28
+          },
+          {
+            "at": 0.85,
+            "rotation": -22
+          },
+          {
+            "at": 1,
+            "rotation": 0
+          }
+        ],
+        "front-near-lower": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.22,
+            "rotation": 60
+          },
+          {
+            "at": 0.45,
+            "rotation": 20
+          },
+          {
+            "at": 0.68,
+            "rotation": 15
+          },
+          {
+            "at": 0.85,
+            "rotation": 36
+          },
+          {
+            "at": 1,
+            "rotation": 0
+          }
+        ],
+        "front-near-paw": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": -20
+          },
+          {
+            "at": 0.5,
+            "rotation": 15
+          },
+          {
+            "at": 0.75,
+            "rotation": -14
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "front-far-upper": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.22,
+            "rotation": -35
+          },
+          {
+            "at": 0.45,
+            "rotation": -52
+          },
+          {
+            "at": 0.68,
+            "rotation": -28
+          },
+          {
+            "at": 0.85,
+            "rotation": -22
+          },
+          {
+            "at": 1,
+            "rotation": 0
+          }
+        ],
+        "front-far-lower": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.22,
+            "rotation": 60
+          },
+          {
+            "at": 0.45,
+            "rotation": 20
+          },
+          {
+            "at": 0.68,
+            "rotation": 15
+          },
+          {
+            "at": 0.85,
+            "rotation": 36
+          },
+          {
+            "at": 1,
+            "rotation": 0
+          }
+        ],
+        "front-far-paw": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": -20
+          },
+          {
+            "at": 0.5,
+            "rotation": 15
+          },
+          {
+            "at": 0.75,
+            "rotation": -14
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "hind-near-upper": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.22,
+            "rotation": 38
+          },
+          {
+            "at": 0.42,
+            "rotation": 42
+          },
+          {
+            "at": 0.65,
+            "rotation": 70
+          },
+          {
+            "at": 0.85,
+            "rotation": 25
+          },
+          {
+            "at": 1,
+            "rotation": 0
+          }
+        ],
+        "hind-near-lower": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.22,
+            "rotation": -70
+          },
+          {
+            "at": 0.42,
+            "rotation": -10
+          },
+          {
+            "at": 0.65,
+            "rotation": -100
+          },
+          {
+            "at": 0.85,
+            "rotation": -46
+          },
+          {
+            "at": 1,
+            "rotation": 0
+          }
+        ],
+        "hind-near-paw": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 28
+          },
+          {
+            "at": 0.5,
+            "rotation": 20
+          },
+          {
+            "at": 0.75,
+            "rotation": 21
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "hind-far-upper": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.22,
+            "rotation": 38
+          },
+          {
+            "at": 0.42,
+            "rotation": 42
+          },
+          {
+            "at": 0.65,
+            "rotation": 70
+          },
+          {
+            "at": 0.85,
+            "rotation": 25
+          },
+          {
+            "at": 1,
+            "rotation": 0
+          }
+        ],
+        "hind-far-lower": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.22,
+            "rotation": -70
+          },
+          {
+            "at": 0.42,
+            "rotation": -10
+          },
+          {
+            "at": 0.65,
+            "rotation": -100
+          },
+          {
+            "at": 0.85,
+            "rotation": -46
+          },
+          {
+            "at": 1,
+            "rotation": 0
+          }
+        ],
+        "hind-far-paw": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 28
+          },
+          {
+            "at": 0.5,
+            "rotation": 20
+          },
+          {
+            "at": 0.75,
+            "rotation": 21
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ]
+      },
+      "expressions": [
+        {
+          "at": 0,
+          "value": "awake"
+        }
+      ]
+    },
+    "lie-down": {
+      "label": "收腿趴下",
+      "durationMs": 1100,
+      "tracks": {
+        "body": [
+          {
+            "at": 0,
+            "y": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          },
+          {
+            "at": 0.28,
+            "y": 4.32,
+            "scaleX": 1.009,
+            "scaleY": 0.9838
+          },
+          {
+            "at": 1,
+            "y": 24,
+            "scaleX": 1.05,
+            "scaleY": 0.91
+          }
+        ],
+        "head": [
+          {
+            "at": 0,
+            "x": 0,
+            "y": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "x": 1.6199999999999999,
+            "y": 4.5,
+            "rotation": 2.16
+          },
+          {
+            "at": 1,
+            "x": 9,
+            "y": 25,
+            "rotation": 12
+          }
+        ],
+        "tail-base": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": -8.28
+          },
+          {
+            "at": 1,
+            "rotation": -46
+          }
+        ],
+        "tail-mid": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": -8.1
+          },
+          {
+            "at": 1,
+            "rotation": -45
+          }
+        ],
+        "tail-tip": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": -6.3
+          },
+          {
+            "at": 1,
+            "rotation": -35
+          }
+        ],
+        "ear-near": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": 1.08
+          },
+          {
+            "at": 1,
+            "rotation": 6
+          }
+        ],
+        "ear-far": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": -1.44
+          },
+          {
+            "at": 1,
+            "rotation": -8
+          }
+        ],
+        "front-near-upper": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": -11.7
+          },
+          {
+            "at": 1,
+            "rotation": -65
+          }
+        ],
+        "front-near-lower": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": 19.8
+          },
+          {
+            "at": 1,
+            "rotation": 110
+          }
+        ],
+        "front-near-paw": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": -8.1
+          },
+          {
+            "at": 1,
+            "rotation": -45
+          }
+        ],
+        "front-far-upper": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": -11.7
+          },
+          {
+            "at": 1,
+            "rotation": -65
+          }
+        ],
+        "front-far-lower": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": 19.8
+          },
+          {
+            "at": 1,
+            "rotation": 110
+          }
+        ],
+        "front-far-paw": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": -8.1
+          },
+          {
+            "at": 1,
+            "rotation": -45
+          }
+        ],
+        "hind-near-upper": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": 11.16
+          },
+          {
+            "at": 1,
+            "rotation": 62
+          }
+        ],
+        "hind-near-lower": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": -18.9
+          },
+          {
+            "at": 1,
+            "rotation": -105
+          }
+        ],
+        "hind-near-paw": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": 7.739999999999999
+          },
+          {
+            "at": 1,
+            "rotation": 43
+          }
+        ],
+        "hind-far-upper": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": 11.16
+          },
+          {
+            "at": 1,
+            "rotation": 62
+          }
+        ],
+        "hind-far-lower": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": -18.9
+          },
+          {
+            "at": 1,
+            "rotation": -105
+          }
+        ],
+        "hind-far-paw": [
+          {
+            "at": 0,
+            "rotation": 0
+          },
+          {
+            "at": 0.28,
+            "rotation": 7.739999999999999
+          },
+          {
+            "at": 1,
+            "rotation": 43
+          }
+        ]
+      },
+      "expressions": [
+        {
+          "at": 0,
+          "value": "awake"
+        },
+        {
+          "at": 0.65,
+          "value": "sleep"
+        }
+      ]
+    },
+    "sleep": {
+      "label": "睡眠呼吸",
+      "durationMs": 2700,
+      "tracks": {
+        "body": [
+          {
+            "at": 0,
+            "y": 24,
+            "scaleX": 1.05,
+            "scaleY": 0.91
+          },
+          {
+            "at": 0.5,
+            "y": 22.5,
+            "scaleX": 1.05,
+            "scaleY": 0.93
+          },
+          {
+            "at": 1,
+            "y": 24,
+            "scaleX": 1.05,
+            "scaleY": 0.91
+          }
+        ],
+        "head": [
+          {
+            "at": 0,
+            "x": 9,
+            "y": 25,
+            "rotation": 12
+          },
+          {
+            "at": 1,
+            "x": 9,
+            "y": 25,
+            "rotation": 12
+          }
+        ],
+        "tail-base": [
+          {
+            "at": 0,
+            "rotation": -46
+          },
+          {
+            "at": 1,
+            "rotation": -46
+          }
+        ],
+        "tail-mid": [
+          {
+            "at": 0,
+            "rotation": -45
+          },
+          {
+            "at": 1,
+            "rotation": -45
+          }
+        ],
+        "tail-tip": [
+          {
+            "at": 0,
+            "rotation": -35
+          },
+          {
+            "at": 1,
+            "rotation": -35
+          }
+        ],
+        "ear-near": [
+          {
+            "at": 0,
+            "rotation": 6
+          },
+          {
+            "at": 1,
+            "rotation": 6
+          }
+        ],
+        "ear-far": [
+          {
+            "at": 0,
+            "rotation": -8
+          },
+          {
+            "at": 1,
+            "rotation": -8
+          }
+        ],
+        "front-near-upper": [
+          {
+            "at": 0,
+            "rotation": -65
+          },
+          {
+            "at": 1,
+            "rotation": -65
+          }
+        ],
+        "front-near-lower": [
+          {
+            "at": 0,
+            "rotation": 110
+          },
+          {
+            "at": 1,
+            "rotation": 110
+          }
+        ],
+        "front-near-paw": [
+          {
+            "at": 0,
+            "rotation": -45
+          },
+          {
+            "at": 1,
+            "rotation": -45
+          }
+        ],
+        "front-far-upper": [
+          {
+            "at": 0,
+            "rotation": -65
+          },
+          {
+            "at": 1,
+            "rotation": -65
+          }
+        ],
+        "front-far-lower": [
+          {
+            "at": 0,
+            "rotation": 110
+          },
+          {
+            "at": 1,
+            "rotation": 110
+          }
+        ],
+        "front-far-paw": [
+          {
+            "at": 0,
+            "rotation": -45
+          },
+          {
+            "at": 1,
+            "rotation": -45
+          }
+        ],
+        "hind-near-upper": [
+          {
+            "at": 0,
+            "rotation": 62
+          },
+          {
+            "at": 1,
+            "rotation": 62
+          }
+        ],
+        "hind-near-lower": [
+          {
+            "at": 0,
+            "rotation": -105
+          },
+          {
+            "at": 1,
+            "rotation": -105
+          }
+        ],
+        "hind-near-paw": [
+          {
+            "at": 0,
+            "rotation": 43
+          },
+          {
+            "at": 1,
+            "rotation": 43
+          }
+        ],
+        "hind-far-upper": [
+          {
+            "at": 0,
+            "rotation": 62
+          },
+          {
+            "at": 1,
+            "rotation": 62
+          }
+        ],
+        "hind-far-lower": [
+          {
+            "at": 0,
+            "rotation": -105
+          },
+          {
+            "at": 1,
+            "rotation": -105
+          }
+        ],
+        "hind-far-paw": [
+          {
+            "at": 0,
+            "rotation": 43
+          },
+          {
+            "at": 1,
+            "rotation": 43
+          }
+        ]
+      },
+      "expressions": [
+        {
+          "at": 0,
+          "value": "sleep"
+        }
+      ]
+    },
+    "look": {
+      "label": "张望与摇尾",
+      "durationMs": 1800,
+      "tracks": {
+        "head": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.3333,
+            "rotation": -9
+          },
+          {
+            "at": 0.6667,
+            "rotation": 4
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "tail-base": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": 14
+          },
+          {
+            "at": 0.5,
+            "rotation": -9
+          },
+          {
+            "at": 0.75,
+            "rotation": 14
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "tail-mid": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.25,
+            "rotation": -9
+          },
+          {
+            "at": 0.5,
+            "rotation": 8
+          },
+          {
+            "at": 0.75,
+            "rotation": -9
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ],
+        "ear-near": [
+          {
+            "at": 0.0,
+            "rotation": 0
+          },
+          {
+            "at": 0.3333,
+            "rotation": 8
+          },
+          {
+            "at": 0.6667,
+            "rotation": -3
+          },
+          {
+            "at": 1.0,
+            "rotation": 0
+          }
+        ]
+      },
+      "expressions": [
+        {
+          "at": 0,
+          "value": "awake"
+        },
+        {
+          "at": 0.2,
+          "value": "happy"
+        },
+        {
+          "at": 0.8,
+          "value": "awake"
+        }
+      ]
+    }
+  },
+  "actions": {
+    "stand": {
+      "label": "站立",
+      "description": "默认拼装姿态",
+      "durationMs": 1000,
+      "stages": [
+        {
+          "clip": "rest",
+          "startMs": 0,
+          "endMs": 1000,
+          "cycles": 1
+        }
+      ],
+      "route": [
+        {
+          "at": 0,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 1,
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "scene": "floor"
+    },
+    "walk": {
+      "label": "走路",
+      "description": "四个步态周期，前进后停下",
+      "durationMs": 3600,
+      "stages": [
+        {
+          "clip": "walk",
+          "startMs": 0,
+          "endMs": 3600,
+          "cycles": 4
+        }
+      ],
+      "route": [
+        {
+          "at": 0,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 1,
+          "x": 235,
+          "y": 0
+        }
+      ],
+      "scene": "floor"
+    },
+    "jump-to-bed": {
+      "label": "跳上猫窝",
+      "description": "蹲伏蓄力、腾空、接触台面、站稳",
+      "durationMs": 1700,
+      "stages": [
+        {
+          "clip": "jump",
+          "startMs": 0,
+          "endMs": 1700,
+          "cycles": 1
+        }
+      ],
+      "route": [
+        {
+          "at": 0,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 0.22,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 0.38,
+          "x": 40,
+          "y": -77
+        },
+        {
+          "at": 0.54,
+          "x": 108,
+          "y": -139
+        },
+        {
+          "at": 0.68,
+          "x": 170,
+          "y": -122
+        },
+        {
+          "at": 0.8,
+          "x": 220,
+          "y": -80
+        },
+        {
+          "at": 1,
+          "x": 220,
+          "y": -80
+        }
+      ],
+      "scene": "bed"
+    },
+    "sleep": {
+      "label": "睡觉",
+      "description": "收腿趴下、闭眼、一次轻呼吸后保持睡姿",
+      "durationMs": 3800,
+      "stages": [
+        {
+          "clip": "lie-down",
+          "startMs": 0,
+          "endMs": 1100,
+          "cycles": 1
+        },
+        {
+          "clip": "sleep",
+          "startMs": 1100,
+          "endMs": 3800,
+          "cycles": 1
+        }
+      ],
+      "route": [
+        {
+          "at": 0,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 1,
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "scene": "floor"
+    },
+    "go-to-garden": {
+      "label": "去花园",
+      "description": "走到花圃旁，张望、摇尾后停下",
+      "durationMs": 5400,
+      "stages": [
+        {
+          "clip": "walk",
+          "startMs": 0,
+          "endMs": 3600,
+          "cycles": 4
+        },
+        {
+          "clip": "look",
+          "startMs": 3600,
+          "endMs": 5400,
+          "cycles": 1
+        }
+      ],
+      "route": [
+        {
+          "at": 0,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 0.6666666666666666,
+          "x": 340,
+          "y": 0
+        },
+        {
+          "at": 1,
+          "x": 340,
+          "y": 0
+        }
+      ],
+      "scene": "garden"
+    }
+  }
+}

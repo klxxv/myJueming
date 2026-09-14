@@ -13,6 +13,10 @@ playwright-report/
 .playwright-cli/
 test-results/
 
+# Local algorithm worker bytecode
+__pycache__/
+*.pyc
+
 # The MVP targets Windows; Tauri can regenerate mobile icon sets from the source asset.
 /apps/desktop/src-tauri/icons/android/
 /apps/desktop/src-tauri/icons/ios/
@@ -44,3 +48,5 @@ Desktop.ini
 /A_阿古顿巴.txt
 /A_Akhu Tenpa.txt
 /test-output/
+apps/desktop/src-tauri/resources/research/*
+!apps/desktop/src-tauri/resources/research/README.md

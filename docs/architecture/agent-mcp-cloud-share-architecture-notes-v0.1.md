@@ -2,6 +2,7 @@
 
 - 状态：Discussion Note / Architecture Candidate
 - 日期：2026-09-02
+- 历史基线说明（2026-09-13）：下文“当前实现”是讨论当日状态。现已落实本地单写者锁、原生命令版本／幂等校验和正文 Slice；现行实现见 [DECISIONS](../../DECISIONS.md#2026-09-13-架构审查修复)。远程传输、同步和云部署仍是候选方案。
 - 范围：架构讨论与后续 ADR 输入，不代表当前 MVP 已实现
 - 基线：[全局 Slot Architecture v0.2](../../jueming_global_architecture_handoff_v0.2.md)、[Phase 0 合同](mvp-phase0-contracts-v0.1.md)、[AI Agent / PDF / MCP 架构 v0.1](ai-agent-multimodal-pdf-native-mcp-architecture-v0.1.md)
 - 配套 Draw.io（宽松中文布局）：[agent-mcp-cloud-share-intervention-v0.2.drawio](diagrams/agent-mcp-cloud-share-intervention-v0.2.drawio)

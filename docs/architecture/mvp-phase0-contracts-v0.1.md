@@ -42,7 +42,7 @@ flowchart LR
 | 时间 | RFC 3339 UTC 字符串 |
 | 语言 | BCP 47 字符串；MVP 工程固定一个 source 和一个 target，二者均须来自本合同的 LTR 语言表 |
 | 空值 | 可选字段省略或使用 `null`，同一字段不可混用两种语义 |
-| 文本 | 跨层一律为 Unicode 字符串；导入边界支持 UTF-8/UTF-8 BOM 和显式 GB18030，前端收到的正文已解码 |
+| 文本 | 跨层一律为 Unicode 字符串；导入边界支持自动检测及手动指定 UTF-8/UTF-8 BOM、UTF-16 和历史文本编码（ADR-019），前端收到的正文已解码 |
 | 版本 | 合同版本使用 `major.minor`；不兼容变更递增 major |
 
 所有跨边界 DTO 都带 `contract_version: "1.0"` 或由外层协议声明版本。Rust 内部类型可以不同，但必须由 adapter 映射为本合同的 DTO。
@@ -110,13 +110,15 @@ Document {
 
 ```text
 ImportProfile {
-  encoding: "utf-8" | "utf-8-bom" | "gb18030"
+  encoding: "utf8" | "utf8-bom" | "gb18030" | "utf-16le" | "utf-16be" | … // 具体 Encoding 枚举，见 ADR-019
   segmentation_mode: "non_empty_line" | "sentence_rules" | "legacy_tagged_line"
   strip_seg_wrappers: bool
   strip_pos_suffixes: bool
   compact_cjk_interchar_spaces: bool
 }
 ```
+
+`PreviewImportRequest.auto_detect_encoding` 缺省 false；向导默认启用。预览返回已解析的具体 `profile` 与 `encoding_detection` 依据，创建使用同一 profile 与原始字节 SHA-256；`auto` 不属于可持久化编码。检测与严格解码细节见 [ADR-019](../adr/ADR-019-import-encoding-detection.md)。
 
 `ImportProfile` 是导入事实的一部分，必须在预览中告知用户并随 SourceAsset 元数据保存。`legacy_tagged_line` 只是可逆、可预览的文本清理：可剔除 `<seg>` / `</seg>` 包装、词后 POS 后缀和中文字间空格；它不产生 POS Annotation，不把旧标记写入 canonical Segment，也不修改原始 Asset。
 
@@ -385,6 +387,8 @@ QueryEnvelope {
 | `get_slot_states` | SlotState[] | 返回 BOUND/UNBOUND 等状态 |
 | `validate_export` | ExportValidation | 校验不修改 Revision |
 
+当前原生适配使用 `WorkspaceProject` 返回无正文的结构投影（稳定 ID、顺序、关系、内容 hash/长度、摘要和 sidecar），不携带存储 content_ref、导入资源或命令回执。正文响应 `ParallelSlice` 携带 project/revision 与 `segment_id/content/content_hash`；按可视区可提交最多 200 个 `segment_ids`，或用下述 anchor + halo（最大 50）请求。所有 ID 与版本必须在 Kernel 校验，前端不得将旧响应拼入新版本。View Find 可按当前视图 ID 顺序逐批读取 Slice，前端匹配后仅保留命中 ID。
+
 `load_parallel_slice` 的最小请求为 `anchor_segment_id` 或 `anchor_alignment_id`、source/target Document、halo、revision 和 projection。返回的 `display_row_key` 可以由 Kernel 派生，但 UI item key 必须是稳定的 Alignment/Segment 语义 key，而非数组 index。
 
 Project Search 的 `HitSet` 必须携带 `base_revision_id`；替换提交前 Kernel 再次校验该版本。View Find 不经过此 Query，详见 ADR-012。
@@ -605,3 +609,7 @@ Phase 0 测试至少覆盖：ID 在编辑/移动/Segment Merge/Split/Group/Ungro
 - [ADR-012 View Find 与 Project Search](../adr/ADR-012-find-search-separation.md)
 
 _状态：Phase 0 baseline contract；已进入实现，跨层破坏性调整必须新增合同版本和 ADR。_
+
+## 2026-09-13 多译本扩展（工程合同 2.0）
+
+依据 ADR-018，工程 2.0 的 Project.comparison 显式列出共享原文与至少一份译本的 DocumentId。source/target_language 保留为主文档对兼容摘要；同语种不等同于同一译本。1.0／1.1 读取行为不变。I-08 的占用约束在 2.0 内按文档对隔离；原文 Split／Merge 必须同步保留各译本的关系，不能只处理一个 Alignment。导入资源记录独立 ImportProfile，创建请求可包含 additional_targets 与每份输入的 expected_sha256。Panel 的 ID、尺寸及显示顺序不是 canonical 关系；列表仅消费按 SegmentId 派生的对齐带。

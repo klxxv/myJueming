@@ -1,0 +1,3244 @@
+{
+  "schemas": [
+    {
+      "name": "SourceAsset",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "media_type",
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ClipboardSnapshot",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "snapshot_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ExtractedText",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "text",
+          "language"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "SegmentProposalSet",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "start_utf8": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "end_utf8": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "text",
+                "start_utf8",
+                "end_utf8"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "asset_id",
+          "segments"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ManualAlignmentIntent",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "source_segment_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "target_segment_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "replace_existing": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source_segment_ids",
+          "target_segment_ids",
+          "replace_existing"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "CanonicalView",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "revision_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "segment_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "side": {
+                  "enum": [
+                    "source",
+                    "target"
+                  ]
+                }
+              },
+              "required": [
+                "segment_id",
+                "text",
+                "language",
+                "side"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "alignments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "alignment_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "source_segment_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "target_segment_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "alignment_id",
+                "source_segment_ids",
+                "target_segment_ids"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "project_id",
+          "revision_id",
+          "segments",
+          "alignments"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "KernelCommandProposal",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "proposal_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "link_segments"
+            ]
+          },
+          "source_segment_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "target_segment_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "replace_existing": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "kind",
+          "source_segment_ids",
+          "target_segment_ids",
+          "replace_existing"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "SegmentView",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "segments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "segment_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "segment_id",
+                "text",
+                "language"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "segments"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "TextView",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "segments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "segment_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "segment_id",
+                "text",
+                "language"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "segments"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "QuerySpec",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "fuzzy": {
+            "type": "boolean"
+          },
+          "max_gap": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "similarity_operator": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minimum_similarity": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "text",
+          "fuzzy",
+          "max_gap",
+          "similarity_operator"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "OccurrenceSet",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "occurrences": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "occurrence_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "source": {
+                  "type": "object",
+                  "properties": {
+                    "segment_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "start_utf8": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "end_utf8": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "segment_id",
+                    "start_utf8",
+                    "end_utf8"
+                  ],
+                  "additionalProperties": false
+                },
+                "matched_ranges": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "segment_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "start_utf8": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "end_utf8": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "segment_id",
+                      "start_utf8",
+                      "end_utf8"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "occurrence_id",
+                "source",
+                "matched_ranges",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "occurrences"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ExportSpec",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "side": {
+            "enum": [
+              "source",
+              "target",
+              "parallel"
+            ]
+          }
+        },
+        "required": [
+          "side"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ExportArtifact",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "media_type": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "media_type",
+          "content"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "TimedTextRegions",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "region_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string"
+                },
+                "start_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "end_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "region_id",
+                "text",
+                "start_ms",
+                "end_ms"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "asset_id",
+          "regions"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "SpatialTextRegions",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "region_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string"
+                },
+                "page": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "region_id",
+                "text",
+                "page",
+                "x",
+                "y",
+                "width",
+                "height"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "asset_id",
+          "regions"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "RegionOrderProposal",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ordered_region_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "asset_id",
+          "ordered_region_ids"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "LinguisticTokenBatch",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "tokenizer_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tokens": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "token_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "segment_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string"
+                },
+                "start_utf8": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "end_utf8": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "token_id",
+                "segment_id",
+                "text",
+                "start_utf8",
+                "end_utf8"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "tokenizer_id",
+          "tokens"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "TextMap",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "coordinate_unit": {
+            "const": "utf8_bytes"
+          },
+          "ranges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "segment_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "start_utf8": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "end_utf8": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "segment_id",
+                "start_utf8",
+                "end_utf8"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "coordinate_unit",
+          "ranges"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "SegmentEmbeddingBatch",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dimensions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "segment_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "vector": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              },
+              "required": [
+                "segment_id",
+                "vector"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "model_id",
+          "dimensions",
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "TranslationProposalSet",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "segment_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "segment_id",
+                "text",
+                "language"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "TokenAnnotationBatch",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "token_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "token_id",
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "EntitySpanBatch",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ranges": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "segment_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "start_utf8": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "end_utf8": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "segment_id",
+                      "start_utf8",
+                      "end_utf8"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "entity_type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ranges",
+                "entity_type"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "DependencyGraphBatch",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "edges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "head_token_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "dependent_token_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "relation": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "head_token_id",
+                "dependent_token_id",
+                "relation"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "edges"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "AlignmentProposalSet",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source_segment_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "target_segment_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "score": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "source_segment_ids",
+                "target_segment_ids",
+                "score"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ParallelContextSet",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "contexts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "context_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "segment_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "segment_id",
+                      "text",
+                      "language"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "targets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "segment_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "segment_id",
+                      "text",
+                      "language"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "context_id",
+                "sources",
+                "targets"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "contexts"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "WordAlignmentArtifact",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "contexts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "context_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "coverage": {
+                  "enum": [
+                    "complete",
+                    "partial",
+                    "no_links"
+                  ]
+                },
+                "edges": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "source": {
+                        "type": "object",
+                        "properties": {
+                          "segment_id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "start_utf8": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "end_utf8": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "segment_id",
+                          "start_utf8",
+                          "end_utf8"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "segment_id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "start_utf8": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "end_utf8": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "segment_id",
+                          "start_utf8",
+                          "end_utf8"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "score": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "target",
+                      "score"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "score_kind": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "provider_id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "context_id",
+                "coverage",
+                "edges",
+                "score_kind",
+                "provider_id"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "contexts"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "TerminologyCandidateSet",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "evidence_ranges": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "segment_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "start_utf8": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "end_utf8": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "segment_id",
+                      "start_utf8",
+                      "end_utf8"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "source",
+                "target",
+                "evidence_ranges"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "BasicIndexRef",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "index_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "segment_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "normalized_text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "segment_id",
+                "text",
+                "language",
+                "normalized_text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "postings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "term": {
+                  "type": "string"
+                },
+                "segment_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "term",
+                "segment_ids"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "index_id",
+          "items",
+          "postings"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "LexicalIndexRef",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "index_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tokenizer_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tokens": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "token_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "segment_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string"
+                },
+                "start_utf8": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "end_utf8": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "token_id",
+                "segment_id",
+                "text",
+                "start_utf8",
+                "end_utf8"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "postings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "term": {
+                  "type": "string"
+                },
+                "occurrences": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "token_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "segment_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "start_utf8": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "end_utf8": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "position": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "token_id",
+                      "segment_id",
+                      "start_utf8",
+                      "end_utf8",
+                      "position"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "term",
+                "occurrences"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "index_id",
+          "tokenizer_id",
+          "tokens",
+          "postings"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "VectorIndexRef",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "index_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dimensions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "segment_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "index_id",
+          "model_id",
+          "dimensions",
+          "segment_ids"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "WindowSpec",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "before": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "after": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "before",
+          "after"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "KwicView",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "occurrence_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "segment_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "before": {
+                  "type": "string"
+                },
+                "matched": {
+                  "type": "string"
+                },
+                "after": {
+                  "type": "string"
+                },
+                "ranges": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "segment_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "start_utf8": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "end_utf8": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "segment_id",
+                      "start_utf8",
+                      "end_utf8"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "occurrence_id",
+                "segment_id",
+                "before",
+                "matched",
+                "after",
+                "ranges"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "AnalysisSpec",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "window": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "window",
+          "limit"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "CollocationResult",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "left": {
+                  "type": "string"
+                },
+                "right": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "score": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "left",
+                "right",
+                "count",
+                "score"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "TermFrequencyResult",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "term": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "term",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "QualityIssueSet",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "issue_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "segment_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "issue_id",
+                "segment_ids",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "TextPairBatch",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "pairs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pair_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "left": {
+                  "type": "string"
+                },
+                "right": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "pair_id",
+                "left",
+                "right"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "pairs"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "SimilarityEvidenceBatch",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pair_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "score": {
+                  "type": "number"
+                },
+                "score_kind": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "provider_id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "pair_id",
+                "score",
+                "score_kind",
+                "provider_id"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "TranslationCandidateSet",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "occurrence_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "candidates": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "ranges": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "segment_id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "start_utf8": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "end_utf8": {
+                              "type": "integer",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "segment_id",
+                            "start_utf8",
+                            "end_utf8"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "score": {
+                        "type": "number"
+                      },
+                      "score_kind": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "provider_id": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "ranges",
+                      "text",
+                      "score",
+                      "score_kind",
+                      "provider_id"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "alignment_coverage": {
+                  "enum": [
+                    "complete",
+                    "partial",
+                    "no_links",
+                    "context_missing"
+                  ]
+                }
+              },
+              "required": [
+                "occurrence_id",
+                "candidates"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ConfirmedJudgementView",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "record_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "group_name": {
+                  "type": "string"
+                },
+                "strategy": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "record_id",
+                "group_name",
+                "strategy",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "GroupSuggestionSet",
+      "version": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "left_group": {
+                  "type": "string"
+                },
+                "right_group": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "left_group",
+                "right_group",
+                "score",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "slots": [
+    {
+      "slot_id": "source.text.parse",
+      "name": "source.text.parse",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "asset",
+          "schemas": [
+            {
+              "name": "SourceAsset",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "schemas": [
+            {
+              "name": "ExtractedText",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "source.clipboard",
+      "name": "source.clipboard",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "clipboard",
+          "schemas": [
+            {
+              "name": "ClipboardSnapshot",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "schemas": [
+            {
+              "name": "ExtractedText",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "content.segment.sentence",
+      "name": "content.segment.sentence",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "text",
+          "schemas": [
+            {
+              "name": "ExtractedText",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "segments",
+          "schemas": [
+            {
+              "name": "SegmentProposalSet",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "relation.alignment.manual",
+      "name": "relation.alignment.manual",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "intent",
+          "schemas": [
+            {
+              "name": "ManualAlignmentIntent",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        },
+        {
+          "name": "view",
+          "schemas": [
+            {
+              "name": "CanonicalView",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "proposal",
+          "schemas": [
+            {
+              "name": "KernelCommandProposal",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "index.basic_string",
+      "name": "index.basic_string",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "segments",
+          "schemas": [
+            {
+              "name": "SegmentView",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "index",
+          "schemas": [
+            {
+              "name": "BasicIndexRef",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "analysis.basic_search",
+      "name": "analysis.basic_search",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "query",
+          "schemas": [
+            {
+              "name": "QuerySpec",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        },
+        {
+          "name": "segments",
+          "schemas": [
+            {
+              "name": "SegmentView",
+              "version": 1
+            },
+            {
+              "name": "BasicIndexRef",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "occurrences",
+          "schemas": [
+            {
+              "name": "OccurrenceSet",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "export.txt",
+      "name": "export.txt",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "view",
+          "schemas": [
+            {
+              "name": "CanonicalView",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        },
+        {
+          "name": "spec",
+          "schemas": [
+            {
+              "name": "ExportSpec",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "export",
+          "schemas": [
+            {
+              "name": "ExportArtifact",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "export.json",
+      "name": "export.json",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "view",
+          "schemas": [
+            {
+              "name": "CanonicalView",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        },
+        {
+          "name": "spec",
+          "schemas": [
+            {
+              "name": "ExportSpec",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "export",
+          "schemas": [
+            {
+              "name": "ExportArtifact",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "export.xml",
+      "name": "export.xml",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "view",
+          "schemas": [
+            {
+              "name": "CanonicalView",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        },
+        {
+          "name": "spec",
+          "schemas": [
+            {
+              "name": "ExportSpec",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "export",
+          "schemas": [
+            {
+              "name": "ExportArtifact",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "source.subtitle.parse",
+      "name": "source.subtitle.parse",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "asset",
+          "schemas": [
+            {
+              "name": "SourceAsset",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "regions",
+          "schemas": [
+            {
+              "name": "TimedTextRegions",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "source.ocr",
+      "name": "source.ocr",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "asset",
+          "schemas": [
+            {
+              "name": "SourceAsset",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "regions",
+          "schemas": [
+            {
+              "name": "SpatialTextRegions",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "source.audio.transcribe",
+      "name": "source.audio.transcribe",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "asset",
+          "schemas": [
+            {
+              "name": "SourceAsset",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "regions",
+          "schemas": [
+            {
+              "name": "TimedTextRegions",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "layout.reading_order",
+      "name": "layout.reading_order",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "regions",
+          "schemas": [
+            {
+              "name": "SpatialTextRegions",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "order",
+          "schemas": [
+            {
+              "name": "RegionOrderProposal",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "segment.tokenize",
+      "name": "segment.tokenize",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "segments",
+          "schemas": [
+            {
+              "name": "SegmentView",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "tokens",
+          "schemas": [
+            {
+              "name": "LinguisticTokenBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        },
+        {
+          "name": "map",
+          "schemas": [
+            {
+              "name": "TextMap",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "segment.embedding",
+      "name": "segment.embedding",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "segments",
+          "schemas": [
+            {
+              "name": "SegmentView",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "embeddings",
+          "schemas": [
+            {
+              "name": "SegmentEmbeddingBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "segment.translate",
+      "name": "segment.translate",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "segments",
+          "schemas": [
+            {
+              "name": "SegmentView",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "translations",
+          "schemas": [
+            {
+              "name": "TranslationProposalSet",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "token.pos",
+      "name": "token.pos",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "tokens",
+          "schemas": [
+            {
+              "name": "LinguisticTokenBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "annotations",
+          "schemas": [
+            {
+              "name": "TokenAnnotationBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "token.lemma",
+      "name": "token.lemma",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "tokens",
+          "schemas": [
+            {
+              "name": "LinguisticTokenBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "annotations",
+          "schemas": [
+            {
+              "name": "TokenAnnotationBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "token.ner",
+      "name": "token.ner",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "tokens",
+          "schemas": [
+            {
+              "name": "LinguisticTokenBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "annotations",
+          "schemas": [
+            {
+              "name": "EntitySpanBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "token.dependency",
+      "name": "token.dependency",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "tokens",
+          "schemas": [
+            {
+              "name": "LinguisticTokenBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "annotations",
+          "schemas": [
+            {
+              "name": "DependencyGraphBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "relation.alignment.auto",
+      "name": "relation.alignment.auto",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "source",
+          "schemas": [
+            {
+              "name": "SegmentView",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        },
+        {
+          "name": "target",
+          "schemas": [
+            {
+              "name": "SegmentView",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "alignments",
+          "schemas": [
+            {
+              "name": "AlignmentProposalSet",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "relation.word_alignment",
+      "name": "relation.word_alignment",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "contexts",
+          "schemas": [
+            {
+              "name": "ParallelContextSet",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "alignments",
+          "schemas": [
+            {
+              "name": "WordAlignmentArtifact",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "relation.terminology",
+      "name": "relation.terminology",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "contexts",
+          "schemas": [
+            {
+              "name": "ParallelContextSet",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "terms",
+          "schemas": [
+            {
+              "name": "TerminologyCandidateSet",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "index.lexical",
+      "name": "index.lexical",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "tokens",
+          "schemas": [
+            {
+              "name": "LinguisticTokenBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "index",
+          "schemas": [
+            {
+              "name": "LexicalIndexRef",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "index.vector",
+      "name": "index.vector",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "embeddings",
+          "schemas": [
+            {
+              "name": "SegmentEmbeddingBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "index",
+          "schemas": [
+            {
+              "name": "VectorIndexRef",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "analysis.kwic",
+      "name": "analysis.kwic",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "occurrences",
+          "schemas": [
+            {
+              "name": "OccurrenceSet",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        },
+        {
+          "name": "text",
+          "schemas": [
+            {
+              "name": "TextView",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        },
+        {
+          "name": "window",
+          "schemas": [
+            {
+              "name": "WindowSpec",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "kwic",
+          "schemas": [
+            {
+              "name": "KwicView",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "analysis.collocation",
+      "name": "analysis.collocation",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "tokens",
+          "schemas": [
+            {
+              "name": "LinguisticTokenBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        },
+        {
+          "name": "spec",
+          "schemas": [
+            {
+              "name": "AnalysisSpec",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "collocations",
+          "schemas": [
+            {
+              "name": "CollocationResult",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "analysis.wordcloud",
+      "name": "analysis.wordcloud",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "tokens",
+          "schemas": [
+            {
+              "name": "LinguisticTokenBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        },
+        {
+          "name": "spec",
+          "schemas": [
+            {
+              "name": "AnalysisSpec",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "terms",
+          "schemas": [
+            {
+              "name": "TermFrequencyResult",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "analysis.quality",
+      "name": "analysis.quality",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "view",
+          "schemas": [
+            {
+              "name": "CanonicalView",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "issues",
+          "schemas": [
+            {
+              "name": "QualityIssueSet",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "text.similarity",
+      "name": "text.similarity",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "pairs",
+          "schemas": [
+            {
+              "name": "TextPairBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "scores",
+          "schemas": [
+            {
+              "name": "SimilarityEvidenceBatch",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "analysis.fuzzy_search",
+      "name": "analysis.fuzzy_search",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "query",
+          "schemas": [
+            {
+              "name": "QuerySpec",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        },
+        {
+          "name": "segments",
+          "schemas": [
+            {
+              "name": "SegmentView",
+              "version": 1
+            },
+            {
+              "name": "BasicIndexRef",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "occurrences",
+          "schemas": [
+            {
+              "name": "OccurrenceSet",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "analysis.translation_candidates",
+      "name": "analysis.translation_candidates",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "occurrences",
+          "schemas": [
+            {
+              "name": "OccurrenceSet",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        },
+        {
+          "name": "contexts",
+          "schemas": [
+            {
+              "name": "ParallelContextSet",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        },
+        {
+          "name": "alignments",
+          "schemas": [
+            {
+              "name": "WordAlignmentArtifact",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "candidates",
+          "schemas": [
+            {
+              "name": "TranslationCandidateSet",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    },
+    {
+      "slot_id": "analysis.translation_grouping",
+      "name": "analysis.translation_grouping",
+      "state": "unbound",
+      "reason": "没有可用的算法实现",
+      "inputs": [
+        {
+          "name": "judgements",
+          "schemas": [
+            {
+              "name": "ConfirmedJudgementView",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "suggestions",
+          "schemas": [
+            {
+              "name": "GroupSuggestionSet",
+              "version": 1
+            }
+          ],
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "providers": []
+    }
+  ]
+}

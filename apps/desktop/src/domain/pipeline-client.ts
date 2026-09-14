@@ -1,4 +1,6 @@
 import { agentClient } from "./agent-client";
+import type { OperatorDescriptor, ResearchRun, SchemaRef, SlotState } from "./research-types";
+import type { GraphRunV2, PipelineMethodV2, PlanV2, SchemaDefinitionV2 } from "./pipeline-v2-types";
 import type {
   PipelineArtifactId,
   PipelineArtifactSummary,
@@ -24,6 +26,17 @@ const call = async <T>(method: string, params: Record<string, unknown>, bindingI
  * use this facade to gain approval authority.
  */
 export const pipelineClient = {
+  v2: {
+    operators: () => call<OperatorDescriptor[]>("operators.list", {}, null),
+    slots: () => call<SlotState[]>("slots.list", {}, null),
+    schema: (schema: SchemaRef) => call<SchemaDefinitionV2>("schemas.get", { ...schema }, null),
+    listMethods: (bindingId: BindingId) => call<PipelineMethodV2[]>("pipeline.list_methods_v2", {}, bindingId),
+    validatePlan: (plan: PlanV2, bindingId: BindingId) => call<string[]>("pipeline.validate_plan", { ...plan }, bindingId),
+    saveMethod: (request: { method_id?: string; name: string; base_method_revision_id?: string; plan: PlanV2 }, bindingId: BindingId) => call<PipelineMethodV2>("pipeline.save_method_v2", request, bindingId),
+    start: (method: { method_id: string; method_revision_id: string }, bindingId: BindingId) => call<ResearchRun>("pipeline.start", method, bindingId),
+    getRun: (runId: string, bindingId: BindingId) => call<GraphRunV2>("pipeline.get_graph_run", { run_id: runId }, bindingId),
+    cancelRun: (runId: string, bindingId: BindingId) => call<ResearchRun>("pipeline.cancel_graph_run", { run_id: runId }, bindingId),
+  },
   list: (bindingId: BindingId) => call<PipelineMethodSummary[]>("pipeline.list", {}, bindingId),
 
   get: (methodId: PipelineMethodId, bindingId: BindingId) =>

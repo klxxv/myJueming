@@ -15,6 +15,12 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
             let host = app.state::<state::AppKernelState>().host.clone();
+            let research_bundle = app.path().resource_dir()?.join("resources/research");
+            #[cfg(debug_assertions)]
+            let research_bundle = std::env::var_os("JUEMING_RESEARCH_BUNDLE")
+                .map(std::path::PathBuf::from)
+                .unwrap_or(research_bundle);
+            host.configure_research(app.path().app_data_dir()?, research_bundle)?;
             let mut events = host.subscribe();
             let app_handle = app.handle().clone();
             let event_host = host.clone();
@@ -105,6 +111,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::canonical::execute_command,
+            commands::canonical::load_parallel_slice,
             commands::agent::agent_call,
             commands::agent::agent_projection,
             connection::agent_connection_status,
@@ -124,35 +132,12 @@ pub fn run() {
             commands::project::get_current_project,
             commands::project::flush_project,
             commands::project::clear_cache,
-            commands::segment::update_segment,
-            commands::segment::move_segment,
-            commands::segment::reorder_segments,
-            commands::alignment::insert_alignment_gap,
-            commands::alignment::link_segments,
-            commands::alignment::unlink_alignment,
-            commands::alignment::merge_alignments,
-            commands::alignment::group_alignment,
-            commands::alignment::split_alignment,
-            commands::alignment::ungroup_alignment,
-            commands::segment::merge_segments,
-            commands::segment::split_segment,
             commands::history::list_revisions,
             commands::history::compare_revision,
-            commands::history::undo,
-            commands::history::redo,
-            commands::history::restore_revision,
             commands::search::search_segments,
             commands::search::preview_replace,
-            commands::search::apply_replace,
-            commands::bookmark::create_bookmark,
             commands::bookmark::list_bookmarks,
-            commands::bookmark::update_bookmark,
-            commands::bookmark::delete_bookmark,
-            commands::annotation::create_annotation,
             commands::annotation::list_annotations,
-            commands::annotation::update_annotation,
-            commands::annotation::delete_annotation,
-            commands::annotation::resolve_annotation,
             commands::export::export_project,
             commands::settings::load_app_settings,
             commands::settings::save_app_settings,

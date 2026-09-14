@@ -1,11 +1,9 @@
 //! Public API regression tests.
 
-#[cfg(not(windows))]
-use jueming_core::CoreError;
 use jueming_core::{
-    ContentRef, DocumentId, Encoding, ImportProfile, ProjectId, RevisionId, Segment, SegmentId,
-    SegmentKind, SegmentPreview, SegmentationMode, build_provisional_layout, decode_bytes,
-    segment_text,
+    ContentRef, DocumentId, Encoding, ImportCleanup, ImportProfile, ProjectId, RevisionId, Segment,
+    SegmentBoundary, SegmentId, SegmentKind, SegmentPreview, SegmentationMode,
+    build_provisional_layout, decode_bytes, segment_text,
 };
 
 #[test]
@@ -91,16 +89,11 @@ fn bundled_government_fixture_is_eight_by_eight() {
 #[test]
 fn gb18030_is_strict() {
     let bytes = [0xd6, 0xd0, 0xce, 0xc4];
-    #[cfg(windows)]
     assert_eq!(
         decode_bytes(&bytes, Encoding::Gb18030).unwrap().text,
         "中文"
     );
-    #[cfg(not(windows))]
-    assert!(matches!(
-        decode_bytes(&bytes, Encoding::Gb18030),
-        Err(CoreError::UnsupportedGb18030)
-    ));
+    assert!(decode_bytes(&[0x81], Encoding::Gb18030).is_err());
     assert!(decode_bytes(&[0xff], Encoding::Utf8).is_err());
 }
 
@@ -144,5 +137,61 @@ fn legacy_preview_preserves_physical_lines_with_malformed_wrappers() {
             .map(|segment| segment.content.as_str())
             .collect::<Vec<_>>(),
         vec!["Akhu Tenpa", "yaks, horses."]
+    );
+}
+
+#[test]
+fn sentence_preview_explains_actual_boundaries_without_losing_original_fragments() {
+    let preview = segment_text(
+        "第一句。Second!\n没有末尾标点",
+        &ImportProfile::new(Encoding::Utf8, SegmentationMode::SentenceRules),
+    );
+    assert_eq!(preview.segments.len(), 3);
+    for (segment, marker) in preview.segments[..2].iter().zip(['。', '!']) {
+        assert_eq!(segment.boundary, SegmentBoundary::SentencePunctuation);
+        assert_eq!(segment.boundary_marker, Some(marker));
+        assert_eq!(segment.original_text, segment.content);
+        assert!(segment.cleanups.is_empty());
+    }
+    assert_eq!(preview.segments[2].boundary, SegmentBoundary::TextEnd);
+    assert_eq!(preview.segments[2].boundary_marker, None);
+    assert_eq!(preview.segments[2].original_text, "没有末尾标点");
+}
+
+#[test]
+fn seg_preview_reports_only_cleanup_stages_that_changed_the_fragment() {
+    let profile = ImportProfile::new(Encoding::Utf8, SegmentationMode::LegacyTaggedLine);
+    let preview = segment_text("<seg>中 文_NN ，_, test_VB</seg>\n\nplain\n<seg>", &profile);
+    assert_eq!(preview.segments.len(), 2);
+    let first = &preview.segments[0];
+    assert_eq!(first.boundary, SegmentBoundary::NonEmptyLine);
+    assert_eq!(first.original_text, "<seg>中 文_NN ，_, test_VB</seg>");
+    assert_eq!(first.content, "中文， test");
+    assert_eq!(
+        first.cleanups,
+        vec![
+            ImportCleanup::SegWrappers,
+            ImportCleanup::PosSuffixesAndWhitespace,
+            ImportCleanup::CjkSpaces
+        ]
+    );
+    assert!(preview.segments[1].cleanups.is_empty());
+    assert_eq!(preview.segments[1].ordinal, 1);
+}
+
+#[test]
+fn non_empty_line_preview_keeps_punctuation_and_seg_markers() {
+    let preview = segment_text(
+        "\n<seg>One. Two!</seg>\r\n\n第三句",
+        &ImportProfile::new(Encoding::Utf8, SegmentationMode::NonEmptyLine),
+    );
+    assert_eq!(preview.segments.len(), 2);
+    assert_eq!(preview.segments[0].content, "<seg>One. Two!</seg>");
+    assert!(
+        preview
+            .segments
+            .iter()
+            .all(|segment| segment.boundary == SegmentBoundary::NonEmptyLine
+                && segment.cleanups.is_empty())
     );
 }

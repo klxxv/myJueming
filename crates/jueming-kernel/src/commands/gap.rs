@@ -1,6 +1,6 @@
 //! Visual alignment-gap insertion without creating fake segments.
 
-use crate::projection::ordered_segment_ids;
+use crate::projection::{alignment_ids_for_document, ordered_segment_ids};
 use crate::revision::{advance_revision, next_revision_id};
 use crate::sidecar::refresh_alignment_metadata;
 use crate::validation::validate_snapshot;
@@ -22,28 +22,41 @@ impl KernelService {
         segment_id: SegmentId,
         edge: AlignmentGapEdge,
     ) -> Result<ProjectSnapshot, KernelError> {
+        self.insert_alignment_gap_for_document(project_path, snapshot, segment_id, edge, None)
+    }
+
+    pub fn insert_alignment_gap_for_document(
+        &self,
+        project_path: impl AsRef<Path>,
+        snapshot: &ProjectSnapshot,
+        segment_id: SegmentId,
+        edge: AlignmentGapEdge,
+        target_document: Option<jueming_core::DocumentId>,
+    ) -> Result<ProjectSnapshot, KernelError> {
         validate_snapshot(snapshot)?;
         let source_document_id = snapshot
             .documents
             .first()
             .ok_or_else(|| KernelError::InvalidSnapshot("missing source document".into()))?
             .document_id;
-        let target_document_id = snapshot
-            .documents
-            .get(1)
-            .ok_or_else(|| KernelError::InvalidSnapshot("missing target document".into()))?
-            .document_id;
         let selected_segment = snapshot
             .segments
             .iter()
             .find(|segment| segment.segment_id == segment_id)
             .ok_or(KernelError::SegmentNotFound(segment_id))?;
+        let target_document_id = if selected_segment.document_id == source_document_id {
+            target_document.unwrap_or(snapshot.documents[1].document_id)
+        } else {
+            selected_segment.document_id
+        };
+        let pair_alignment_ids = alignment_ids_for_document(snapshot, target_document_id);
         let selected_alignment = snapshot
             .alignments
             .iter()
             .find(|alignment| {
-                alignment.source_segment_ids.contains(&segment_id)
-                    || alignment.target_segment_ids.contains(&segment_id)
+                pair_alignment_ids.contains(&alignment.alignment_id)
+                    && (alignment.source_segment_ids.contains(&segment_id)
+                        || alignment.target_segment_ids.contains(&segment_id))
             })
             .ok_or(KernelError::AlignmentGapRequiresLinkedSegment(segment_id))?;
         let source_order = ordered_segment_ids(snapshot, source_document_id)?;
@@ -134,11 +147,12 @@ impl KernelService {
             .alignments
             .iter()
             .filter(|alignment| {
-                alignment
-                    .source_segment_ids
-                    .iter()
-                    .chain(alignment.target_segment_ids.iter())
-                    .any(|id| affected_segment_ids.contains(id))
+                pair_alignment_ids.contains(&alignment.alignment_id)
+                    && alignment
+                        .source_segment_ids
+                        .iter()
+                        .chain(alignment.target_segment_ids.iter())
+                        .any(|id| affected_segment_ids.contains(id))
             })
             .count();
         let revision_id = next_revision_id(snapshot);
@@ -153,11 +167,12 @@ impl KernelService {
             ),
         );
         next.alignments.retain(|alignment| {
-            !alignment
-                .source_segment_ids
-                .iter()
-                .chain(alignment.target_segment_ids.iter())
-                .any(|id| affected_segment_ids.contains(id))
+            !pair_alignment_ids.contains(&alignment.alignment_id)
+                || !alignment
+                    .source_segment_ids
+                    .iter()
+                    .chain(alignment.target_segment_ids.iter())
+                    .any(|id| affected_segment_ids.contains(id))
         });
         for offset in 0..pair_count {
             next.alignments.push(jueming_core::Alignment::new(

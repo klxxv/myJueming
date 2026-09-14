@@ -1,9 +1,10 @@
 import { computed, ref, toValue, watch, type MaybeRefOrGetter } from "vue";
-import type { ProjectSnapshot } from "../domain/kernel-client";
+import type { ProjectIdentity } from "../domain/kernel-client";
 import { agentClient, type AgentClient } from "../domain/agent-client";
 import type {
   AgentClientUpdate,
   AgentNavigationRequest,
+  AgentProjection,
   PendingUiAction,
   AgentRevealRequest,
   AgentSessionBinding,
@@ -13,6 +14,8 @@ import type {
   SearchSpec,
 } from "../domain/agent-types";
 import { useAgentWorkspaceStore } from "../stores/agent-workspace";
+import { t, type LocalizedMessage } from "../i18n";
+import { formatError } from "../i18n/kernel-messages";
 
 export interface AgentWorkspaceSelection {
   segmentIds: string[];
@@ -29,16 +32,18 @@ export interface AgentWorkspaceSearchState {
 export interface AgentWorkspaceOptions {
   tab: MaybeRefOrGetter<string>;
   mode: MaybeRefOrGetter<string | null>;
-  projectSnapshot: MaybeRefOrGetter<ProjectSnapshot | null>;
+  projectSnapshot: MaybeRefOrGetter<ProjectIdentity | null>;
   selection: MaybeRefOrGetter<AgentWorkspaceSelection>;
   searchState: MaybeRefOrGetter<AgentWorkspaceSearchState>;
   selectionSharingEnabled: MaybeRefOrGetter<boolean>;
   canLeaveDraft: () => boolean;
   navigate: (tab: string) => void | Promise<void>;
   reveal: (request: Omit<AgentRevealRequest, "request_id">) => void | Promise<void>;
-  onProjectSnapshot: (snapshot: ProjectSnapshot) => void | Promise<void>;
+  onProjectSnapshot: (snapshot: ProjectIdentity) => void | Promise<void>;
   onSearchState: (state: { spec: SearchSpec | null; results: unknown }) => void | Promise<void>;
   onAppEvent?: (event: AppEvent) => void | Promise<void>;
+  /** Reconcile app-scoped state after initial subscription and stream resnapshot. */
+  onProjection?: (projection: AgentProjection) => void | Promise<void>;
   client?: AgentClient;
 }
 
@@ -117,7 +122,7 @@ const focusedControlName = () => {
     ?? active.tagName.toLowerCase();
 };
 
-const projectKey = (snapshot: ProjectSnapshot | null) => snapshot
+const projectKey = (snapshot: ProjectIdentity | null) => snapshot
   ? `${snapshot.project.project_id}:${snapshot.project.current_revision_id}`
   : null;
 
@@ -126,7 +131,7 @@ export const useAgentWorkspace = (options: AgentWorkspaceOptions) => {
   const store = useAgentWorkspaceStore();
   const available = computed(() => client.available);
   const starting = ref(false);
-  const error = ref<string | null>(null);
+  const error = ref<LocalizedMessage | null>(null);
   const binding = ref<AgentSessionBinding | null>(null);
   const context = ref<ContextSnapshot | null>(null);
   let subscription: AgentSubscription | null = null;
@@ -194,7 +199,7 @@ export const useAgentWorkspace = (options: AgentWorkspaceOptions) => {
     await client.call("ui.ack", { operation_id: operationId, request_id: requestId, status }, binding.value?.binding_id ?? null);
   };
 
-  const forwardProjectSnapshot = async (next: ProjectSnapshot | null, epoch: number) => {
+  const forwardProjectSnapshot = async (next: ProjectIdentity | null, epoch: number) => {
     if (!next) return true;
     const nextKey = projectKey(next);
     if (nextKey === lastForwardedProject) return lifecycle === epoch;
@@ -218,6 +223,8 @@ export const useAgentWorkspace = (options: AgentWorkspaceOptions) => {
     const projectApplied = await forwardProjectSnapshot(projection.project, projectionEpoch);
     if (!projectApplied || lifecycle !== projectionEpoch) return;
     await options.onSearchState({ spec: projection.search_spec, results: projection.search_results });
+    if (lifecycle !== projectionEpoch) return;
+    await options.onProjection?.(projection);
     if (lifecycle !== projectionEpoch) return;
     await processPendingUiActions(projection.pending_ui_actions ?? []);
   };
@@ -345,7 +352,7 @@ export const useAgentWorkspace = (options: AgentWorkspaceOptions) => {
   const start = async () => {
     if (starting.value || subscription) return;
     if (!available.value) {
-      error.value = "浏览器演示预览不提供 MCP 或嵌入式 Agent";
+      error.value = () => t("agentBrowserUnavailable");
       return;
     }
     starting.value = true;
@@ -365,7 +372,7 @@ export const useAgentWorkspace = (options: AgentWorkspaceOptions) => {
     }
   };
 
-  const setProjectSnapshot = (next: ProjectSnapshot | null) => {
+  const setProjectSnapshot = (next: ProjectIdentity | null) => {
     const previous = context.value?.project_id ?? binding.value?.project_id ?? null;
     const nextProjectId = next?.project.project_id ?? null;
     lastForwardedProject = projectKey(next);
@@ -446,7 +453,7 @@ export const useAgentWorkspace = (options: AgentWorkspaceOptions) => {
   return {
     available,
     starting,
-    error,
+    error: computed(() => typeof error.value === "function" ? error.value() : error.value === null ? null : formatError(error.value)),
     binding,
     context,
     store,

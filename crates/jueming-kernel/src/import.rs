@@ -5,9 +5,9 @@ use crate::revision::timestamp;
 use crate::validation::{canonical_language, validate_snapshot};
 use crate::{KernelError, KernelService};
 use jueming_core::{
-    AssetId, ChangeSetSummary, ContentRef, Document, ImportProfile, OperationId, Project, Revision,
-    RevisionId, RevisionState, Segment, SegmentOrder, build_provisional_layout, decode_bytes,
-    segment_text,
+    AssetId, ChangeSetSummary, ContentRef, Document, EncodingDetection, ImportProfile, OperationId,
+    Project, Revision, RevisionId, RevisionState, Segment, SegmentOrder, build_provisional_layout,
+    decode_bytes, detect_encoding, segment_text,
 };
 use jueming_protocol::{
     COMMON_LTR_LANGUAGES, CONTRACT_VERSION, CreateProjectRequest, ImportPreviewResponse,
@@ -31,11 +31,21 @@ impl KernelService {
         input: &TextInput,
         profile: &ImportProfile,
     ) -> Result<ImportPreviewResponse, KernelError> {
-        let loaded = load_input(input, profile)?;
-        let preview = segment_text(&loaded.text, profile);
+        self.preview_import_with_detection(input, profile, false)
+    }
+
+    pub fn preview_import_with_detection(
+        &self,
+        input: &TextInput,
+        profile: &ImportProfile,
+        auto_detect_encoding: bool,
+    ) -> Result<ImportPreviewResponse, KernelError> {
+        let loaded = load_input(input, profile, auto_detect_encoding)?;
+        let preview = segment_text(&loaded.text, &loaded.profile);
         Ok(ImportPreviewResponse {
+            encoding_detection: loaded.encoding_detection,
             label: loaded.label,
-            profile: profile.clone(),
+            profile: loaded.profile,
             had_bom: loaded.had_bom,
             sha256: loaded.sha256,
             byte_length: loaded.bytes.len() as u64,
@@ -48,64 +58,92 @@ impl KernelService {
         request: &CreateProjectRequest,
     ) -> Result<ProjectSnapshot, KernelError> {
         let layout = ProjectLayout::new(&request.project_path)?;
-        let source = load_input(&request.source.input, &request.source.profile)?;
-        let target = load_input(&request.target.input, &request.target.profile)?;
-        let source_preview = segment_text(&source.text, &request.source.profile);
-        let target_preview = segment_text(&target.text, &request.target.profile);
-        if source_preview.segments.is_empty() || target_preview.segments.is_empty() {
-            return Err(KernelError::EmptyImport);
-        }
-
-        let source_language = canonical_language(&request.source.language_id)?;
-        let target_language = canonical_language(&request.target.language_id)?;
+        let sides = std::iter::once(&request.source)
+            .chain(std::iter::once(&request.target))
+            .chain(request.additional_targets.iter())
+            .collect::<Vec<_>>();
+        // Validate every input before the first durable write, including preview digests.
+        let loaded = sides
+            .iter()
+            .map(|side| {
+                let input = load_input(&side.input, &side.profile, false)?;
+                if side
+                    .expected_sha256
+                    .as_ref()
+                    .is_some_and(|hash| hash != &input.sha256)
+                {
+                    return Err(KernelError::InvalidSnapshot(format!(
+                        "导入内容已变化，请重新预览：{}",
+                        input.label
+                    )));
+                }
+                let preview = segment_text(&input.text, &side.profile);
+                if preview.segments.is_empty() {
+                    return Err(KernelError::EmptyImport);
+                }
+                let language = canonical_language(&side.language_id)?;
+                Ok((input, preview, language))
+            })
+            .collect::<Result<Vec<_>, KernelError>>()?;
         let now = timestamp();
         let revision_id = RevisionId::new(1);
-        let mut project = Project::new(
-            &request.name,
-            &source_language,
-            &target_language,
-            revision_id,
-            &now,
-        );
-        let mut source_document = Document::new(
-            project.project_id,
-            &source_language,
-            &request.source.title,
-            revision_id,
-        );
-        let mut target_document = Document::new(
-            project.project_id,
-            &target_language,
-            &request.target.title,
-            revision_id,
-        );
-        project.document_ids = vec![source_document.document_id, target_document.document_id];
-
-        let source_segments = materialize_segments(
-            source_document.document_id,
-            "source",
-            &source_preview.segments,
-            revision_id,
-        );
-        let target_segments = materialize_segments(
-            target_document.document_id,
-            "target",
-            &target_preview.segments,
-            revision_id,
-        );
-        let source_order =
-            SegmentOrder::initial(source_document.document_id, &source_segments, revision_id);
-        let target_order =
-            SegmentOrder::initial(target_document.document_id, &target_segments, revision_id);
-        source_document.segment_order_id = source_order.segment_order_id;
-        target_document.segment_order_id = target_order.segment_order_id;
-
-        let initial_layout = build_provisional_layout(
-            project.project_id,
-            &source_segments,
-            &target_segments,
-            revision_id,
-        )?;
+        let mut project =
+            Project::new(&request.name, &loaded[0].2, &loaded[1].2, revision_id, &now);
+        let mut documents = Vec::new();
+        let mut segments = Vec::new();
+        let mut segment_orders = Vec::new();
+        let mut source_assets = Vec::new();
+        let mut alignments = Vec::new();
+        let mut source_segments = Vec::new();
+        for (index, (side, (input, preview, language))) in sides.iter().zip(&loaded).enumerate() {
+            let mut document =
+                Document::new(project.project_id, language, &side.title, revision_id);
+            let namespace = if index == 0 {
+                "source".into()
+            } else {
+                format!("target-{index}")
+            };
+            let document_segments = materialize_segments(
+                document.document_id,
+                &namespace,
+                &preview.segments,
+                revision_id,
+            );
+            let order =
+                SegmentOrder::initial(document.document_id, &document_segments, revision_id);
+            document.segment_order_id = order.segment_order_id;
+            if index == 0 {
+                source_segments = document_segments.clone();
+            } else {
+                alignments.extend(
+                    build_provisional_layout(
+                        project.project_id,
+                        &source_segments,
+                        &document_segments,
+                        revision_id,
+                    )?
+                    .alignments,
+                );
+            }
+            source_assets.push(asset_record(
+                document.source_asset_id,
+                &side.input,
+                &side.profile,
+                input,
+                &now,
+            ));
+            project.document_ids.push(document.document_id);
+            documents.push(document);
+            segment_orders.push(order);
+            segments.extend(document_segments);
+        }
+        if !request.additional_targets.is_empty() {
+            project.format_version = "2.0".into();
+            project.comparison = Some(jueming_core::ComparisonSet {
+                source_document_id: documents[0].document_id,
+                target_document_ids: documents[1..].iter().map(|doc| doc.document_id).collect(),
+            });
+        }
         let revision = Revision {
             revision_id,
             project_id: project.project_id,
@@ -113,41 +151,31 @@ impl KernelService {
             operation_id: OperationId::new(),
             change_set: ChangeSetSummary {
                 operation: "create_project".into(),
-                affected_count: (source_segments.len() + target_segments.len()) as u64,
+                affected_count: segments.len() as u64,
             },
             author_label: "Local user".into(),
-            created_at: now.clone(),
+            created_at: now,
             summary: format!(
-                "Imported {} source and {} target segments",
-                source_segments.len(),
-                target_segments.len()
+                "Imported {} documents and {} segments",
+                documents.len(),
+                segments.len()
             ),
             state: RevisionState::Complete,
         };
-        let source_asset = asset_record(
-            source_document.source_asset_id,
-            &request.source.input,
-            &request.source.profile,
-            &source,
-            &now,
-        );
-        let target_asset = asset_record(
-            target_document.source_asset_id,
-            &request.target.input,
-            &request.target.profile,
-            &target,
-            &now,
-        );
-        let mut segments = source_segments;
-        segments.extend(target_segments);
         let snapshot = ProjectSnapshot {
-            contract_version: CONTRACT_VERSION.into(),
+            research_records: Vec::new(),
+            command_receipts: Vec::new(),
+            contract_version: if project.comparison.is_some() {
+                "2.0".into()
+            } else {
+                CONTRACT_VERSION.into()
+            },
             project,
-            documents: vec![source_document, target_document],
-            source_assets: vec![source_asset, target_asset],
+            documents,
+            source_assets,
             segments,
-            segment_orders: vec![source_order, target_order],
-            alignments: initial_layout.alignments,
+            segment_orders,
+            alignments,
             revisions: vec![revision],
             source_profile: request.source.profile.clone(),
             target_profile: request.target.profile.clone(),
@@ -161,6 +189,8 @@ impl KernelService {
 }
 
 struct LoadedInput {
+    profile: ImportProfile,
+    encoding_detection: EncodingDetection,
     label: String,
     original_path: Option<String>,
     bytes: Vec<u8>,
@@ -169,13 +199,22 @@ struct LoadedInput {
     sha256: String,
 }
 
-fn load_input(input: &TextInput, profile: &ImportProfile) -> Result<LoadedInput, KernelError> {
+fn load_input(
+    input: &TextInput,
+    profile: &ImportProfile,
+    auto_detect_encoding: bool,
+) -> Result<LoadedInput, KernelError> {
+    let mut profile = profile.clone();
+    let mut encoding_detection = EncodingDetection::Manual;
     let (label, original_path, bytes, text, had_bom) = match input {
         TextInput::File { path } => {
             let bytes = fs::read(path).map_err(|source| KernelError::Io {
                 path: PathBuf::from(path),
                 source,
             })?;
+            if auto_detect_encoding {
+                (profile.encoding, encoding_detection) = detect_encoding(&bytes)?;
+            }
             let decoded = decode_bytes(&bytes, profile.encoding)?;
             let label = Path::new(path)
                 .file_name()
@@ -191,6 +230,10 @@ fn load_input(input: &TextInput, profile: &ImportProfile) -> Result<LoadedInput,
             )
         }
         TextInput::Paste { label, text } => {
+            if auto_detect_encoding {
+                profile.encoding = jueming_core::Encoding::Utf8;
+                encoding_detection = EncodingDetection::UnicodeText;
+            }
             if !matches!(
                 profile.encoding,
                 jueming_core::Encoding::Utf8 | jueming_core::Encoding::Utf8Bom
@@ -211,6 +254,8 @@ fn load_input(input: &TextInput, profile: &ImportProfile) -> Result<LoadedInput,
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
     Ok(LoadedInput {
+        profile,
+        encoding_detection,
         label,
         original_path,
         bytes,
@@ -246,6 +291,7 @@ fn asset_record(
     now: &str,
 ) -> SourceAssetRecord {
     SourceAssetRecord {
+        import_profile: Some(profile.clone()),
         asset_id,
         original_path: loaded.original_path.clone().or_else(|| match input {
             TextInput::File { path } => Some(path.clone()),

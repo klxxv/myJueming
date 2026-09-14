@@ -2,11 +2,15 @@
 import { onMounted, ref } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import { agentConnectionClient, type AgentConnectionInfo } from "../domain/agent-connection-client";
+import { t } from "../i18n";
+import type { EmbeddedSettingsMessageKey } from "../i18n/embedded-settings-messages";
 const info = ref<AgentConnectionInfo | null>(null);
 const command = ref("");
 const busy = ref(false);
 const error = ref<string | null>(null);
-const notice = ref("");
+const noticeKey = ref<EmbeddedSettingsMessageKey | null>(null);
+const msg = (key: EmbeddedSettingsMessageKey, params?: Record<string, string | number>) =>
+  t(key, params);
 const readableError = (cause: unknown) => cause instanceof Error ? cause.message : String(cause);
 onMounted(async () => {
   if (!agentConnectionClient.available) return;
@@ -15,34 +19,34 @@ onMounted(async () => {
 });
 async function toggle() {
   if (!info.value || busy.value) return;
-  busy.value = true; error.value = null; notice.value = "";
+  busy.value = true; error.value = null; noticeKey.value = null;
   try { info.value = await agentConnectionClient.setEnabled(!info.value.status.enabled); command.value ||= info.value.mcp_command ?? ""; }
   catch (cause) { error.value = readableError(cause); }
   finally { busy.value = false; }
 }
 async function chooseBinary() {
-  const selected = await open({ title: "选择 jueming-mcp 可执行文件", multiple: false, directory: false });
+  const selected = await open({ title: msg("connectionChooseDialog"), multiple: false, directory: false });
   if (typeof selected === "string") command.value = selected;
 }
 async function copyConfig() {
   error.value = null;
-  try { const config = await agentConnectionClient.configuration(command.value); await navigator.clipboard.writeText(config); notice.value = "连接配置已复制，仅在本次应用会话内有效"; }
+  try { const config = await agentConnectionClient.configuration(command.value); await navigator.clipboard.writeText(config); noticeKey.value = "connectionConfigCopied"; }
   catch (cause) { error.value = readableError(cause); }
 }
 </script>
 
 <template>
-  <section class="connection-settings" aria-label="外部 AI 连接" data-agent-context="exclude">
-    <h3>外部 AI 工具</h3>
-    <p>Codex 等工具可以通过 MCP 读取当前页面、搜索文本和提出修改。</p>
-    <div class="connection-row"><span><strong>允许本次会话连接</strong><small>{{ info?.status.enabled ? `已开启 · ${info.status.boundAddr}` : '当前关闭' }}</small></span><button type="button" :disabled="busy || !agentConnectionClient.available || !info" :aria-pressed="info?.status.enabled ?? false" @click="toggle">{{ busy ? '处理中…' : info?.status.enabled ? '关闭连接' : '启用连接' }}</button></div>
+  <section class="connection-settings" :aria-label="msg('connectionAria')" data-agent-context="exclude">
+    <h3>{{ msg("connectionTitle") }}</h3>
+    <p>{{ msg("connectionDescription") }}</p>
+    <div class="connection-row"><span><strong>{{ msg("connectionAllowSession") }}</strong><small>{{ info?.status.enabled ? msg("connectionEnabledAt", { address: info.status.boundAddr ?? "—" }) : msg("connectionDisabled") }}</small></span><button type="button" :disabled="busy || !agentConnectionClient.available || !info" :aria-pressed="info?.status.enabled ?? false" @click="toggle">{{ busy ? msg("connectionProcessing") : info?.status.enabled ? msg("connectionDisable") : msg("connectionEnable") }}</button></div>
     <template v-if="info?.status.enabled">
-      <label>MCP 程序位置<div class="connection-path"><input v-model="command" aria-label="MCP 可执行文件路径" spellcheck="false" /><button type="button" @click="chooseBinary">选择</button></div></label>
-      <button type="button" :disabled="!command" @click="copyConfig">复制 MCP JSON 配置</button>
-      <small class="connection-note">将配置添加到支持 MCP 的客户端。重启决明后需要重新复制；关闭连接会断开现有访问。</small>
+      <label>{{ msg("connectionProgramLocation") }}<div class="connection-path"><input v-model="command" :aria-label="msg('connectionPathAria')" spellcheck="false" /><button type="button" @click="chooseBinary">{{ msg("connectionChoose") }}</button></div></label>
+      <button type="button" :disabled="!command" @click="copyConfig">{{ msg("connectionCopyConfig") }}</button>
+      <small class="connection-note">{{ msg("connectionNote") }}</small>
     </template>
-    <p v-if="!agentConnectionClient.available">浏览器预览无法接受外部连接，请在桌面应用中配置。</p>
-    <p v-if="error" role="alert">{{ error }}</p><p v-if="notice" role="status">{{ notice }}</p>
+    <p v-if="!agentConnectionClient.available">{{ msg("connectionBrowserUnavailable") }}</p>
+    <p v-if="error" role="alert">{{ error }}</p><p v-if="noticeKey" role="status">{{ msg(noticeKey) }}</p>
   </section>
 </template>
 

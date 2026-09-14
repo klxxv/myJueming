@@ -1,0 +1,10 @@
+{
+  "protocol_version": 1,
+  "package_id": "xlmr-word-alignment",
+  "release": "1.0.0",
+  "entrypoint": "worker.py",
+  "runtime": "python-3.12",
+  "operators": ["xlmr.contextual_alignment"],
+  "slots": {"xlmr.contextual_alignment":"relation.word_alignment"},
+  "permissions": {"canonical_write": false, "network": false}
+}

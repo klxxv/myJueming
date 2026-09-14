@@ -27,6 +27,12 @@ impl KernelService {
             .segments
             .iter()
             .filter(|segment| {
+                request
+                    .document_ids
+                    .as_ref()
+                    .is_none_or(|ids| ids.contains(&segment.document_id))
+            })
+            .filter(|segment| {
                 request.language_id.as_ref().is_none_or(|language| {
                     snapshot.documents.iter().any(|document| {
                         document.document_id == segment.document_id
@@ -63,6 +69,7 @@ impl KernelService {
         let hits = self.search_segments(
             snapshot,
             &SearchSegmentsRequest {
+                document_ids: request.document_ids.clone(),
                 project_id: request.project_id,
                 query: request.query.clone(),
                 regex: request.regex,

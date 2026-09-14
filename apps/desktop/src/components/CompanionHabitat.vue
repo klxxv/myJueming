@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../i18n";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { createCompanionController, type CompanionActivity } from "../domain/companion";
 import type { AppSettingsEnvelope } from "../settings/schema";
@@ -6,9 +7,9 @@ import catImage from "../assets/companion/orange-cat.svg";
 import dogImage from "../assets/companion/golden-dog.svg";
 const props = defineProps<{ settings: AppSettingsEnvelope["device"]["pet"]; activity: CompanionActivity; inGarden: boolean; dirtyEditor: boolean; motion: "standard" | "reduced" | "off" }>();
 const root = ref<HTMLElement | null>(null);
-const notice = ref("");
+const notice = ref<"companionCatNotice" | "companionDogNotice" | null>(null);
 const active = computed(() => props.inGarden || props.activity === "running" || props.activity === "awaiting_approval");
-const controller = createCompanionController({ onEvent: event => { if (event.kind === "manual_pet") notice.value = event.actor === "cat" ? "猫猫伸了个懒腰" : "狗狗向你摇摇尾巴"; } });
+const controller = createCompanionController({ onEvent: event => { if (event.kind === "manual_pet") notice.value = event.actor === "cat" ? "companionCatNotice" : "companionDogNotice"; } });
 const update = () => controller.update({ mode: props.motion === "standard" ? props.settings.presentation : "static", activity: props.activity, dirtyEditor: props.dirtyEditor && props.settings.quietWhileEditing });
 onMounted(() => { if (root.value) controller.mount(root.value); update(); });
 watch(() => [props.settings.presentation, props.activity, props.dirtyEditor, props.motion], update);
@@ -16,10 +17,10 @@ onBeforeUnmount(() => controller.dispose());
 </script>
 
 <template>
-  <section ref="root" class="companion-habitat" aria-label="猫猫与狗狗的小家" data-agent-context="exclude">
-    <div class="cat-tree"><div class="cat-tree__platform"></div><div class="cat-tree__post"></div><div class="cat-tree__bed"></div><button v-if="settings.catEnabled" v-show="!active" type="button" data-companion-actor="cat" aria-label="摸摸猫猫"><img :src="catImage" alt="趴在猫窝里的橘猫" /></button></div>
-    <div class="dog-house"><div class="dog-house__roof"></div><div class="dog-house__wall"><span></span></div><button v-if="settings.dogEnabled" v-show="!active" type="button" data-companion-actor="dog" aria-label="摸摸狗狗"><img :src="dogImage" alt="在小屋前休息的金毛" /></button></div>
-    <p role="status">{{ active ? '去小花园陪你工作了' : notice || '决明小花园' }}</p>
+  <section ref="root" class="companion-habitat" :aria-label="t('companionHome')" data-agent-context="exclude">
+    <div class="cat-tree"><div class="cat-tree__platform"></div><div class="cat-tree__post"></div><div class="cat-tree__bed"></div><button v-if="settings.catEnabled" v-show="!active" type="button" data-companion-actor="cat" :aria-label="t('companionPetCat')"><img :src="catImage" :alt="t('companionCatBed')" /></button></div>
+    <div class="dog-house"><div class="dog-house__roof"></div><div class="dog-house__wall"><span></span></div><button v-if="settings.dogEnabled" v-show="!active" type="button" data-companion-actor="dog" :aria-label="t('companionPetDog')"><img :src="dogImage" :alt="t('companionDogHouse')" /></button></div>
+    <p role="status">{{ t(active ? 'companionInGarden' : notice || 'companionGarden') }}</p>
   </section>
 </template>
 

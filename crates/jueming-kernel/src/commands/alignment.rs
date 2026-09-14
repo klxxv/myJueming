@@ -1,6 +1,6 @@
 //! Manual relation commands and legacy entry-point compatibility.
 
-use crate::projection::ordered_alignment_refs;
+use crate::projection::{alignment_ids_for_document, ordered_alignment_refs, target_document_id};
 use crate::revision::{advance_revision, next_revision_id};
 use crate::sidecar::refresh_alignment_metadata;
 use crate::validation::{
@@ -25,6 +25,8 @@ impl KernelService {
     ) -> Result<ProjectSnapshot, KernelError> {
         validate_snapshot(snapshot)?;
         ensure_selection(snapshot, &source_segment_ids, &target_segment_ids)?;
+        let target_document_id = target_document_id(snapshot, &target_segment_ids)?;
+        let pair_alignment_ids = alignment_ids_for_document(snapshot, target_document_id);
         let mut next = snapshot.clone();
         let selected: HashSet<_> = source_segment_ids
             .iter()
@@ -35,11 +37,12 @@ impl KernelService {
             .alignments
             .iter()
             .filter(|alignment| {
-                alignment
-                    .source_segment_ids
-                    .iter()
-                    .chain(alignment.target_segment_ids.iter())
-                    .any(|id| selected.contains(id))
+                pair_alignment_ids.contains(&alignment.alignment_id)
+                    && alignment
+                        .source_segment_ids
+                        .iter()
+                        .chain(alignment.target_segment_ids.iter())
+                        .any(|id| selected.contains(id))
             })
             .count();
         if removed > 0 && !replace_existing {
@@ -57,11 +60,12 @@ impl KernelService {
             ),
         );
         next.alignments.retain(|alignment| {
-            !alignment
-                .source_segment_ids
-                .iter()
-                .chain(alignment.target_segment_ids.iter())
-                .any(|id| selected.contains(id))
+            !pair_alignment_ids.contains(&alignment.alignment_id)
+                || !alignment
+                    .source_segment_ids
+                    .iter()
+                    .chain(alignment.target_segment_ids.iter())
+                    .any(|id| selected.contains(id))
         });
         next.alignments.push(jueming_core::Alignment::new(
             snapshot.project.project_id,
@@ -152,9 +156,12 @@ impl KernelService {
             .iter()
             .flat_map(|alignment| alignment.target_segment_ids.iter().copied())
             .collect::<Vec<_>>();
+        let target_document_id = target_document_id(snapshot, &target_ids)?;
+        let pair_alignment_ids = alignment_ids_for_document(snapshot, target_document_id);
         let aligned_segment_ids: HashSet<_> = snapshot
             .alignments
             .iter()
+            .filter(|alignment| pair_alignment_ids.contains(&alignment.alignment_id))
             .flat_map(|alignment| {
                 alignment
                     .source_segment_ids
@@ -164,7 +171,7 @@ impl KernelService {
             })
             .collect();
         let source_document_id = snapshot.documents[0].document_id;
-        let target_document_id = snapshot.documents[1].document_id;
+
         for segment_id in &unlinked_segment_ids {
             if aligned_segment_ids.contains(segment_id) {
                 return Err(KernelError::MergeSegmentAlreadyAligned(*segment_id));

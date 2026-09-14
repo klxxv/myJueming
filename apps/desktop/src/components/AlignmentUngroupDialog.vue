@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { Check, Split, X } from "@lucide/vue";
 import type { AlignmentDto, SegmentDto } from "../domain/kernel-client";
+import { t } from "../i18n";
 
 const props = defineProps<{
   alignment: AlignmentDto;
@@ -48,13 +49,13 @@ const sourceGroups = computed(() => makeGroups(props.alignment.sourceIds, source
 const targetGroups = computed(() => makeGroups(props.alignment.targetIds, targetBreaks.value));
 const isValid = computed(() => sourceGroups.value.length >= 2 && sourceGroups.value.length === targetGroups.value.length);
 const validationMessage = computed(() => {
-  if (isValid.value) return `确认后将新建 ${sourceGroups.value.length} 条明确的 Alignment；原关系进入历史。`;
-  if (Math.min(props.alignment.sourceIds.length, props.alignment.targetIds.length) < 2) return "至少一侧只有一个 Segment，无法拆成两条双侧非空关系；请使用 Unlink 后重新 Link。";
-  return `左右分组数必须相同且不少于 2（当前 ${sourceGroups.value.length}:${targetGroups.value.length}）。`;
+  if (isValid.value) return t("puiUngroupValidationValid", { p0: sourceGroups.value.length });
+  if (Math.min(props.alignment.sourceIds.length, props.alignment.targetIds.length) < 2) return t("puiUngroupTooSmall");
+  return t("puiUngroupCountsInvalid", { p0: sourceGroups.value.length, p1: targetGroups.value.length });
 });
 const segmentText = (side: "source" | "target", id: string) => {
   const segment = (side === "source" ? sourceById.value : targetById.value).get(id);
-  return segment?.text ?? "Segment 已不在当前 Slice";
+  return segment?.text ?? t("puiSegmentMissingSlice");
 };
 const segmentOrder = (side: "source" | "target", id: string) => {
   const segment = (side === "source" ? sourceById.value : targetById.value).get(id);
@@ -66,26 +67,26 @@ const segmentOrder = (side: "source" | "target", id: string) => {
   <Teleport to="body">
     <section class="ungroup-backdrop" role="dialog" aria-modal="true" aria-labelledby="ungroup-title" @click.self="emit('close')">
       <div class="ungroup-dialog">
-        <header><div><small>ALIGNMENT · RELATION ONLY</small><h2 id="ungroup-title">Ungroup 关系</h2></div><button type="button" title="关闭" @click="emit('close')"><X :size="17" /></button></header>
-        <p>点击句段之间的边界，把左右两侧切成数量相同的关系组。这里只改变 Alignment，不修改正文或顺序。</p>
+        <header><div><small>{{ t("puiRelationOnlyEyebrow") }}</small><h2 id="ungroup-title">{{ t("puiUngroupHeading") }}</h2></div><button type="button" :title="t('puiClose')" @click="emit('close')"><X :size="17" /></button></header>
+        <p>{{ t("puiUngroupDescription") }}</p>
         <div class="ungroup-editor">
-          <section aria-label="原文关系分组">
-            <h3>原文 Segment <span>{{ sourceGroups.length }} 组</span></h3>
+          <section :aria-label="t('puiSourceGroupsAria')">
+            <h3>{{ t("puiSourceSegment") }} <span>{{ t("puiGroupCount", { p0: sourceGroups.length }) }}</span></h3>
             <template v-for="(id, index) in alignment.sourceIds" :key="id">
               <article><b>{{ segmentOrder('source', id) }}</b><span>{{ segmentText('source', id) }}</span></article>
-              <button v-if="index < alignment.sourceIds.length - 1" class="group-boundary" :class="{ 'group-boundary--active': sourceBreaks.has(index + 1) }" type="button" @click="toggleBreak('source', index + 1)"><Split :size="14" />{{ sourceBreaks.has(index + 1) ? '分组边界' : '在此拆组' }}</button>
+              <button v-if="index < alignment.sourceIds.length - 1" class="group-boundary" :class="{ 'group-boundary--active': sourceBreaks.has(index + 1) }" type="button" @click="toggleBreak('source', index + 1)"><Split :size="14" />{{ t(sourceBreaks.has(index + 1) ? "puiGroupBoundary" : "puiSplitGroupHere") }}</button>
             </template>
           </section>
-          <section aria-label="译文关系分组">
-            <h3>译文 Segment <span>{{ targetGroups.length }} 组</span></h3>
+          <section :aria-label="t('puiTargetGroupsAria')">
+            <h3>{{ t("puiTargetSegment") }} <span>{{ t("puiGroupCount", { p0: targetGroups.length }) }}</span></h3>
             <template v-for="(id, index) in alignment.targetIds" :key="id">
               <article><b>{{ segmentOrder('target', id) }}</b><span>{{ segmentText('target', id) }}</span></article>
-              <button v-if="index < alignment.targetIds.length - 1" class="group-boundary" :class="{ 'group-boundary--active': targetBreaks.has(index + 1) }" type="button" @click="toggleBreak('target', index + 1)"><Split :size="14" />{{ targetBreaks.has(index + 1) ? '分组边界' : '在此拆组' }}</button>
+              <button v-if="index < alignment.targetIds.length - 1" class="group-boundary" :class="{ 'group-boundary--active': targetBreaks.has(index + 1) }" type="button" @click="toggleBreak('target', index + 1)"><Split :size="14" />{{ t(targetBreaks.has(index + 1) ? "puiGroupBoundary" : "puiSplitGroupHere") }}</button>
             </template>
           </section>
         </div>
         <p class="ungroup-validation" :class="{ 'ungroup-validation--valid': isValid }">{{ validationMessage }}</p>
-        <footer><button class="secondary-button" type="button" @click="emit('close')">取消</button><button class="primary-button" type="button" :disabled="!isValid" @click="emit('confirm', alignment.id, sourceGroups, targetGroups)"><Check :size="15" />确认 Ungroup</button></footer>
+        <footer><button class="secondary-button" type="button" @click="emit('close')">{{ t("puiCancel") }}</button><button class="primary-button" type="button" :disabled="!isValid" @click="emit('confirm', alignment.id, sourceGroups, targetGroups)"><Check :size="15" />{{ t("puiConfirmUngroup") }}</button></footer>
       </div>
     </section>
   </Teleport>

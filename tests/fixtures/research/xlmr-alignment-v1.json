@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "purpose": "Small hand-labelled engineering fixture; not a representative accuracy benchmark.",
+  "cases": [
+    {"id":"literal","source":"The heavy rain kept them indoors.","query":"heavy rain","targets":["大雨下个不停，他们整个下午都没出门。"],"gold":[{"target":0,"text":"大雨"}]},
+    {"id":"intensification","source":"After a night of heavy rain, the river rose.","query":"heavy rain","targets":["一夜暴雨过后，河水涨了起来。"],"gold":[{"target":0,"text":"暴雨"}]},
+    {"id":"boundary","source":"Heavy rain was forecast for the weekend.","query":"Heavy rain","targets":["预报说周末有大雨。"],"gold":[{"target":0,"text":"大雨"}]},
+    {"id":"paraphrase","source":"They walked on through the heavy rain.","query":"heavy rain","targets":["他们冒雨继续往前走。"],"gold":[{"target":0,"text":"冒雨"}]},
+    {"id":"omission","source":"The heavy rain kept them indoors.","query":"heavy rain","targets":["他们整个下午都没出门。"],"gold":[]},
+    {"id":"unicode_split_context","source":"🌧 The heavy rain kept them indoors.","query":"heavy rain","targets":["🌧 外面下着大雨。","他们留在屋里。"],"gold":[{"target":0,"text":"大雨"}]}
+  ]
+}

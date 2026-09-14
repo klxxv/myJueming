@@ -39,7 +39,7 @@ const agentWorkspace = useAgentWorkspace({
   canLeaveDraft: () => !hasDirtyDraft.value && !isSavingDraft.value,
   navigate: async (tab) => { await setNav(tab); },
   reveal: async ({ segmentId, alignmentId }) => { /* use ParallelWorkspace stable-ID APIs */ },
-  onProjectSnapshot: async (snapshot) => { await applySnapshot(snapshot); },
+  onProjectSnapshot: async (identity) => { await refreshWorkspaceFor(identity.project.project_id, identity.project.current_revision_id); },
   onSearchState: ({ spec, results }) => { /* update the existing search refs */ },
 });
 
@@ -48,6 +48,8 @@ onBeforeUnmount(() => agentWorkspace.dispose());
 ```
 
 `tab`, `mode`, `projectSnapshot`, `selection`, `searchState`, and `selectionSharingEnabled` may be `Ref`, `ComputedRef`, or a getter. `canLeaveDraft` is synchronous and must return a boolean. The `selection` hook keeps alignment and segment selections distinct. Do not pass text or credentials through these hooks.
+
+`AgentProjection.project` is a text-free `ProjectIdentity` (`{ project: Project }`), not a canonical snapshot. The native renderer queries `WorkspaceProject` only when its identity/revision changes and obtains bodies through bounded `load_parallel_slice` queries.
 
 For a projection containing both `project` and search state, the composable awaits a successful `onProjectSnapshot(project)` first. It sends `onSearchState({ spec, results })` only while the same lifecycle epoch remains current. Search owners that reject results whose revision differs from their current snapshot can therefore validate the matching projected revision.
 

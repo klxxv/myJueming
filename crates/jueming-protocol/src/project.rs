@@ -10,6 +10,11 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProjectSnapshot {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub research_records: Vec<crate::ResearchRecord>,
+    /// Durable command receipts, committed atomically with canonical history.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub command_receipts: Vec<CommandReceipt>,
     pub contract_version: String,
     pub project: Project,
     pub documents: Vec<Document>,
@@ -24,6 +29,13 @@ pub struct ProjectSnapshot {
     pub bookmarks: Vec<Bookmark>,
     #[serde(default)]
     pub annotations: Vec<HumanAnnotation>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CommandReceipt {
+    pub command_id: jueming_core::CommandId,
+    pub fingerprint: String,
+    pub committed_revision_id: RevisionId,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

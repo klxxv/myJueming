@@ -1,0 +1,164 @@
+[
+  {
+    "legacy_name": "source.txt",
+    "canonical_slot": "source.text.parse",
+    "action": "alias",
+    "reason": "Equivalent capability name; provider and schemas are still validated"
+  },
+  {
+    "legacy_name": "source.srt",
+    "canonical_slot": "source.subtitle.parse",
+    "action": "alias",
+    "reason": "Equivalent capability name; provider and schemas are still validated"
+  },
+  {
+    "legacy_name": "annotation.pos",
+    "canonical_slot": "token.pos",
+    "action": "alias",
+    "reason": "Equivalent capability name; provider and schemas are still validated"
+  },
+  {
+    "legacy_name": "annotation.lemma",
+    "canonical_slot": "token.lemma",
+    "action": "alias",
+    "reason": "Equivalent capability name; provider and schemas are still validated"
+  },
+  {
+    "legacy_name": "annotation.ner",
+    "canonical_slot": "token.ner",
+    "action": "alias",
+    "reason": "Equivalent capability name; provider and schemas are still validated"
+  },
+  {
+    "legacy_name": "annotation.dependency",
+    "canonical_slot": "token.dependency",
+    "action": "alias",
+    "reason": "Equivalent capability name; provider and schemas are still validated"
+  },
+  {
+    "legacy_name": "alignment.manual",
+    "canonical_slot": "relation.alignment.manual",
+    "action": "alias",
+    "reason": "Equivalent capability name; provider and schemas are still validated"
+  },
+  {
+    "legacy_name": "source.decode",
+    "canonical_slot": "source.text.parse",
+    "action": "explicit_selection_required",
+    "reason": "Legacy name conflates capability, format, or algorithm; select and validate a provider explicitly"
+  },
+  {
+    "legacy_name": "source.pdf",
+    "canonical_slot": "source.ocr",
+    "action": "explicit_selection_required",
+    "reason": "Legacy name conflates capability, format, or algorithm; select and validate a provider explicitly"
+  },
+  {
+    "legacy_name": "source.audio",
+    "canonical_slot": "source.audio.transcribe",
+    "action": "explicit_selection_required",
+    "reason": "Legacy name conflates capability, format, or algorithm; select and validate a provider explicitly"
+  },
+  {
+    "legacy_name": "segment.rule",
+    "canonical_slot": "content.segment.sentence",
+    "action": "explicit_selection_required",
+    "reason": "Legacy name conflates capability, format, or algorithm; select and validate a provider explicitly"
+  },
+  {
+    "legacy_name": "segment.statistical",
+    "canonical_slot": "content.segment.sentence",
+    "action": "explicit_selection_required",
+    "reason": "Legacy name conflates capability, format, or algorithm; select and validate a provider explicitly"
+  },
+  {
+    "legacy_name": "segment.llm",
+    "canonical_slot": "content.segment.sentence",
+    "action": "explicit_selection_required",
+    "reason": "Legacy name conflates capability, format, or algorithm; select and validate a provider explicitly"
+  },
+  {
+    "legacy_name": "content.segment",
+    "canonical_slot": "content.segment.sentence",
+    "action": "explicit_selection_required",
+    "reason": "Legacy name conflates capability, format, or algorithm; select and validate a provider explicitly"
+  },
+  {
+    "legacy_name": "content.segment.custom",
+    "canonical_slot": "content.segment.sentence",
+    "action": "explicit_selection_required",
+    "reason": "Legacy name conflates capability, format, or algorithm; select and validate a provider explicitly"
+  },
+  {
+    "legacy_name": "alignment.length",
+    "canonical_slot": "relation.alignment.auto",
+    "action": "explicit_selection_required",
+    "reason": "Legacy name conflates capability, format, or algorithm; select and validate a provider explicitly"
+  },
+  {
+    "legacy_name": "alignment.embedding",
+    "canonical_slot": "relation.alignment.auto",
+    "action": "explicit_selection_required",
+    "reason": "Legacy name conflates capability, format, or algorithm; select and validate a provider explicitly"
+  },
+  {
+    "legacy_name": "alignment.llm",
+    "canonical_slot": "relation.alignment.auto",
+    "action": "explicit_selection_required",
+    "reason": "Legacy name conflates capability, format, or algorithm; select and validate a provider explicitly"
+  },
+  {
+    "legacy_name": "relation.alignment",
+    "canonical_slot": "relation.alignment.auto",
+    "action": "explicit_selection_required",
+    "reason": "Legacy name conflates capability, format, or algorithm; select and validate a provider explicitly"
+  },
+  {
+    "legacy_name": "index.lemma",
+    "canonical_slot": "index.lexical",
+    "action": "explicit_selection_required",
+    "reason": "Legacy name conflates capability, format, or algorithm; select and validate a provider explicitly"
+  },
+  {
+    "legacy_name": "export.data",
+    "canonical_slot": "export.json",
+    "action": "explicit_selection_required",
+    "reason": "Legacy name conflates capability, format, or algorithm; select and validate a provider explicitly"
+  },
+  {
+    "legacy_name": "index.summary",
+    "canonical_slot": null,
+    "action": "deferred_extension",
+    "reason": "Outside the current profile; no callable implementation is implied"
+  },
+  {
+    "legacy_name": "analysis.parallel",
+    "canonical_slot": null,
+    "action": "deferred_extension",
+    "reason": "Outside the current profile; no callable implementation is implied"
+  },
+  {
+    "legacy_name": "analysis.custom",
+    "canonical_slot": null,
+    "action": "deferred_extension",
+    "reason": "Outside the current profile; no callable implementation is implied"
+  },
+  {
+    "legacy_name": "export.tmx",
+    "canonical_slot": null,
+    "action": "deferred_extension",
+    "reason": "Outside the current profile; no callable implementation is implied"
+  },
+  {
+    "legacy_name": "export.xliff",
+    "canonical_slot": null,
+    "action": "deferred_extension",
+    "reason": "Outside the current profile; no callable implementation is implied"
+  },
+  {
+    "legacy_name": "export.tei",
+    "canonical_slot": null,
+    "action": "deferred_extension",
+    "reason": "Outside the current profile; no callable implementation is implied"
+  }
+]

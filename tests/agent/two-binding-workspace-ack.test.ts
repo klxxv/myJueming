@@ -4,7 +4,7 @@ import { ref } from "vue";
 import { useAgentWorkspace } from "../../apps/desktop/src/composables/useAgentWorkspace";
 import type { AgentClient } from "../../apps/desktop/src/domain/agent-client";
 import type { AgentClientUpdate, AgentProjection, AgentReply } from "../../apps/desktop/src/domain/agent-types";
-import type { ProjectSnapshot } from "../../apps/desktop/src/domain/kernel-client";
+import type { ProjectIdentity } from "../../apps/desktop/src/domain/kernel-client";
 
 setActivePinia(createPinia());
 
@@ -53,7 +53,7 @@ const client: AgentClient = {
 const workspace = useAgentWorkspace({
   tab: "review",
   mode: "review",
-  projectSnapshot: ref({ project: { project_id: projectId, current_revision_id: revisionId } } as ProjectSnapshot),
+  projectSnapshot: ref({ project: { project_id: projectId, current_revision_id: revisionId } } as ProjectIdentity),
   selection: { segmentIds: [], alignmentIds: [] },
   searchState: { query: "", regex: false, caseSensitive: false, languageId: null },
   selectionSharingEnabled: true,

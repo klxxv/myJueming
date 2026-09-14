@@ -3,8 +3,13 @@
 //! This crate never opens or modifies canonical project snapshots. Callers must
 //! provide revision-bound source content obtained through the Kernel boundary.
 
+pub mod builtins;
 mod error;
+pub mod executor;
 mod model;
+pub mod plugin;
+pub mod pool;
+pub mod registry;
 mod service;
 
 pub use error::PipelineError;

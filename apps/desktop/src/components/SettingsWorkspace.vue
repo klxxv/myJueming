@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watchEffect, type Component } from "vue";
+import { computed, ref, watch, type Component } from "vue";
 import {
   Accessibility as AccessibilityIcon,
   ArrowLeft,
@@ -9,8 +9,10 @@ import {
   HardDrive,
   Info,
   Keyboard,
+  Minus,
   Monitor,
   Palette,
+  Plus,
   RotateCcw,
   Search,
   Settings2,
@@ -19,15 +21,19 @@ import {
   X,
 } from "@lucide/vue";
 import type { AppSettingsEnvelope } from "../settings/schema";
+import type { FeatureSnapshot } from "../domain/research-types";
+import ResearchFeatureSettings, { type ResearchFeaturePreferences } from "./ResearchFeatureSettings.vue";
+import { formatDate, t } from "../i18n";
 import {
   isSettingsCapabilityAvailable,
   type SettingsCapabilities,
   type SettingsCapabilityId,
 } from "../settings/capabilities";
 
+type SettingsSectionId = SettingsCapabilityId | "research";
 type SettingsSectionDefinition = {
-  id: SettingsCapabilityId;
-  group: "应用偏好" | "数据与安全" | "系统";
+  id: SettingsSectionId;
+  group: "preferences" | "data" | "system";
   label: string;
   description: string;
   icon: Component;
@@ -36,10 +42,16 @@ type DetailId = "motion-global" | "interface-motion" | "motion-performance";
 type SearchEntry = {
   label: string;
   path: string;
-  section: SettingsCapabilityId;
+  section: SettingsSectionId;
   detail?: DetailId;
   keywords: string;
 };
+
+export interface SettingsWorkspaceResearchProps {
+  researchFeature?: FeatureSnapshot | null;
+  researchAvailable?: boolean;
+  researchBusy?: boolean;
+}
 
 const settings = defineModel<AppSettingsEnvelope>("settings", { required: true });
 const props = defineProps<{
@@ -55,7 +67,7 @@ const props = defineProps<{
   systemReducedMotion: boolean;
   projectOpen: boolean;
   appVersion: string;
-}>();
+} & SettingsWorkspaceResearchProps>();
 const emit = defineEmits<{
   applyGeneral: [];
   applyUi: [];
@@ -66,79 +78,97 @@ const emit = defineEmits<{
   clearCache: [];
   rememberSection: [section: string];
   resetAll: [];
+  "research-enable": [];
+  "research-disable": [];
+  "research-cancel": [];
+  "research-retry": [];
+  "research-open": [];
+  "research-preferences": [preferences: ResearchFeaturePreferences];
 }>();
 
-const sectionDefinitions: SettingsSectionDefinition[] = [
-  { id: "account", group: "应用偏好", label: "账号与登录", description: "账号、会话与设置同步", icon: Settings2 },
-  { id: "general", group: "应用偏好", label: "通用", description: "启动、工作区与性能", icon: SlidersHorizontal },
-  { id: "appearance", group: "应用偏好", label: "外观与阅读", description: "主题、文字与界面尺寸", icon: Palette },
-  { id: "accessibility", group: "应用偏好", label: "辅助功能", description: "动态、对比度与操作辅助", icon: AccessibilityIcon },
-  { id: "input", group: "应用偏好", label: "键盘与触控板", description: "快捷键和滚动行为", icon: Keyboard },
-  { id: "pet", group: "应用偏好", label: "桌宠", description: "角色、活动区域与动作", icon: Monitor },
-  { id: "corpus", group: "数据与安全", label: "语料库与工程", description: "本地语料和工程默认值", icon: Database },
-  { id: "upload", group: "数据与安全", label: "上传与发布", description: "上传、许可与隐私检查", icon: Database },
-  { id: "community", group: "数据与安全", label: "社区与贡献", description: "贡献、积分和社区身份", icon: Database },
-  { id: "agent", group: "数据与安全", label: "AI 与 Agent", description: "Provider、权限与运行记录", icon: Settings2 },
-  { id: "plugins", group: "数据与安全", label: "插件与集成", description: "Slot、权限和插件更新", icon: Settings2 },
-  { id: "persistence", group: "数据与安全", label: "保存与历史", description: "自动保存与 Revision", icon: Database },
-  { id: "storage", group: "数据与安全", label: "存储空间", description: "缓存策略与本地空间", icon: HardDrive },
-  { id: "privacy", group: "数据与安全", label: "隐私与安全", description: "本地模式与数据边界", icon: ShieldCheck },
-  { id: "notifications", group: "数据与安全", label: "通知", description: "任务和系统通知", icon: Monitor },
-  { id: "about", group: "系统", label: "更新与关于", description: "版本、诊断与许可", icon: Info },
-];
+const sectionDefinitions = computed<SettingsSectionDefinition[]>(() => [
+  { id: "account", group: "preferences", label: t("settingsAccount"), description: t("settingsAccountHint"), icon: Settings2 },
+  { id: "general", group: "preferences", label: t("settingsGeneral"), description: t("settingsGeneralHint"), icon: SlidersHorizontal },
+  { id: "appearance", group: "preferences", label: t("settingsAppearanceReading"), description: t("settingsAppearanceReadingHint"), icon: Palette },
+  { id: "accessibility", group: "preferences", label: t("settingsAccessibility"), description: t("settingsAccessibilityHint"), icon: AccessibilityIcon },
+  { id: "input", group: "preferences", label: t("settingsInput"), description: t("settingsInputHint"), icon: Keyboard },
+  { id: "pet", group: "preferences", label: t("settingsPet"), description: t("settingsPetHint"), icon: Monitor },
+  { id: "corpus", group: "data", label: t("settingsCorpus"), description: t("settingsCorpusHint"), icon: Database },
+  { id: "upload", group: "data", label: t("settingsUpload"), description: t("settingsUploadHint"), icon: Database },
+  { id: "community", group: "data", label: t("settingsCommunity"), description: t("settingsCommunityHint"), icon: Database },
+  { id: "agent", group: "data", label: t("settingsAgent"), description: t("settingsAgentHint"), icon: Settings2 },
+  { id: "research", group: "data", label: t("settingsResearch"), description: t("settingsResearchHint"), icon: Search },
+  { id: "plugins", group: "data", label: t("settingsPlugins"), description: t("settingsPluginsHint"), icon: Settings2 },
+  { id: "persistence", group: "data", label: t("settingsPersistence"), description: t("settingsPersistenceHint"), icon: Database },
+  { id: "storage", group: "data", label: t("settingsStorageSpace"), description: t("settingsStorageSpaceHint"), icon: HardDrive },
+  { id: "privacy", group: "data", label: t("settingsPrivacy"), description: t("settingsPrivacyHint"), icon: ShieldCheck },
+  { id: "notifications", group: "data", label: t("settingsNotifications"), description: t("settingsNotificationsHint"), icon: Monitor },
+  { id: "about", group: "system", label: t("settingsAbout"), description: t("settingsAboutHint"), icon: Info },
+]);
 
-const visibleSections = computed(() => sectionDefinitions.filter((section) =>
-  isSettingsCapabilityAvailable(props.capabilities, section.id)));
-const sectionGroups = computed(() => ["应用偏好", "数据与安全", "系统"].map((group) => ({
-  label: group,
-  sections: visibleSections.value.filter((section) => section.group === group),
-})).filter((group) => group.sections.length));
+const visibleSections = computed(() => sectionDefinitions.value.filter((section) =>
+  section.id === "research"
+    ? props.researchAvailable === true
+    : isSettingsCapabilityAvailable(props.capabilities, section.id)));
+const sectionGroups = computed(() => ([
+  { id: "preferences" as const, label: t("settingsGroupPreferences") },
+  { id: "data" as const, label: t("settingsGroupData") },
+  { id: "system" as const, label: t("settingsGroupSystem") },
+].map((group) => ({
+  label: group.label,
+  sections: visibleSections.value.filter((section) => section.group === group.id),
+})).filter((group) => group.sections.length)));
 
-const activeSection = ref<SettingsCapabilityId>("appearance");
+const activeSection = ref<SettingsSectionId>("appearance");
 const detail = ref<DetailId | null>(null);
 const searchQuery = ref("");
 
-watchEffect(() => {
-  const lastSection = settings.value.device.navigation.lastSection as SettingsCapabilityId;
+watch([
+  () => settings.value.device.navigation.lastSection,
+  () => visibleSections.value.map((section) => section.id).join("|"),
+], () => {
+  const lastSection = settings.value.device.navigation.lastSection as SettingsSectionId;
   if (visibleSections.value.some((section) => section.id === lastSection)) activeSection.value = lastSection;
   if (!visibleSections.value.some((section) => section.id === activeSection.value)) {
     activeSection.value = visibleSections.value[0]?.id ?? "appearance";
   }
-});
+}, { immediate: true });
 
 const activeDefinition = computed(() => visibleSections.value.find((section) => section.id === activeSection.value));
-const searchEntries: SearchEntry[] = [
-  { label: "启动后打开", path: "通用 > 启动行为", section: "general", keywords: "启动 上次工程 欢迎页" },
-  { label: "默认工作模式", path: "通用 > 启动行为", section: "general", keywords: "审阅 编辑 排序" },
-  { label: "动效性能策略", path: "通用 > 性能与节能", section: "general", detail: "motion-performance", keywords: "后台 暂停 性能 流畅" },
-  { label: "显示主题", path: "外观与阅读 > 显示主题", section: "appearance", keywords: "明亮 护眼" },
-  { label: "字体大小", path: "外观与阅读 > 阅读文字", section: "appearance", keywords: "字号 正文" },
-  { label: "界面空间大小", path: "外观与阅读 > 界面尺寸", section: "appearance", keywords: "缩放 紧凑 宽松" },
-  { label: "行间距", path: "外观与阅读 > 阅读文字", section: "appearance", keywords: "紧凑 标准 宽松" },
-  { label: "界面动画", path: "外观与阅读 > 界面动效", section: "appearance", detail: "interface-motion", keywords: "转场 跳转 高亮 拖拽" },
-  { label: "动态效果", path: "辅助功能 > 动态与感知", section: "accessibility", detail: "motion-global", keywords: "减少 关闭 动画 系统" },
-  { label: "增强对比度", path: "辅助功能 > 视觉辅助", section: "accessibility", keywords: "对比 高对比" },
-  { label: "强化键盘焦点", path: "辅助功能 > 视觉辅助", section: "accessibility", keywords: "键盘 焦点" },
-  { label: "更大点击区域", path: "辅助功能 > 操作辅助", section: "accessibility", keywords: "按钮 点击 触控" },
-  { label: "快捷键布局", path: "键盘与触控板 > 快捷键布局", section: "input", keywords: "macOS Windows Ctrl Command" },
-  { label: "触控板优化", path: "键盘与触控板 > 触控板", section: "input", keywords: "滚动 拖拽" },
-  { label: "小花园呈现方式", path: "桌宠 > 注意力偏好", section: "pet", keywords: "极简 静态 图片 动画 安静 蝴蝶 猫 狗" },
-  { label: "助手与外部连接", path: "AI 与 Agent > 连接", section: "agent", keywords: "MCP AGUI Codex 模型 endpoint 本地 API" },
-  { label: "分享选中文本", path: "AI 与 Agent > 上下文", section: "agent", keywords: "选中 focus 页面 上下文 隐私" },
-  { label: "保存延迟", path: "保存与历史 > 自动保存", section: "persistence", keywords: "自动保存 ChangeSet" },
-  { label: "缓存清理", path: "存储空间 > 缓存", section: "storage", keywords: "cache 清理 空间" },
-  { label: "本地模式", path: "隐私与安全 > 数据边界", section: "privacy", keywords: "离线 上传 隐私" },
-  { label: "应用版本", path: "更新与关于 > 版本信息", section: "about", keywords: "版本 构建" },
-];
+const searchEntries = computed<SearchEntry[]>(() => [
+  { label: t("swInterfaceLanguage"), path: `${t("settingsGeneral")} > ${t("swLanguage")}`, section: "general", keywords: t("swSearchLanguage") },
+  { label: t("swOpenOnStartup"), path: `${t("settingsGeneral")} > ${t("swStartupBehavior")}`, section: "general", keywords: t("swSearchStartup") },
+  { label: t("swDefaultWorkspace"), path: `${t("settingsGeneral")} > ${t("swStartupBehavior")}`, section: "general", keywords: t("swSearchStartup") },
+  { label: t("swMotionPerformance"), path: `${t("settingsGeneral")} > ${t("swPerformanceEnergy")}`, section: "general", detail: "motion-performance", keywords: t("swSearchMotion") },
+  { label: t("swDisplayTheme"), path: `${t("settingsAppearanceReading")} > ${t("swDisplayTheme")}`, section: "appearance", keywords: t("swSearchAppearance") },
+  { label: t("swFontSize"), path: `${t("settingsAppearanceReading")} > ${t("swReadingText")}`, section: "appearance", keywords: t("swSearchAppearance") },
+  { label: t("swUiSpace"), path: `${t("settingsAppearanceReading")} > ${t("swInterfaceSize")}`, section: "appearance", keywords: t("swSearchAppearance") },
+  { label: t("swLineSpacing"), path: `${t("settingsAppearanceReading")} > ${t("swReadingText")}`, section: "appearance", keywords: t("swSearchAppearance") },
+  { label: t("swInterfaceAnimation"), path: `${t("settingsAppearanceReading")} > ${t("swInterfaceMotion")}`, section: "appearance", detail: "interface-motion", keywords: t("swSearchMotion") },
+  { label: t("swMotionEffects"), path: `${t("settingsAccessibility")} > ${t("swMotionPerception")}`, section: "accessibility", detail: "motion-global", keywords: t("swSearchAccessibility") },
+  { label: t("swEnhancedContrast"), path: `${t("settingsAccessibility")} > ${t("swVisualAssistance")}`, section: "accessibility", keywords: t("swSearchAccessibility") },
+  { label: t("swEnhancedFocus"), path: `${t("settingsAccessibility")} > ${t("swVisualAssistance")}`, section: "accessibility", keywords: t("swSearchAccessibility") },
+  { label: t("swLargerTargets"), path: `${t("settingsAccessibility")} > ${t("swVisualAssistance")}`, section: "accessibility", keywords: t("swSearchAccessibility") },
+  { label: t("swShortcutLayout"), path: `${t("settingsInput")} > ${t("swInputDevices")}`, section: "input", keywords: t("swSearchInput") },
+  { label: t("swTrackpadOptimized"), path: `${t("settingsInput")} > ${t("swInputDevices")}`, section: "input", keywords: t("swSearchInput") },
+  { label: t("swAttentionPreference"), path: `${t("settingsPet")} > ${t("swPresentation")}`, section: "pet", keywords: t("swSearchGarden") },
+  { label: t("settingsAgent"), path: `${t("settingsAgent")} > ${t("swGlobalAssistant")}`, section: "agent", keywords: t("swSearchAgent") },
+  { label: t("swShareSelection"), path: `${t("settingsAgent")} > ${t("swGlobalAssistant")}`, section: "agent", keywords: t("swSearchAgent") },
+  { label: t("settingsResearch"), path: t("settingsResearch"), section: "research", keywords: t("swSearchResearch") },
+  { label: t("swSaveDelay"), path: `${t("settingsPersistence")} > ${t("swAutosave")}`, section: "persistence", keywords: t("swSearchPersistence") },
+  { label: t("swAutomaticCleanup"), path: `${t("settingsStorageSpace")} > ${t("swCachePolicy")}`, section: "storage", keywords: t("swSearchStorage") },
+  { label: t("swLocalMode"), path: `${t("settingsPrivacy")} > ${t("swLocalMode")}`, section: "privacy", keywords: t("swSearchPrivacy") },
+  { label: t("swVersionInfo"), path: `${t("settingsAbout")} > ${t("swVersionInfo")}`, section: "about", keywords: t("swSearchAbout") },
+]);
 const searchResults = computed(() => {
   const query = searchQuery.value.trim().toLocaleLowerCase();
   if (!query) return [];
   const visibleIds = new Set(visibleSections.value.map((section) => section.id));
-  return searchEntries.filter((entry) => visibleIds.has(entry.section)
+  return searchEntries.value.filter((entry) => visibleIds.has(entry.section)
     && `${entry.label} ${entry.path} ${entry.keywords}`.toLocaleLowerCase().includes(query));
 });
 
-function chooseSection(section: SettingsCapabilityId) {
+function chooseSection(section: SettingsSectionId) {
   activeSection.value = section;
   detail.value = null;
   if (settings.value.device.general.rememberSettingsLocation) emit("rememberSection", section);
@@ -158,37 +188,51 @@ function chooseSearchResult(entry: SearchEntry) {
 }
 
 function requestReset() {
-  if (window.confirm("恢复所有本机设置为默认值？这不会修改任何 .jm 工程或 Revision。")) emit("resetAll");
+  if (window.confirm(t("swResetConfirm"))) emit("resetAll");
 }
 
 const formatCleanupTime = computed(() => props.lastCacheCleanupAt
-  ? new Date(props.lastCacheCleanupAt).toLocaleString("zh-CN", { hour12: false })
-  : "尚未清理");
+  ? formatDate(props.lastCacheCleanupAt)
+  : t("swNeverCleaned"));
+
+const FONT_SCALE_MIN = 90;
+const FONT_SCALE_MAX = 130;
+const FONT_SCALE_STEP = 10;
+
+function adjustFontScale(direction: -1 | 1) {
+  const nextScale = Math.min(
+    FONT_SCALE_MAX,
+    Math.max(FONT_SCALE_MIN, settings.value.device.appearance.fontScale + direction * FONT_SCALE_STEP),
+  );
+  if (nextScale === settings.value.device.appearance.fontScale) return;
+  settings.value.device.appearance.fontScale = nextScale;
+  emit("applyUi");
+}
 </script>
 
 <template>
   <section class="settings-view" data-agent-context="exclude">
     <header class="settings-header">
       <span class="settings-header__icon"><Settings2 :size="20" /></span>
-      <div><h2>设置</h2><p>本机偏好不会写入 .jm 工程</p></div>
-      <span v-if="settingsSaving" class="settings-save-state">正在保存…</span>
-      <span v-else-if="settingsSaveError" class="settings-save-state settings-save-state--error">保存失败</span>
-      <span v-else class="settings-save-state">已保存在这台设备上</span>
+      <div><h2>{{ t('navSettings') }}</h2><p>{{ t('settingsLocalOnly') }}</p></div>
+      <span v-if="settingsSaving" class="settings-save-state">{{ t('settingsSaving') }}</span>
+      <span v-else-if="settingsSaveError" class="settings-save-state settings-save-state--error">{{ t('saveFailed') }}</span>
+      <span v-else class="settings-save-state">{{ t('settingsSavedDevice') }}</span>
     </header>
 
     <div class="settings-split">
-      <nav class="settings-sidebar" aria-label="设置分类">
+      <nav class="settings-sidebar" :aria-label="t('settingsCategories')">
         <label class="settings-search">
           <Search :size="15" />
-          <input v-model="searchQuery" type="search" placeholder="搜索设置" aria-label="搜索设置" />
-          <button v-if="searchQuery" type="button" title="清除搜索" @click="searchQuery = ''"><X :size="14" /></button>
+          <input v-model="searchQuery" type="search" :placeholder="t('searchSettings')" :aria-label="t('searchSettings')" />
+          <button v-if="searchQuery" type="button" :title="t('clearSearch')" @click="searchQuery = ''"><X :size="14" /></button>
         </label>
 
         <div v-if="searchQuery" class="settings-search-results" aria-live="polite">
           <button v-for="entry in searchResults" :key="`${entry.section}-${entry.label}`" type="button" @click="chooseSearchResult(entry)">
             <span><strong>{{ entry.label }}</strong><small>{{ entry.path }}</small></span><ChevronRight :size="14" />
           </button>
-          <p v-if="!searchResults.length">没有匹配的可用设置</p>
+          <p v-if="!searchResults.length">{{ t('noMatchingSettings') }}</p>
         </div>
 
         <template v-else v-for="group in sectionGroups" :key="group.label">
@@ -199,7 +243,7 @@ const formatCleanupTime = computed(() => props.lastCacheCleanupAt
           </button>
         </template>
 
-        <p class="settings-local-status"><Monitor :size="14" />工程保存在本地</p>
+        <p class="settings-local-status"><Monitor :size="14" />{{ t('projectsStoredLocally') }}</p>
       </nav>
 
       <div class="settings-detail">
@@ -207,156 +251,197 @@ const formatCleanupTime = computed(() => props.lastCacheCleanupAt
           <button class="settings-back" type="button" @click="detail = null"><ArrowLeft :size="16" />{{ activeDefinition?.label }}</button>
 
           <template v-if="detail === 'motion-global'">
-            <header><p>辅助功能 · 动态与感知</p><h2>动态效果</h2><span>统一限制决明中的非必要动画；系统“减少动态效果”拥有更高优先级。</span></header>
+            <header><p>{{ t('swMotionGlobalPath') }}</p><h2>{{ t('swMotionEffects') }}</h2><span>{{ t('swMotionGlobalDescription') }}</span></header>
             <div class="settings-group">
-              <label class="setting-row"><span><strong>全局动效模式</strong><small>当前有效状态：{{ effectiveMotionMode === 'standard' ? '标准' : effectiveMotionMode === 'reduced' ? '已减少' : '已关闭' }}</small></span><select v-model="settings.device.motion.mode" @change="emit('applyMotion')"><option value="system">跟随系统（推荐）</option><option value="standard">标准</option><option value="reduced">减少</option><option value="off">关闭非必要动画</option></select></label>
-              <div class="setting-row setting-row--readonly"><span><strong>系统偏好</strong><small>应用不能用更强动画覆盖系统辅助功能</small></span><output>{{ systemReducedMotion ? '系统已要求减少' : '系统未要求减少' }}</output></div>
+              <label class="setting-row"><span><strong>{{ t('swGlobalMotionMode') }}</strong><small>{{ t('swCurrentEffectiveState', { state: effectiveMotionMode === 'standard' ? t('swStandard') : effectiveMotionMode === 'reduced' ? t('swReduced') : t('swOff') }) }}</small></span><select v-model="settings.device.motion.mode" @change="emit('applyMotion')"><option value="system">{{ t('swFollowSystemRecommended') }}</option><option value="standard">{{ t('swStandard') }}</option><option value="reduced">{{ t('swReduce') }}</option><option value="off">{{ t('swTurnOffNonessential') }}</option></select></label>
+              <div class="setting-row setting-row--readonly"><span><strong>{{ t('swSystemPreference') }}</strong><small>{{ t('swSystemPreferenceHint') }}</small></span><output>{{ systemReducedMotion ? t('swSystemReduced') : t('swSystemNotReduced') }}</output></div>
             </div>
-            <p class="settings-note">关闭非必要动画后，保存、错误、拖拽目标和跳转位置仍使用静态文字、图标和边框反馈。</p>
+            <p class="settings-note">{{ t('swMotionStaticFeedbackNote') }}</p>
           </template>
 
           <template v-else-if="detail === 'interface-motion'">
-            <header><p>外观与阅读 · 界面动效</p><h2>界面动画</h2><span>逐项控制页面反馈；所有选项仍受全局动效模式限制。</span></header>
+            <header><p>{{ t('swInterfaceMotionPath') }}</p><h2>{{ t('swInterfaceAnimation') }}</h2><span>{{ t('swInterfaceMotionDescription') }}</span></header>
             <div class="settings-group">
-              <label class="setting-row"><span><strong>页面与面板转场</strong><small>关闭后页面即时切换并保留键盘焦点</small></span><input v-model="settings.device.motion.interfaceTransitions" class="switch" type="checkbox" @change="emit('applyMotion')" /></label>
-              <label class="setting-row"><span><strong>平滑跳转</strong><small>查找、书签和搜索结果滚动</small></span><input v-model="settings.device.motion.smoothNavigation" class="switch" type="checkbox" @change="emit('applyMotion')" /></label>
-              <label class="setting-row"><span><strong>高亮淡出</strong><small>关闭后使用短时静态边框</small></span><input v-model="settings.device.motion.highlightFade" class="switch" type="checkbox" @change="emit('applyMotion')" /></label>
-              <label class="setting-row"><span><strong>拖拽反馈动画</strong><small>关闭后仍显示静态插入位置</small></span><input v-model="settings.device.motion.dragFeedback" class="switch" type="checkbox" @change="emit('applyMotion')" /></label>
-              <label class="setting-row"><span><strong>成功微动效</strong><small>关闭后保留文字确认</small></span><input v-model="settings.device.motion.successMotion" class="switch" type="checkbox" @change="emit('applyMotion')" /></label>
+              <label class="setting-row"><span><strong>{{ t('swPanelTransitions') }}</strong><small>{{ t('swPanelTransitionsHint') }}</small></span><input v-model="settings.device.motion.interfaceTransitions" class="switch" type="checkbox" @change="emit('applyMotion')" /></label>
+              <label class="setting-row"><span><strong>{{ t('swSmoothNavigation') }}</strong><small>{{ t('swSmoothNavigationHint') }}</small></span><input v-model="settings.device.motion.smoothNavigation" class="switch" type="checkbox" @change="emit('applyMotion')" /></label>
+              <label class="setting-row"><span><strong>{{ t('swHighlightFade') }}</strong><small>{{ t('swHighlightFadeHint') }}</small></span><input v-model="settings.device.motion.highlightFade" class="switch" type="checkbox" @change="emit('applyMotion')" /></label>
+              <label class="setting-row"><span><strong>{{ t('swDragFeedback') }}</strong><small>{{ t('swDragFeedbackHint') }}</small></span><input v-model="settings.device.motion.dragFeedback" class="switch" type="checkbox" @change="emit('applyMotion')" /></label>
+              <label class="setting-row"><span><strong>{{ t('swSuccessMotion') }}</strong><small>{{ t('swSuccessMotionHint') }}</small></span><input v-model="settings.device.motion.successMotion" class="switch" type="checkbox" @change="emit('applyMotion')" /></label>
             </div>
           </template>
 
           <template v-else>
-            <header><p>通用 · 性能与节能</p><h2>动效性能策略</h2><span>窗口不在前台时暂停非必要动画，减少后台资源使用。</span></header>
+            <header><p>{{ t('swMotionPerformancePath') }}</p><h2>{{ t('swMotionPerformance') }}</h2><span>{{ t('swMotionPerformanceDescription') }}</span></header>
             <div class="settings-group">
-              <label class="setting-row"><span><strong>失去焦点时暂停</strong><small>不影响自动保存、导出或其他数据任务</small></span><input v-model="settings.device.motion.pauseWhenUnfocused" class="switch" type="checkbox" @change="emit('applyMotion')" /></label>
-              <div class="setting-row setting-row--readonly"><span><strong>当前动效状态</strong><small>{{ motionSummary }}</small></span><output>{{ effectiveMotionMode === 'off' ? '已暂停' : '前台运行' }}</output></div>
+              <label class="setting-row"><span><strong>{{ t('swPauseWhenUnfocused') }}</strong><small>{{ t('swPauseWhenUnfocusedHint') }}</small></span><input v-model="settings.device.motion.pauseWhenUnfocused" class="switch" type="checkbox" @change="emit('applyMotion')" /></label>
+              <div class="setting-row setting-row--readonly"><span><strong>{{ t('swCurrentMotionState') }}</strong><small>{{ motionSummary }}</small></span><output>{{ effectiveMotionMode === 'off' ? t('swPaused') : t('swRunningForeground') }}</output></div>
             </div>
           </template>
         </section>
 
         <section v-else-if="activeSection === 'general'" class="settings-pane">
-          <header><p>应用偏好</p><h2>通用</h2><span>设置启动路径、默认工作模式和后台动效行为。</span></header>
-          <h3>启动行为</h3>
+          <header><p>{{ t('settingsGroupPreferences') }}</p><h2>{{ t('settingsGeneral') }}</h2><span>{{ t('settingsGeneralDescription') }}</span></header>
+          <h3>{{ t('swLanguage') }}</h3>
           <div class="settings-group">
-            <label class="setting-row"><span><strong>启动后打开</strong><small>“上次工程”只打开仍然存在的本地工程</small></span><select v-model="settings.device.general.startupDestination" @change="emit('applyGeneral')"><option value="welcome">欢迎页</option><option value="last-project">上次工程</option><option value="project-picker">工程选择器</option></select></label>
-            <label class="setting-row"><span><strong>默认工作模式</strong><small>新建或打开工程后的初始模式</small></span><select v-model="settings.device.general.defaultWorkspace" @change="emit('applyGeneral')"><option value="review">审阅</option><option value="edit">编辑</option><option value="order">排序</option></select></label>
-            <label class="setting-row"><span><strong>记住设置位置</strong><small>下次打开设置时回到最后一个分类</small></span><input v-model="settings.device.general.rememberSettingsLocation" class="switch" type="checkbox" @change="emit('applyGeneral')" /></label>
+            <label class="setting-row">
+              <span><strong>{{ t('swInterfaceLanguage') }}</strong><small>{{ t('swInterfaceLanguageHint') }}</small></span>
+              <select v-model="settings.device.general.interfaceLanguage" :aria-label="t('swInterfaceLanguage')" @change="emit('applyGeneral')">
+                <option value="system">{{ t('swFollowSystemRecommended') }}</option>
+                <option value="zh-CN">中文（简体）</option>
+                <option value="en">English</option>
+                <option value="ja">日本語</option>
+                <option value="fr">Français</option>
+                <option value="de">Deutsch</option>
+              </select>
+            </label>
           </div>
-          <h3>性能与节能</h3>
-          <button class="settings-group settings-link-row" type="button" @click="openDetail('motion-performance', 'general')"><span><Gauge :size="18" /><span><strong>动效性能策略</strong><small>后台暂停与当前有效状态</small></span></span><span>{{ settings.device.motion.pauseWhenUnfocused ? '自动' : '持续运行' }}<ChevronRight :size="15" /></span></button>
+          <h3>{{ t('swStartupBehavior') }}</h3>
+          <div class="settings-group">
+            <label class="setting-row"><span><strong>{{ t('swOpenOnStartup') }}</strong><small>{{ t('swOpenOnStartupHint') }}</small></span><select v-model="settings.device.general.startupDestination" @change="emit('applyGeneral')"><option value="welcome">{{ t('swWelcomePage') }}</option><option value="last-project">{{ t('swLastProject') }}</option><option value="project-picker">{{ t('swProjectPicker') }}</option></select></label>
+            <label class="setting-row"><span><strong>{{ t('swDefaultWorkspace') }}</strong><small>{{ t('swDefaultWorkspaceHint') }}</small></span><select v-model="settings.device.general.defaultWorkspace" @change="emit('applyGeneral')"><option value="review">{{ t('swReview') }}</option><option value="edit">{{ t('swEdit') }}</option><option value="order">{{ t('swOrder') }}</option></select></label>
+            <label class="setting-row"><span><strong>{{ t('swRememberLocation') }}</strong><small>{{ t('swRememberLocationHint') }}</small></span><input v-model="settings.device.general.rememberSettingsLocation" class="switch" type="checkbox" @change="emit('applyGeneral')" /></label>
+          </div>
+          <h3>{{ t('swPerformanceEnergy') }}</h3>
+          <button class="settings-group settings-link-row" type="button" @click="openDetail('motion-performance', 'general')"><span><Gauge :size="18" /><span><strong>{{ t('swMotionPerformance') }}</strong><small>{{ t('swMotionPerformanceDescription') }}</small></span></span><span>{{ settings.device.motion.pauseWhenUnfocused ? t('swAutomatic') : t('swContinuous') }}<ChevronRight :size="15" /></span></button>
         </section>
 
         <section v-else-if="activeSection === 'appearance'" class="settings-pane">
-          <header><p>应用偏好</p><h2>外观与阅读</h2><span>分别调整正文阅读、应用尺寸和界面反馈。</span></header>
-          <h3>显示主题</h3>
-          <div class="settings-group"><label class="setting-row"><span><strong>显示主题</strong><small>选择适合当前环境的界面色彩</small></span><select v-model="settings.device.appearance.theme" @change="emit('applyUi')"><option value="light">明亮</option><option value="eye">护眼</option></select></label></div>
-          <h3>阅读文字</h3>
-          <div class="settings-group scale-group"><div class="scale-heading"><span><strong>字体大小</strong><small>只调整双语正文和编辑文字</small></span><output>{{ settings.device.appearance.fontScale }}%</output></div><div class="stepped-slider"><span>小</span><input v-model.number="settings.device.appearance.fontScale" aria-label="字体大小" type="range" min="90" max="130" step="10" @input="emit('applyUi')" /><span>大</span></div></div>
-          <div class="settings-group"><label class="setting-row"><span><strong>行间距</strong><small>调整双语正文的纵向阅读密度</small></span><select v-model="settings.device.appearance.lineSpacing" @change="emit('applyUi')"><option value="compact">紧凑</option><option value="standard">标准</option><option value="relaxed">宽松</option></select></label></div>
-          <h3>界面尺寸</h3>
-          <div class="settings-group scale-group"><div class="scale-heading"><span><strong>界面空间大小</strong><small>调整按钮、边栏和控件的整体比例</small></span><output>{{ settings.device.appearance.uiScale }}%</output></div><div class="stepped-slider"><span>紧</span><input v-model.number="settings.device.appearance.uiScale" aria-label="界面空间大小" type="range" min="85" max="115" step="5" @input="emit('applyUi')" /><span>松</span></div></div>
-          <div class="settings-group">
-            <label class="setting-row"><span><strong>列表密度</strong><small>不会降低可点击区域的最小尺寸</small></span><select v-model="settings.device.appearance.listDensity" @change="emit('applyUi')"><option value="compact">紧凑</option><option value="standard">标准</option><option value="comfortable">宽松</option></select></label>
-            <label class="setting-row"><span><strong>侧栏尺寸</strong><small>设置应用主导航的默认宽度</small></span><select v-model="settings.device.appearance.sidebarSize" @change="emit('applyUi')"><option value="auto">自动</option><option value="compact">紧凑</option><option value="wide">宽</option></select></label>
-            <label class="setting-row"><span><strong>双栏宽度</strong><small>改变中英文阅读空间比例</small></span><select v-model="settings.device.appearance.columnBalance" @change="emit('applyUi')"><option value="equal">均分</option><option value="source-wide">中文较宽</option><option value="target-wide">英文较宽</option></select></label>
-            <label class="setting-row"><span><strong>Alignment 辅助标签</strong><small>关闭后仍保留关系本身和非颜色状态</small></span><input v-model="settings.device.appearance.alignmentHints" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+          <header><p>{{ t('settingsGroupPreferences') }}</p><h2>{{ t('settingsAppearanceReading') }}</h2><span>{{ t('settingsAppearanceReadingHint') }}</span></header>
+          <h3>{{ t('swDisplayTheme') }}</h3>
+          <div class="settings-group"><label class="setting-row"><span><strong>{{ t('swDisplayTheme') }}</strong><small>{{ t('swDisplayThemeHint') }}</small></span><select v-model="settings.device.appearance.theme" @change="emit('applyUi')"><option value="light">{{ t('swLight') }}</option><option value="eye">{{ t('swEyeCare') }}</option></select></label></div>
+          <h3>{{ t('swReadingText') }}</h3>
+          <div class="settings-group scale-group">
+            <div class="scale-heading"><span><strong>{{ t('swFontSize') }}</strong><small>{{ t('swFontSizeHint') }}</small></span><output aria-live="polite">{{ settings.device.appearance.fontScale }}%</output></div>
+            <div class="font-size-control">
+              <button type="button" :aria-label="t('swDecreaseFont')" :title="t('swDecreaseFont')" :disabled="settings.device.appearance.fontScale <= FONT_SCALE_MIN" @click="adjustFontScale(-1)"><Minus :size="16" /></button>
+              <input v-model.number="settings.device.appearance.fontScale" :aria-label="t('swFontSize')" :aria-valuetext="`${settings.device.appearance.fontScale}%`" type="range" :min="FONT_SCALE_MIN" :max="FONT_SCALE_MAX" :step="FONT_SCALE_STEP" @input="emit('applyUi')" />
+              <button type="button" :aria-label="t('swIncreaseFont')" :title="t('swIncreaseFont')" :disabled="settings.device.appearance.fontScale >= FONT_SCALE_MAX" @click="adjustFontScale(1)"><Plus :size="16" /></button>
+            </div>
           </div>
-          <h3>界面动效</h3>
-          <button class="settings-group settings-link-row" type="button" @click="openDetail('interface-motion', 'appearance')"><span><Gauge :size="18" /><span><strong>界面动画</strong><small>转场、跳转、高亮和拖拽反馈</small></span></span><span>{{ motionSummary }}<ChevronRight :size="15" /></span></button>
+          <figure class="settings-group reading-preview" aria-labelledby="reading-preview-label">
+            <figcaption id="reading-preview-label">{{ t('swPreview') }}</figcaption>
+            <blockquote lang="ca">L’arquitecte és l’home sintètic, el que és capaç de veure les coses en conjunt abans que estiguin fetes.</blockquote>
+            <cite>— Antoni Gaudí</cite>
+          </figure>
+          <div class="settings-group"><label class="setting-row"><span><strong>{{ t('swLineSpacing') }}</strong><small>{{ t('swLineSpacingHint') }}</small></span><select v-model="settings.device.appearance.lineSpacing" @change="emit('applyUi')"><option value="compact">{{ t('swCompact') }}</option><option value="standard">{{ t('swStandard') }}</option><option value="relaxed">{{ t('swRelaxed') }}</option></select></label></div>
+          <h3>{{ t('swInterfaceSize') }}</h3>
+          <div class="settings-group scale-group"><div class="scale-heading"><span><strong>{{ t('swUiSpace') }}</strong><small>{{ t('swUiSpaceHint') }}</small></span><output>{{ settings.device.appearance.uiScale }}%</output></div><div class="stepped-slider"><span>{{ t('swTight') }}</span><input v-model.number="settings.device.appearance.uiScale" :aria-label="t('swUiSpace')" type="range" min="85" max="115" step="5" @input="emit('applyUi')" /><span>{{ t('swLoose') }}</span></div></div>
+          <div class="settings-group">
+            <label class="setting-row"><span><strong>{{ t('swListDensity') }}</strong><small>{{ t('swListDensityHint') }}</small></span><select v-model="settings.device.appearance.listDensity" @change="emit('applyUi')"><option value="compact">{{ t('swCompact') }}</option><option value="standard">{{ t('swStandard') }}</option><option value="comfortable">{{ t('swRelaxed') }}</option></select></label>
+            <label class="setting-row"><span><strong>{{ t('swSidebarSize') }}</strong><small>{{ t('swSidebarSizeHint') }}</small></span><select v-model="settings.device.appearance.sidebarSize" @change="emit('applyUi')"><option value="auto">{{ t('swAuto') }}</option><option value="compact">{{ t('swCompact') }}</option><option value="wide">{{ t('swWide') }}</option></select></label>
+            <label class="setting-row"><span><strong>{{ t('swColumnBalance') }}</strong><small>{{ t('swColumnBalanceHint') }}</small></span><select v-model="settings.device.appearance.columnBalance" @change="emit('applyUi')"><option value="equal">{{ t('swEqual') }}</option><option value="source-wide">{{ t('swSourceWide') }}</option><option value="target-wide">{{ t('swTargetWide') }}</option></select></label>
+            <label class="setting-row"><span><strong>{{ t('swAlignmentHints') }}</strong><small>{{ t('swAlignmentHintsHint') }}</small></span><input v-model="settings.device.appearance.alignmentHints" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+          </div>
+          <h3>{{ t('swInterfaceMotion') }}</h3>
+          <button class="settings-group settings-link-row" type="button" @click="openDetail('interface-motion', 'appearance')"><span><Gauge :size="18" /><span><strong>{{ t('swInterfaceAnimation') }}</strong><small>{{ t('swInterfaceAnimationHint') }}</small></span></span><span>{{ motionSummary }}<ChevronRight :size="15" /></span></button>
         </section>
 
         <section v-else-if="activeSection === 'accessibility'" class="settings-pane">
-          <header><p>应用偏好</p><h2>辅助功能</h2><span>基础键盘可达性和非颜色状态表达始终开启。</span></header>
-          <h3>动态与感知</h3>
-          <button class="settings-group settings-link-row" type="button" @click="openDetail('motion-global', 'accessibility')"><span><AccessibilityIcon :size="18" /><span><strong>动态效果</strong><small>跟随系统并集中限制非必要动画</small></span></span><span>{{ motionSummary }}<ChevronRight :size="15" /></span></button>
-          <h3>视觉辅助</h3>
+          <header><p>{{ t('settingsGroupPreferences') }}</p><h2>{{ t('settingsAccessibility') }}</h2><span>{{ t('settingsAccessibilityHint') }}</span></header>
+          <h3>{{ t('swMotionPerception') }}</h3>
+          <button class="settings-group settings-link-row" type="button" @click="openDetail('motion-global', 'accessibility')"><span><AccessibilityIcon :size="18" /><span><strong>{{ t('swMotionEffects') }}</strong><small>{{ t('swMotionGlobalDescription') }}</small></span></span><span>{{ motionSummary }}<ChevronRight :size="15" /></span></button>
+          <h3>{{ t('swVisualAssistance') }}</h3>
           <div class="settings-group">
-            <label class="setting-row"><span><strong>增强对比度</strong><small>保持原文、译文和操作语义色不变</small></span><select v-model="settings.device.accessibility.contrast" @change="emit('applyAccessibility')"><option value="system">跟随系统</option><option value="standard">标准</option><option value="increased">增强</option></select></label>
-            <label class="setting-row"><span><strong>强化键盘焦点</strong><small>为当前焦点增加更清晰的边框</small></span><input v-model="settings.device.accessibility.enhancedFocus" class="switch" type="checkbox" @change="emit('applyAccessibility')" /></label>
-            <label class="setting-row"><span><strong>更大点击区域</strong><small>放大紧凑按钮和拖拽手柄的命中范围</small></span><input v-model="settings.device.accessibility.largerTargets" class="switch" type="checkbox" @change="emit('applyAccessibility')" /></label>
-            <label class="setting-row"><span><strong>减少透明效果</strong><small>将浮层和抽屉改为不透明表面</small></span><input v-model="settings.device.accessibility.reduceTransparency" class="switch" type="checkbox" @change="emit('applyAccessibility')" /></label>
+            <label class="setting-row"><span><strong>{{ t('swEnhancedContrast') }}</strong><small>{{ t('swEnhancedContrastHint') }}</small></span><select v-model="settings.device.accessibility.contrast" @change="emit('applyAccessibility')"><option value="system">{{ t('swFollowSystem') }}</option><option value="standard">{{ t('swStandard') }}</option><option value="increased">{{ t('swIncreased') }}</option></select></label>
+            <label class="setting-row"><span><strong>{{ t('swEnhancedFocus') }}</strong><small>{{ t('swEnhancedFocusHint') }}</small></span><input v-model="settings.device.accessibility.enhancedFocus" class="switch" type="checkbox" @change="emit('applyAccessibility')" /></label>
+            <label class="setting-row"><span><strong>{{ t('swLargerTargets') }}</strong><small>{{ t('swLargerTargetsHint') }}</small></span><input v-model="settings.device.accessibility.largerTargets" class="switch" type="checkbox" @change="emit('applyAccessibility')" /></label>
+            <label class="setting-row"><span><strong>{{ t('swReduceTransparency') }}</strong><small>{{ t('swReduceTransparencyHint') }}</small></span><input v-model="settings.device.accessibility.reduceTransparency" class="switch" type="checkbox" @change="emit('applyAccessibility')" /></label>
           </div>
         </section>
 
         <section v-else-if="activeSection === 'input'" class="settings-pane">
-          <header><p>应用偏好</p><h2>键盘与触控板</h2><span>按操作系统习惯调整快捷键和滚动方式。</span></header>
-          <h3>输入设备</h3>
+          <header><p>{{ t('settingsGroupPreferences') }}</p><h2>{{ t('settingsInput') }}</h2><span>{{ t('settingsInputHint') }}</span></header>
+          <h3>{{ t('swInputDevices') }}</h3>
           <div class="settings-group">
-            <label class="setting-row"><span><strong>快捷键布局</strong><small>当前主修饰键：{{ usesMacShortcuts ? 'Command' : 'Ctrl' }}</small></span><select v-model="settings.device.input.shortcutProfile" @change="emit('applyInteraction')"><option value="auto">自动识别（推荐）</option><option value="macos">macOS · Command</option><option value="windows">Windows / Linux · Ctrl</option></select></label>
-            <label class="setting-row"><span><strong>触控板优化</strong><small>滚动会取消跳转动画，排序只从手柄开始</small></span><input v-model="settings.device.input.trackpadOptimized" class="switch" type="checkbox" @change="emit('applyInteraction')" /></label>
+            <label class="setting-row"><span><strong>{{ t('swShortcutLayout') }}</strong><small>{{ t('swPrimaryModifier', { modifier: usesMacShortcuts ? 'Command' : 'Ctrl' }) }}</small></span><select v-model="settings.device.input.shortcutProfile" @change="emit('applyInteraction')"><option value="auto">{{ t('swAutoDetectRecommended') }}</option><option value="macos">macOS · Command</option><option value="windows">Windows / Linux · Ctrl</option></select></label>
+            <label class="setting-row"><span><strong>{{ t('swTrackpadOptimized') }}</strong><small>{{ t('swTrackpadOptimizedHint') }}</small></span><input v-model="settings.device.input.trackpadOptimized" class="switch" type="checkbox" @change="emit('applyInteraction')" /></label>
           </div>
-          <h3>当前快捷键</h3>
-          <div class="settings-group shortcut-grid" aria-label="当前快捷键说明"><template v-for="row in shortcutRows" :key="row[0]"><span>{{ row[0] }}</span><kbd>{{ row[1] }}</kbd></template></div>
+          <h3>{{ t('swCurrentShortcuts') }}</h3>
+          <div class="settings-group shortcut-grid" :aria-label="t('swCurrentShortcutsAria')"><template v-for="row in shortcutRows" :key="row[0]"><span>{{ row[0] }}</span><kbd>{{ row[1] }}</kbd></template></div>
         </section>
 
         <section v-else-if="activeSection === 'pet'" class="settings-pane">
-          <header><p>应用偏好</p><h2>决明小花园</h2><span>猫猫、狗狗与蝴蝶陪你工作。你可以随时回到静态画面。</span></header>
-          <h3>呈现方式</h3>
+          <header><p>{{ t('settingsGroupPreferences') }}</p><h2>{{ t('swGardenTitle') }}</h2><span>{{ t('swGardenDescription') }}</span></header>
+          <h3>{{ t('swPresentation') }}</h3>
           <div class="settings-group">
-            <label class="setting-row"><span><strong>显示小花园</strong><small>在侧栏和工程状态栏中显示</small></span><input v-model="settings.device.pet.enabled" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
-            <label class="setting-row"><span><strong>注意力偏好</strong><small>极简模式只显示静态图片</small></span><select v-model="settings.device.pet.presentation" @change="emit('applyUi')"><option value="static">极简 · 静态图片</option><option value="quiet">安静 · 仅操作反馈</option><option value="animated">生动 · 花园与角色动作</option><option value="hidden">隐藏花园</option></select></label>
+            <label class="setting-row"><span><strong>{{ t('swShowGarden') }}</strong><small>{{ t('swShowGardenHint') }}</small></span><input v-model="settings.device.pet.enabled" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+            <label class="setting-row"><span><strong>{{ t('swAttentionPreference') }}</strong><small>{{ t('swAttentionPreferenceHint') }}</small></span><select v-model="settings.device.pet.presentation" @change="emit('applyUi')"><option value="static">{{ t('swGardenStatic') }}</option><option value="quiet">{{ t('swGardenQuiet') }}</option><option value="animated">{{ t('swGardenAnimated') }}</option><option value="hidden">{{ t('swGardenHidden') }}</option></select></label>
           </div>
-          <h3>花园成员</h3>
+          <h3>{{ t('swGardenMembers') }}</h3>
           <div class="settings-group">
-            <label class="setting-row"><span><strong>橘猫</strong><small>在猫爬架、猫窝和花园休息</small></span><input v-model="settings.device.pet.catEnabled" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
-            <label class="setting-row"><span><strong>金毛狗狗</strong><small>住在猫爬架下方的小屋</small></span><input v-model="settings.device.pet.dogEnabled" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
-            <label class="setting-row"><span><strong>蝴蝶引导</strong><small>助手跳转完成后标记操作位置</small></span><input v-model="settings.device.pet.butterflyMotion" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
-            <label class="setting-row"><span><strong>编辑时保持安静</strong><small>有编辑草稿时暂停花园动作</small></span><input v-model="settings.device.pet.quietWhileEditing" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+            <label class="setting-row"><span><strong>{{ t('swOrangeCat') }}</strong><small>{{ t('swOrangeCatHint') }}</small></span><input v-model="settings.device.pet.catEnabled" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+            <label class="setting-row"><span><strong>{{ t('swGoldenDog') }}</strong><small>{{ t('swGoldenDogHint') }}</small></span><input v-model="settings.device.pet.dogEnabled" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+            <label class="setting-row"><span><strong>{{ t('swButterflyGuide') }}</strong><small>{{ t('swButterflyGuideHint') }}</small></span><input v-model="settings.device.pet.butterflyMotion" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+            <label class="setting-row"><span><strong>{{ t('swQuietWhileEditing') }}</strong><small>{{ t('swQuietWhileEditingHint') }}</small></span><input v-model="settings.device.pet.quietWhileEditing" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
           </div>
-          <p class="settings-note">跟随系统的减少动态效果和后台暂停设置。隐藏花园后，修改审核仍可在助手侧栏完成。</p>
+          <p class="settings-note">{{ t('swGardenNote') }}</p>
         </section>
 
         <section v-else-if="activeSection === 'agent'" class="settings-pane">
-          <header><p>数据与安全</p><h2>AI 与 Agent</h2><span>连接当前应用，读取上下文，并在修改前审核差异。</span></header>
+          <header><p>{{ t('settingsGroupData') }}</p><h2>{{ t('settingsAgent') }}</h2><span>{{ t('swAgentDescription') }}</span></header>
           <slot name="agent-settings" />
-          <h3>全局助手</h3>
+          <h3>{{ t('swGlobalAssistant') }}</h3>
           <div class="settings-group">
-            <label class="setting-row"><span><strong>显示上下文</strong><small>展示当前页面和选中的文本</small></span><input v-model="settings.device.agent.showContext" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
-            <label class="setting-row"><span><strong>允许读取选中内容</strong><small>关闭后，选中的正文不进入助手上下文</small></span><input v-model="settings.device.agent.shareSelection" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
-            <label class="setting-row"><span><strong>有待审核修改时展开助手</strong><small>应用内和外部工具共用审核流程</small></span><input v-model="settings.device.agent.openOnRequest" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+            <label class="setting-row"><span><strong>{{ t('swShowContext') }}</strong><small>{{ t('swShowContextHint') }}</small></span><input v-model="settings.device.agent.showContext" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+            <label class="setting-row"><span><strong>{{ t('swShareSelection') }}</strong><small>{{ t('swShareSelectionHint') }}</small></span><input v-model="settings.device.agent.shareSelection" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
+            <label class="setting-row"><span><strong>{{ t('swOpenAssistantOnRequest') }}</strong><small>{{ t('swOpenAssistantOnRequestHint') }}</small></span><input v-model="settings.device.agent.openOnRequest" class="switch" type="checkbox" @change="emit('applyUi')" /></label>
           </div>
         </section>
 
+        <section v-else-if="activeSection === 'research'" class="settings-pane">
+          <header><p>{{ t('settingsGroupData') }}</p><h2>{{ t('settingsResearch') }}</h2><span>{{ t('swResearchDescription') }}</span></header>
+          <ResearchFeatureSettings
+            :feature="researchFeature ?? null"
+            :available="researchAvailable === true"
+            :busy="researchBusy === true"
+            @enable="emit('research-enable')"
+            @disable="emit('research-disable')"
+            @cancel="emit('research-cancel')"
+            @retry="emit('research-retry')"
+            @open="emit('research-open')"
+            @preferences="emit('research-preferences', $event)"
+          />
+        </section>
+
         <section v-else-if="activeSection === 'persistence'" class="settings-pane">
-          <header><p>数据与安全</p><h2>保存与历史</h2><span>每次成功 canonical ChangeSet 都会保留完整 Revision。</span></header>
-          <h3>自动保存</h3>
-          <div class="settings-group"><label class="setting-row"><span><strong>保存延迟</strong><small>停止输入后自动写入一个完整 ChangeSet</small></span><select v-model.number="settings.device.persistence.autoSaveDelayMs" @change="emit('applyPersistence')"><option :value="1000">1 秒</option><option :value="3000">3 秒（推荐）</option><option :value="5000">5 秒</option><option :value="10000">10 秒</option><option :value="30000">30 秒</option></select></label></div>
-          <h3>Revision 历史</h3>
+          <header><p>{{ t('settingsGroupData') }}</p><h2>{{ t('settingsPersistence') }}</h2><span>{{ t('swPersistenceDescription') }}</span></header>
+          <h3>{{ t('swAutosave') }}</h3>
+          <div class="settings-group"><label class="setting-row"><span><strong>{{ t('swSaveDelay') }}</strong><small>{{ t('swSaveDelayHint') }}</small></span><select v-model.number="settings.device.persistence.autoSaveDelayMs" @change="emit('applyPersistence')"><option :value="1000">{{ t('swSeconds', { count: 1 }) }}</option><option :value="3000">{{ t('swSecondsRecommended', { count: 3 }) }}</option><option :value="5000">{{ t('swSeconds', { count: 5 }) }}</option><option :value="10000">{{ t('swSeconds', { count: 10 }) }}</option><option :value="30000">{{ t('swSeconds', { count: 30 }) }}</option></select></label></div>
+          <h3>{{ t('swRevisionHistory') }}</h3>
           <div class="settings-group">
-            <div class="setting-row setting-row--readonly"><span><strong>完整历史</strong><small>Undo、Redo 和 Restore 也会产生新 Revision</small></span><output>始终保留</output></div>
-            <div class="setting-row setting-row--readonly"><span><strong>自动删除历史</strong><small>Revision 不属于缓存</small></span><output>不提供</output></div>
+            <div class="setting-row setting-row--readonly"><span><strong>{{ t('swFullHistory') }}</strong><small>{{ t('swFullHistoryHint') }}</small></span><output>{{ t('swAlwaysKeep') }}</output></div>
+            <div class="setting-row setting-row--readonly"><span><strong>{{ t('swAutoDeleteHistory') }}</strong><small>{{ t('swRevisionNotCache') }}</small></span><output>{{ t('swUnavailable') }}</output></div>
           </div>
         </section>
 
         <section v-else-if="activeSection === 'storage'" class="settings-pane">
-          <header><p>数据与安全</p><h2>存储空间</h2><span>只清理可重建的派生缓存，不触碰正式工程历史。</span></header>
-          <h3>缓存策略</h3>
-          <div class="settings-group"><label class="setting-row"><span><strong>自动清理</strong><small>只清理 `.jm/cache`</small></span><select v-model="settings.device.persistence.cacheCleanupPolicy" @change="emit('applyPersistence')"><option value="startup">每次启动</option><option value="weekly">每 7 天（推荐）</option><option value="monthly">每 30 天</option><option value="never">从不自动清理</option></select></label></div>
-          <h3>手动清理</h3>
-          <div class="settings-group cache-row"><span><strong>立即清理派生缓存</strong><small>{{ projectOpen ? `上次：${formatCleanupTime}` : '打开本地工程后可清理' }}</small></span><div><button class="secondary-button" type="button" :disabled="cacheCleaning || !projectOpen" @click="emit('clearCache')">{{ cacheCleaning ? '清理中…' : '立即清理' }}</button><small>revisions/ 不会被删除</small></div></div>
+          <header><p>{{ t('settingsGroupData') }}</p><h2>{{ t('settingsStorageSpace') }}</h2><span>{{ t('swStorageDescription') }}</span></header>
+          <h3>{{ t('swCachePolicy') }}</h3>
+          <div class="settings-group"><label class="setting-row"><span><strong>{{ t('swAutomaticCleanup') }}</strong><small>{{ t('swAutomaticCleanupHint') }}</small></span><select v-model="settings.device.persistence.cacheCleanupPolicy" @change="emit('applyPersistence')"><option value="startup">{{ t('swEveryStartup') }}</option><option value="weekly">{{ t('swEvery7DaysRecommended') }}</option><option value="monthly">{{ t('swEvery30Days') }}</option><option value="never">{{ t('swNeverCleanup') }}</option></select></label></div>
+          <h3>{{ t('swManualCleanup') }}</h3>
+          <div class="settings-group cache-row"><span><strong>{{ t('swCleanDerivedCache') }}</strong><small>{{ projectOpen ? t('swLastCleanup', { date: formatCleanupTime }) : t('swOpenProjectToClean') }}</small></span><div><button class="secondary-button" type="button" :disabled="cacheCleaning || !projectOpen" @click="emit('clearCache')">{{ cacheCleaning ? t('swCleaning') : t('swCleanNow') }}</button><small>{{ t('swRevisionsPreserved') }}</small></div></div>
         </section>
 
         <section v-else-if="activeSection === 'privacy'" class="settings-pane">
-          <header><p>数据与安全</p><h2>隐私与安全</h2><span>工程保存在本机。外部工具和模型连接由你在 AI 与 Agent 中配置。</span></header>
-          <h3>本地模式</h3>
+          <header><p>{{ t('settingsGroupData') }}</p><h2>{{ t('settingsPrivacy') }}</h2><span>{{ t('swPrivacyDescription') }}</span></header>
+          <h3>{{ t('swLocalMode') }}</h3>
           <div class="settings-group">
-            <div class="setting-row setting-row--readonly"><span><strong>工程正文与译文</strong><small>助手仅通过应用提供的工具访问当前工程</small></span><output>本地保存</output></div>
-            <div class="setting-row setting-row--readonly"><span><strong>外部 AI 连接</strong><small>已授权客户端可以读取工具返回的内容</small></span><button class="secondary-button" type="button" @click="chooseSection('agent')">查看连接</button></div>
-            <div class="setting-row setting-row--readonly"><span><strong>诊断和使用统计</strong><small>当前未接入遥测端点</small></span><output>不发送</output></div>
+            <div class="setting-row setting-row--readonly"><span><strong>{{ t('swProjectText') }}</strong><small>{{ t('swProjectTextHint') }}</small></span><output>{{ t('swStoredLocally') }}</output></div>
+            <div class="setting-row setting-row--readonly"><span><strong>{{ t('swExternalAiConnections') }}</strong><small>{{ t('swExternalAiConnectionsHint') }}</small></span><button class="secondary-button" type="button" @click="chooseSection('agent')">{{ t('swViewConnections') }}</button></div>
+            <div class="setting-row setting-row--readonly"><span><strong>{{ t('swDiagnosticsUsage') }}</strong><small>{{ t('swDiagnosticsUsageHint') }}</small></span><output>{{ t('swNotSent') }}</output></div>
           </div>
         </section>
 
         <section v-else class="settings-pane">
-          <header><p>系统</p><h2>更新与关于</h2><span>查看当前构建、设置存储状态和本地能力边界。</span></header>
-          <h3>版本信息</h3>
+          <header><p>{{ t('settingsGroupSystem') }}</p><h2>{{ t('settingsAbout') }}</h2><span>{{ t('swAboutDescription') }}</span></header>
+          <h3>{{ t('swVersionInfo') }}</h3>
           <div class="settings-group">
-            <div class="setting-row setting-row--readonly"><span><strong>决明对齐器</strong><small>Jueming Aligner</small></span><output>v{{ appVersion }}</output></div>
-            <div class="setting-row setting-row--readonly"><span><strong>设置格式</strong><small>支持旧版 localStorage 自动迁移</small></span><output>Schema v{{ settings.schemaVersion }}</output></div>
-            <div class="setting-row setting-row--readonly"><span><strong>数据模式</strong><small>偏好设置与 `.jm` canonical data 分离</small></span><output>本地优先</output></div>
+            <div class="setting-row setting-row--readonly"><span><strong>{{ t('appName') }}</strong><small>Jueming Aligner</small></span><output>v{{ appVersion }}</output></div>
+            <div class="setting-row setting-row--readonly"><span><strong>{{ t('swSettingsFormat') }}</strong><small>{{ t('swSettingsFormatHint') }}</small></span><output>Schema v{{ settings.schemaVersion }}</output></div>
+            <div class="setting-row setting-row--readonly"><span><strong>{{ t('swDataMode') }}</strong><small>{{ t('swDataModeHint') }}</small></span><output>{{ t('swLocalFirst') }}</output></div>
           </div>
-          <h3>恢复</h3>
-          <div class="settings-group reset-row"><span><strong>恢复本机默认设置</strong><small>不会修改工程、批注或 Revision</small></span><button class="secondary-button" type="button" @click="requestReset"><RotateCcw :size="15" />恢复默认</button></div>
+          <h3>{{ t('swRestore') }}</h3>
+          <div class="settings-group reset-row"><span><strong>{{ t('swResetLocalSettings') }}</strong><small>{{ t('swResetLocalSettingsHint') }}</small></span><button class="secondary-button" type="button" @click="requestReset"><RotateCcw :size="15" />{{ t('swResetDefaults') }}</button></div>
         </section>
       </div>
     </div>
@@ -377,11 +462,11 @@ const formatCleanupTime = computed(() => props.lastCacheCleanupAt
 .settings-sidebar__item { display: grid; grid-template-columns: 30px minmax(0, 1fr) 14px; min-height: 44px; align-items: center; gap: 8px; padding: 5px 9px; border: 0; border-radius: 9px; color: var(--ink-700); background: transparent; text-align: left; cursor: pointer; }.settings-sidebar__item:hover { background: var(--surface-hover); }.settings-sidebar__item.active { color: var(--green-900); background: var(--surface-green-selected); }.settings-sidebar__item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--jm-font-size-body); }.settings-sidebar__icon { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 7px; color: var(--green-700); background: var(--surface-green-soft); }
 .settings-local-status { display: flex; align-items: center; gap: 7px; margin: auto 7px 0; padding: 13px 3px 2px; border-top: 1px solid var(--line); color: var(--ink-500); font-size: var(--jm-font-size-subheadline); }
 .settings-search-results { display: grid; gap: 3px; }.settings-search-results button { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; padding: 7px 9px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; }.settings-search-results button:hover { background: var(--surface-hover); }.settings-search-results strong, .settings-search-results small { display: block; }.settings-search-results small { margin-top: 2px; color: var(--ink-500); }.settings-search-results p { padding: 18px 10px; color: var(--ink-500); }
-.settings-detail { min-height: 0; overflow-y: auto; scrollbar-width: thin; }.settings-pane { width: min(760px, calc(100% - 56px)); margin: 0 auto; padding: 31px 0 52px; }.settings-pane > header { margin-bottom: 23px; }.settings-pane > header p { margin: 0 0 5px; color: var(--green-700); font-size: var(--jm-font-size-subheadline); font-weight: var(--jm-font-weight-semibold); letter-spacing: .08em; }.settings-pane > header h2 { margin: 0; font-size: var(--jm-font-size-title-1); line-height: var(--jm-line-height-title-1); }.settings-pane > header span { display: block; margin-top: 7px; color: var(--ink-500); line-height: 1.5; }.settings-pane > h3 { margin: 22px 4px 8px; color: var(--ink-700); font-size: var(--jm-font-size-callout); font-weight: var(--jm-font-weight-semibold); }
+.settings-detail { min-height: 0; overflow-y: auto; scrollbar-gutter: stable both-edges; scrollbar-width: thin; }.settings-pane { width: min(760px, calc(100% - 56px)); margin: 0 auto; padding: 31px 0 52px; }.settings-pane > header { margin-bottom: 23px; }.settings-pane > header p { margin: 0 0 5px; color: var(--green-700); font-size: var(--jm-font-size-subheadline); font-weight: var(--jm-font-weight-semibold); letter-spacing: .08em; }.settings-pane > header h2 { margin: 0; font-size: var(--jm-font-size-title-1); line-height: var(--jm-line-height-title-1); }.settings-pane > header span { display: block; margin-top: 7px; color: var(--ink-500); line-height: 1.5; }.settings-pane > h3 { margin: 22px 4px 8px; color: var(--ink-700); font-size: var(--jm-font-size-callout); font-weight: var(--jm-font-weight-semibold); }
 .settings-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 20px; padding: 5px 7px 5px 2px; border: 0; color: var(--green-700); background: transparent; cursor: pointer; }.settings-back:hover { color: var(--green-900); }
 .settings-group { overflow: hidden; width: 100%; margin: 0 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised); box-shadow: 0 1px 2px rgb(31 53 34 / 3%); }
-.setting-row, .cache-row, .reset-row { display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 24px; padding: 11px 15px; }.setting-row + .setting-row { border-top: 1px solid var(--line); }.setting-row > span, .cache-row > span, .reset-row > span, .scale-heading > span { min-width: 0; }.setting-row strong, .setting-row small, .cache-row strong, .cache-row small, .reset-row strong, .reset-row small, .scale-heading strong, .scale-heading small { display: block; }.setting-row strong, .cache-row strong, .reset-row strong, .scale-heading strong { font-size: var(--jm-font-size-body); }.setting-row small, .cache-row small, .reset-row small, .scale-heading small { margin-top: 4px; color: var(--ink-500); font-size: var(--jm-font-size-callout); line-height: 1.4; }.setting-row select { min-width: 190px; height: 34px; padding: 0 28px 0 9px; border: 1px solid #c8d3c9; border-radius: 7px; color: var(--ink-900); background: var(--surface-input); }.setting-row output { flex: none; color: var(--green-900); font-size: var(--jm-font-size-callout); }.setting-row--readonly { background: var(--surface-raised); }
-.switch { flex: none; width: 38px; height: 22px; accent-color: var(--green-700); }.scale-group { padding: 16px 18px 13px; }.scale-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }.scale-heading output { padding: 4px 8px; border-radius: 7px; color: var(--green-900); background: var(--surface-green-soft); font-size: var(--jm-font-size-callout); font-weight: var(--jm-font-weight-semibold); }.stepped-slider { display: grid; grid-template-columns: 24px 1fr 24px; align-items: center; gap: 11px; margin-top: 16px; color: var(--ink-500); text-align: center; }.stepped-slider input { width: 100%; accent-color: var(--green-700); cursor: pointer; }
+.setting-row, .cache-row, .reset-row { display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 24px; padding: 11px 15px; }.setting-row + .setting-row { border-top: 1px solid var(--line); }.setting-row > span, .cache-row > span, .reset-row > span, .scale-heading > span { min-width: 0; }.setting-row strong, .setting-row small, .cache-row strong, .cache-row small, .reset-row strong, .reset-row small, .scale-heading strong, .scale-heading small { display: block; }.setting-row strong, .cache-row strong, .reset-row strong, .scale-heading strong { font-size: var(--jm-font-size-body); }.setting-row small, .cache-row small, .reset-row small, .scale-heading small { margin-top: 4px; color: var(--ink-500); font-size: var(--jm-font-size-callout); line-height: 1.4; }.setting-row select { min-width: 190px; }.setting-row output { flex: none; color: var(--green-900); font-size: var(--jm-font-size-callout); }.setting-row--readonly { background: var(--surface-raised); }
+.switch { flex: none; width: 38px; height: 22px; accent-color: var(--green-700); }.scale-group { padding: 16px 18px 13px; }.scale-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }.scale-heading output { padding: 4px 8px; border-radius: 7px; color: var(--green-900); background: var(--surface-green-soft); font-size: var(--jm-font-size-callout); font-weight: var(--jm-font-weight-semibold); }.stepped-slider, .font-size-control { display: grid; grid-template-columns: 24px 1fr 24px; align-items: center; gap: 11px; margin-top: 16px; color: var(--ink-500); text-align: center; }.stepped-slider input, .font-size-control input { width: 100%; accent-color: var(--green-700); cursor: pointer; }.font-size-control { grid-template-columns: 36px minmax(0, 1fr) 36px; }.font-size-control button { display: grid; width: 36px; height: 36px; padding: 0; place-items: center; border: 1px solid var(--line); border-radius: 9px; color: var(--green-900); background: var(--surface-input); cursor: pointer; }.font-size-control button:hover:not(:disabled) { border-color: #9dbca1; background: var(--surface-hover); }.reading-preview { padding: 15px 18px 17px; }.reading-preview figcaption { margin-bottom: 10px; color: var(--ink-500); font-size: var(--jm-font-size-subheadline); font-weight: var(--jm-font-weight-semibold); letter-spacing: .06em; }.reading-preview blockquote { margin: 0; color: var(--ink-900); font-family: var(--jm-font-ui); font-size: calc(16px * var(--reading-font-scale)); line-height: var(--jm-reading-line-height); }.reading-preview cite { display: block; margin-top: 8px; color: var(--green-700); font-family: var(--jm-font-ui); font-size: calc(13px * var(--reading-font-scale)); font-style: normal; line-height: var(--jm-reading-line-height); text-align: right; }
 .settings-link-row { display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 20px; padding: 11px 15px; color: var(--ink-900); text-align: left; cursor: pointer; }.settings-link-row:hover { border-color: #b8ccb9; background: var(--surface-hover); }.settings-link-row > span { display: flex; align-items: center; gap: 10px; }.settings-link-row > span:last-child { flex: none; color: var(--ink-500); font-size: var(--jm-font-size-callout); }.settings-link-row strong, .settings-link-row small { display: block; }.settings-link-row small { margin-top: 4px; color: var(--ink-500); }
 .shortcut-grid { display: grid; grid-template-columns: 1fr auto; }.shortcut-grid > span, .shortcut-grid kbd { padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: var(--jm-font-size-callout); }.shortcut-grid > :nth-last-child(-n + 2) { border-bottom: 0; }.shortcut-grid kbd { min-width: 180px; border-left: 1px solid var(--line); color: var(--green-900); background: var(--surface-subtle); font-family: var(--jm-font-mono); text-align: center; }.cache-row > div { display: grid; justify-items: end; gap: 6px; }.cache-row > div small { color: var(--ink-500); font-size: var(--jm-font-size-subheadline); }.secondary-button { display: inline-flex; height: 34px; align-items: center; gap: 6px; padding: 0 13px; border: 1px solid #bdcabf; border-radius: 7px; color: var(--green-900); background: var(--surface-raised); cursor: pointer; }.secondary-button:disabled { opacity: .5; cursor: not-allowed; }.settings-note { margin: -2px 4px 18px; color: var(--ink-500); font-size: var(--jm-font-size-callout); line-height: 1.55; }
 @media (max-width: 1080px) { .settings-split { grid-template-columns: 210px minmax(0, 1fr); }.settings-pane { width: calc(100% - 36px); }.setting-row { gap: 12px; }.setting-row select { min-width: 158px; } }

@@ -1,11 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { fallbackLanguages } from "./languages";
+import type { Encoding } from "./import-encoding";
 import type { AppSettingsEnvelope } from "../settings/schema";
 
 export type LanguageSide = "source" | "target";
 export type WorkspaceMode = "review" | "edit" | "order" | "history";
 export type AlignmentGapEdge = "before" | "after";
-export type Encoding = "utf8" | "utf8-bom" | "gb18030";
+export type { Encoding } from "./import-encoding";
 export type SegmentationMode = "non_empty_line" | "sentence_rules" | "legacy_tagged_line";
 
 export interface SegmentDto {
@@ -13,6 +14,9 @@ export interface SegmentDto {
   side: LanguageSide;
   text: string;
   order: number;
+  contentLength?: number;
+  contentHash?: string;
+  loaded?: boolean;
 }
 
 export interface AlignmentDto {
@@ -35,6 +39,7 @@ export type TextInput =
   | { kind: "paste"; label: string; text: string };
 
 export interface PreviewImportRequest {
+  auto_detect_encoding?: boolean;
   input: TextInput;
   profile: ImportProfile;
 }
@@ -42,9 +47,14 @@ export interface PreviewImportRequest {
 export interface SegmentPreview {
   ordinal: number;
   content: string;
+  original_text: string;
+  boundary: "non_empty_line" | "sentence_punctuation" | "text_end";
+  boundary_marker: string | null;
+  cleanups: Array<"seg_wrappers" | "pos_suffixes_and_whitespace" | "cjk_spaces" | "punctuation_spaces">;
 }
 
 export interface ImportPreviewResponse {
+  encoding_detection: "manual" | "bom" | "utf8" | "statistical" | "unicode_text";
   label: string;
   profile: ImportProfile;
   had_bom: boolean;
@@ -58,6 +68,7 @@ export interface ImportPreviewResponse {
 }
 
 export interface ImportSideRequest {
+  expected_sha256?: string;
   language_id: string;
   title: string;
   input: TextInput;
@@ -65,6 +76,7 @@ export interface ImportSideRequest {
 }
 
 export interface CreateProjectRequest {
+  additional_targets?: ImportSideRequest[];
   project_path: string;
   name: string;
   source: ImportSideRequest;
@@ -72,6 +84,7 @@ export interface CreateProjectRequest {
 }
 
 export interface CoreProject {
+  comparison?: { source_document_id: string; target_document_ids: string[] };
   project_id: string;
   name: string;
   source_language: string;
@@ -166,28 +179,53 @@ export interface HumanAnnotationDto {
   updated_at: string;
 }
 
-export interface ProjectSnapshot {
+export interface ProjectIdentity { project: CoreProject }
+export interface SegmentDescriptor { segment_id: string; document_id: string; content_hash: string; content_length: number }
+export interface WorkspaceProject extends ProjectIdentity {
   contract_version: string;
-  project: CoreProject;
   documents: CoreDocument[];
-  source_assets: Array<{
-    asset_id: string;
-    original_path: string | null;
-    label: string;
-    encoding: Encoding;
-    sha256: string;
-    byte_length: number;
-    imported_at: string;
-  }>;
-  segments: CoreSegment[];
+  segments: SegmentDescriptor[];
   segment_orders: CoreSegmentOrder[];
   alignments: CoreAlignment[];
   revisions: CoreRevision[];
-  source_profile: ImportProfile;
-  target_profile: ImportProfile;
   bookmarks: BookmarkDto[];
   annotations: HumanAnnotationDto[];
+  summary: ProjectSummaryDto;
 }
+export interface SegmentText { segment_id: string; content: string; content_hash: string }
+export interface ParallelSlice { project_id: string; revision_id: string; segments: SegmentText[] }
+export interface CommandScope { project_id: string; base_revision_id: string }
+export interface CommandContext extends CommandScope { command_id?: string }
+export interface NativeCommandPayloads {
+  update_segment: { segment_id: string; content: string };
+  move_segment: { segment_id: string; before_segment_id: string | null; after_segment_id: string | null };
+  reorder_segments: { ordered_segment_ids: string[] };
+  insert_alignment_gap: { segment_id: string; edge: AlignmentGapEdge; target_document_id?: string };
+  link_segments: { source_segment_ids: string[]; target_segment_ids: string[]; replace_existing: boolean };
+  unlink_alignment: { alignment_id: string };
+  merge_segments: { segment_ids: string[]; merged_content: string };
+  split_segment: { segment_id: string; parts: string[] };
+  group_alignment: { alignment_ids: string[]; unlinked_segment_ids: string[] };
+  ungroup_alignment: { alignment_id: string; source_groups: string[][]; target_groups: string[][] };
+  create_bookmark: { segment_id: string; alignment_id: string | null; label: string };
+  delete_bookmark: { bookmark_id: string };
+  create_annotation: AnnotationDraftRequest & { local_author_label: string };
+  update_annotation: Omit<AnnotationDraftRequest, "local_author_label"> & { annotation_id: string };
+  delete_annotation: { annotation_id: string };
+  resolve_annotation: { annotation_id: string };
+  apply_replace: { preview: ReplacePreviewRequest; selected_segment_ids: string[] };
+  undo: Record<string, never>;
+  redo: Record<string, never>;
+  restore_revision: { target_revision_id: string };
+}
+export type NativeCommandKind = keyof NativeCommandPayloads;
+export interface NativeCommand<K extends NativeCommandKind = NativeCommandKind> { contract_version: "1.0"; command_id: string; project_id: string; base_revision_id: string; kind: K; payload: NativeCommandPayloads[K] }
+export interface CommandResult { command_id: string; project_id: string; committed_revision_id: string; status: "committed" | "duplicate" }
+export const newCommandId = () => {
+  const random = crypto.randomUUID().replace(/-/g, "");
+  const value = Date.now().toString(16).padStart(12, "0") + "7" + random.slice(13);
+  return `${value.slice(0,8)}-${value.slice(8,12)}-${value.slice(12,16)}-${value.slice(16,20)}-${value.slice(20)}`;
+};
 
 export interface RevisionListResponse {
   project_id: string;
@@ -205,6 +243,7 @@ export interface RevisionComparison {
 }
 
 export interface SearchSegmentsRequest {
+  document_ids?: string[] | null;
   project_id: string;
   query: string;
   regex: boolean;
@@ -256,38 +295,40 @@ export interface ProjectSummaryDto {
 
 export interface KernelClient {
   previewImport(request: PreviewImportRequest): Promise<ImportPreviewResponse>;
-  createProject(request: CreateProjectRequest): Promise<ProjectSnapshot>;
-  openProject(projectPath: string): Promise<ProjectSnapshot>;
-  getCurrentProject(): Promise<ProjectSnapshot>;
+  createProject(request: CreateProjectRequest): Promise<WorkspaceProject>;
+  openProject(projectPath: string): Promise<WorkspaceProject>;
+  getCurrentProject(): Promise<WorkspaceProject>;
   getProjectSummary(): Promise<ProjectSummaryDto>;
   listSupportedLanguages(): Promise<SupportedLanguageDto[]>;
   flushProject(): Promise<void>;
   clearCache(): Promise<number>;
-  updateSegment(segmentId: string, content: string): Promise<void>;
+  updateSegment(segmentId: string, content: string, context?: CommandContext): Promise<CommandResult>;
+  dispatchCommand(command: NativeCommand): Promise<CommandResult>;
+  loadParallelSlice(project: WorkspaceProject, segmentIds: string[]): Promise<ParallelSlice>;
   moveSegment(segmentId: string, beforeSegmentId?: string, afterSegmentId?: string): Promise<void>;
-  reorderSegments(orderedSegmentIds: string[]): Promise<ProjectSnapshot>;
-  insertAlignmentGap(segmentId: string, edge: AlignmentGapEdge): Promise<ProjectSnapshot>;
-  linkSegments(sourceSegmentIds: string[], targetSegmentIds: string[], replaceExisting: boolean): Promise<ProjectSnapshot>;
-  unlinkAlignment(alignmentId: string): Promise<ProjectSnapshot>;
-  mergeSegments(segmentIds: string[], mergedContent: string): Promise<ProjectSnapshot>;
-  splitSegment(segmentId: string, parts: string[]): Promise<ProjectSnapshot>;
-  groupAlignments(alignmentIds: string[], unlinkedSegmentIds: string[]): Promise<ProjectSnapshot>;
-  ungroupAlignment(alignmentId: string, sourceGroups: string[][], targetGroups: string[][]): Promise<ProjectSnapshot>;
+  reorderSegments(orderedSegmentIds: string[]): Promise<WorkspaceProject>;
+  insertAlignmentGap(segmentId: string, edge: AlignmentGapEdge, targetDocumentId?: string): Promise<WorkspaceProject>;
+  linkSegments(sourceSegmentIds: string[], targetSegmentIds: string[], replaceExisting: boolean): Promise<WorkspaceProject>;
+  unlinkAlignment(alignmentId: string): Promise<WorkspaceProject>;
+  mergeSegments(segmentIds: string[], mergedContent: string): Promise<WorkspaceProject>;
+  splitSegment(segmentId: string, parts: string[]): Promise<WorkspaceProject>;
+  groupAlignments(alignmentIds: string[], unlinkedSegmentIds: string[]): Promise<WorkspaceProject>;
+  ungroupAlignment(alignmentId: string, sourceGroups: string[][], targetGroups: string[][]): Promise<WorkspaceProject>;
   listRevisions(): Promise<RevisionListResponse>;
   compareRevision(fromRevisionId: string, toRevisionId: string): Promise<RevisionComparison>;
-  undo(): Promise<ProjectSnapshot>;
-  redo(): Promise<ProjectSnapshot>;
-  restoreRevision(targetRevisionId: string): Promise<ProjectSnapshot>;
+  undo(): Promise<WorkspaceProject>;
+  redo(): Promise<WorkspaceProject>;
+  restoreRevision(targetRevisionId: string): Promise<WorkspaceProject>;
   searchSegments(request: SearchSegmentsRequest): Promise<SearchSegmentsResponse>;
   previewReplace(request: ReplacePreviewRequest): Promise<ReplacePreviewResponse>;
-  applyReplace(preview: ReplacePreviewRequest, selectedSegmentIds: string[]): Promise<ProjectSnapshot>;
-  createBookmark(segmentId: string, alignmentId: string | null, label: string): Promise<ProjectSnapshot>;
+  applyReplace(preview: ReplacePreviewRequest, selectedSegmentIds: string[]): Promise<WorkspaceProject>;
+  createBookmark(segmentId: string, alignmentId: string | null, label: string): Promise<WorkspaceProject>;
   listBookmarks(): Promise<BookmarkPreviewDto[]>;
-  deleteBookmark(bookmarkId: string): Promise<ProjectSnapshot>;
-  createAnnotation(request: AnnotationDraftRequest): Promise<ProjectSnapshot>;
-  updateAnnotation(annotationId: string, request: AnnotationDraftRequest): Promise<ProjectSnapshot>;
-  deleteAnnotation(annotationId: string): Promise<ProjectSnapshot>;
-  resolveAnnotation(annotationId: string): Promise<ProjectSnapshot>;
+  deleteBookmark(bookmarkId: string): Promise<WorkspaceProject>;
+  createAnnotation(request: AnnotationDraftRequest, context?: CommandContext): Promise<WorkspaceProject>;
+  updateAnnotation(annotationId: string, request: AnnotationDraftRequest, context?: CommandContext): Promise<WorkspaceProject>;
+  deleteAnnotation(annotationId: string): Promise<WorkspaceProject>;
+  resolveAnnotation(annotationId: string): Promise<WorkspaceProject>;
   exportProject(format: ExportFormat, outputPath: string): Promise<void>;
   loadAppSettings(): Promise<unknown | null>;
   saveAppSettings(settings: AppSettingsEnvelope): Promise<void>;
@@ -324,22 +365,46 @@ export const makeImportProfile = (
   };
 };
 
-export const createKernelClient = (): KernelClient => ({
+export const createKernelClient = (scope: () => CommandScope | null = () => null): KernelClient => {
+  const dispatchCommand = async (command: NativeCommand) => {
+    try { return await invoke<CommandResult>("execute_command", { command }); }
+    catch (cause) {
+      if (cause && typeof cause === "object" && "message" in cause && "code" in cause) {
+        throw Object.assign(new Error(String(cause.message)), { code: String(cause.code) });
+      }
+      throw cause;
+    }
+  };
+  const command = <K extends NativeCommandKind>(kind: K, payload: NativeCommandPayloads[K], context: CommandContext | null = scope()) => {
+    if (!context || !inTauri()) throw new Error("请先打开真实工程");
+    return dispatchCommand({ contract_version: "1.0", command_id: context.command_id ?? newCommandId(), project_id: context.project_id, base_revision_id: context.base_revision_id, kind, payload });
+  };
+  const mutate = async <K extends NativeCommandKind>(kind: K, payload: NativeCommandPayloads[K], context?: CommandContext) => {
+    const result = await command(kind, payload, context);
+    const project = await invoke<WorkspaceProject>("get_current_project");
+    if (project.project.project_id !== result.project_id) throw new Error("操作已提交，工程已切换");
+    return project;
+  };
+  return {
+  dispatchCommand,
+  loadParallelSlice(project, segmentIds) {
+    return invoke<ParallelSlice>("load_parallel_slice", { request: { project_id: project.project.project_id, revision_id: project.project.current_revision_id, source_document_id: project.documents[0].document_id, target_document_id: project.documents[1].document_id, segment_ids: segmentIds, anchor_segment_id: null, anchor_alignment_id: null, halo: 0 } });
+  },
   async previewImport(request) {
     if (!inTauri()) throw new Error("请在 Tauri 桌面应用中预览本地文件");
     return invoke<ImportPreviewResponse>("preview_import", { request });
   },
   async createProject(request) {
     if (!inTauri()) throw new Error("请在 Tauri 桌面应用中创建工程");
-    return invoke<ProjectSnapshot>("create_project", { request });
+    return invoke<WorkspaceProject>("create_project", { request });
   },
   async openProject(projectPath) {
     if (!inTauri()) throw new Error("请在 Tauri 桌面应用中打开工程");
-    return invoke<ProjectSnapshot>("open_project", { projectPath });
+    return invoke<WorkspaceProject>("open_project", { projectPath });
   },
   async getCurrentProject() {
     if (!inTauri()) throw new Error("浏览器预览没有已打开的本地工程");
-    return invoke<ProjectSnapshot>("get_current_project");
+    return invoke<WorkspaceProject>("get_current_project");
   },
   async getProjectSummary() {
     if (!inTauri()) return placeholderSummary;
@@ -353,49 +418,48 @@ export const createKernelClient = (): KernelClient => ({
     if (!inTauri()) return 0;
     return invoke<number>("clear_cache");
   },
-  async updateSegment(segmentId, content) {
-    if (!inTauri()) return;
-    await invoke("update_segment", { segmentId, content });
+  async updateSegment(segmentId, content, context) {
+    return command("update_segment", { segment_id: segmentId, content }, context);
   },
   async moveSegment(segmentId, beforeSegmentId, afterSegmentId) {
     if (!inTauri()) return;
-    await invoke("move_segment", { segmentId, beforeSegmentId, afterSegmentId });
+    await command("move_segment", { segment_id: segmentId, before_segment_id: beforeSegmentId ?? null, after_segment_id: afterSegmentId ?? null });
   },
   async reorderSegments(orderedSegmentIds) {
     if (!inTauri()) throw new Error("浏览器预览不支持持久化排序，请在 Tauri 中操作");
-    return invoke<ProjectSnapshot>("reorder_segments", { orderedSegmentIds });
+    return mutate("reorder_segments", { ordered_segment_ids: orderedSegmentIds });
   },
   async listSupportedLanguages() {
     if (!inTauri()) return fallbackLanguages;
     return invoke<SupportedLanguageDto[]>("list_supported_languages");
   },
-  async insertAlignmentGap(segmentId, edge) {
+  async insertAlignmentGap(segmentId, edge, targetDocumentId) {
     if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
-    return invoke<ProjectSnapshot>("insert_alignment_gap", { segmentId, edge });
+    return mutate("insert_alignment_gap", { segment_id: segmentId, edge, target_document_id: targetDocumentId });
   },
   async linkSegments(sourceSegmentIds, targetSegmentIds, replaceExisting) {
     if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
-    return invoke<ProjectSnapshot>("link_segments", { sourceSegmentIds, targetSegmentIds, replaceExisting });
+    return mutate("link_segments", { source_segment_ids: sourceSegmentIds, target_segment_ids: targetSegmentIds, replace_existing: replaceExisting });
   },
   async unlinkAlignment(alignmentId) {
     if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
-    return invoke<ProjectSnapshot>("unlink_alignment", { alignmentId });
+    return mutate("unlink_alignment", { alignment_id: alignmentId });
   },
   async mergeSegments(segmentIds, mergedContent) {
     if (!inTauri()) throw new Error("浏览器预览不支持修改 Segment 内容，请在 Tauri 中操作");
-    return invoke<ProjectSnapshot>("merge_segments", { segmentIds, mergedContent });
+    return mutate("merge_segments", { segment_ids: segmentIds, merged_content: mergedContent });
   },
   async splitSegment(segmentId, parts) {
     if (!inTauri()) throw new Error("浏览器预览不支持修改 Segment 内容，请在 Tauri 中操作");
-    return invoke<ProjectSnapshot>("split_segment", { segmentId, parts });
+    return mutate("split_segment", { segment_id: segmentId, parts });
   },
   async groupAlignments(alignmentIds, unlinkedSegmentIds) {
     if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
-    return invoke<ProjectSnapshot>("group_alignment", { alignmentIds, unlinkedSegmentIds });
+    return mutate("group_alignment", { alignment_ids: alignmentIds, unlinked_segment_ids: unlinkedSegmentIds });
   },
   async ungroupAlignment(alignmentId, sourceGroups, targetGroups) {
     if (!inTauri()) throw new Error("浏览器预览不支持修改 Alignment，请在 Tauri 中操作");
-    return invoke<ProjectSnapshot>("ungroup_alignment", { alignmentId, sourceGroups, targetGroups });
+    return mutate("ungroup_alignment", { alignment_id: alignmentId, source_groups: sourceGroups, target_groups: targetGroups });
   },
   async listRevisions() {
     if (!inTauri()) return { project_id: "fixture-project", current_revision_id: "0", revisions: [] };
@@ -404,19 +468,19 @@ export const createKernelClient = (): KernelClient => ({
   async compareRevision(fromRevisionId, toRevisionId) {
     return invoke<RevisionComparison>("compare_revision", { fromRevisionId, toRevisionId });
   },
-  async undo() { return invoke<ProjectSnapshot>("undo"); },
-  async redo() { return invoke<ProjectSnapshot>("redo"); },
-  async restoreRevision(targetRevisionId) { return invoke<ProjectSnapshot>("restore_revision", { targetRevisionId }); },
+  async undo() { return mutate("undo", {}); },
+  async redo() { return mutate("redo", {}); },
+  async restoreRevision(targetRevisionId) { return mutate("restore_revision", { target_revision_id: targetRevisionId }); },
   async searchSegments(request) { return invoke<SearchSegmentsResponse>("search_segments", { request }); },
   async previewReplace(request) { return invoke<ReplacePreviewResponse>("preview_replace", { request }); },
-  async applyReplace(preview, selectedSegmentIds) { return invoke<ProjectSnapshot>("apply_replace", { request: { preview, selected_segment_ids: selectedSegmentIds } }); },
-  async createBookmark(segmentId, alignmentId, label) { return invoke<ProjectSnapshot>("create_bookmark", { request: { segment_id: segmentId, alignment_id: alignmentId, label } }); },
+  async applyReplace(preview, selectedSegmentIds) { return mutate("apply_replace", { preview, selected_segment_ids: selectedSegmentIds }); },
+  async createBookmark(segmentId, alignmentId, label) { return mutate("create_bookmark", { segment_id: segmentId, alignment_id: alignmentId, label }); },
   async listBookmarks() { return invoke<BookmarkPreviewDto[]>("list_bookmarks"); },
-  async deleteBookmark(bookmarkId) { return invoke<ProjectSnapshot>("delete_bookmark", { bookmarkId }); },
-  async createAnnotation(request) { return invoke<ProjectSnapshot>("create_annotation", { request: { ...request, local_author_label: request.local_author_label ?? "本地用户" } }); },
-  async updateAnnotation(annotationId, request) { const { local_author_label: _author, ...rest } = request; return invoke<ProjectSnapshot>("update_annotation", { request: { annotation_id: annotationId, ...rest } }); },
-  async deleteAnnotation(annotationId) { return invoke<ProjectSnapshot>("delete_annotation", { annotationId }); },
-  async resolveAnnotation(annotationId) { return invoke<ProjectSnapshot>("resolve_annotation", { annotationId }); },
+  async deleteBookmark(bookmarkId) { return mutate("delete_bookmark", { bookmark_id: bookmarkId }); },
+  async createAnnotation(request, context) { return mutate("create_annotation", { ...request, local_author_label: request.local_author_label ?? "本地用户" }, context); },
+  async updateAnnotation(annotationId, request, context) { const { local_author_label: _author, ...rest } = request; return mutate("update_annotation", { annotation_id: annotationId, ...rest }, context); },
+  async deleteAnnotation(annotationId) { return mutate("delete_annotation", { annotation_id: annotationId }); },
+  async resolveAnnotation(annotationId) { return mutate("resolve_annotation", { annotation_id: annotationId }); },
   async exportProject(format, outputPath) { await invoke("export_project", { request: { format, output_path: outputPath, include_unlinked: true, side_separator: " " } }); },
   async loadAppSettings() {
     if (inTauri()) return invoke<unknown | null>("load_app_settings");
@@ -432,22 +496,24 @@ export const createKernelClient = (): KernelClient => ({
     if (inTauri()) { await invoke("reset_app_settings"); return; }
     localStorage.removeItem(browserSettingsKey);
   },
-});
+};
+};
 
-export const snapshotToWorkspace = (snapshot: ProjectSnapshot) => {
-  const [sourceDocument, targetDocument] = snapshot.documents;
+export const snapshotToWorkspace = (snapshot: WorkspaceProject, texts: ReadonlyMap<string, SegmentText> = new Map(), targetDocumentId?: string) => {
+  const sourceDocument = snapshot.documents[0];
+  const targetDocument = snapshot.documents.find(document => document.document_id === targetDocumentId) ?? snapshot.documents[1];
   const orderFor = (documentId: string) =>
     snapshot.segment_orders.find((order) => order.document_id === documentId)?.entries ?? [];
   const segmentsById = new Map(snapshot.segments.map((segment) => [segment.segment_id, segment]));
   const mapSide = (document: CoreDocument, side: LanguageSide): SegmentDto[] =>
     orderFor(document.document_id).flatMap((entry, order) => {
       const segment = segmentsById.get(entry.segment_id);
-      return segment ? [{ id: segment.segment_id, side, text: segment.content, order }] : [];
+      return segment ? [{ id: segment.segment_id, side, text: texts.get(segment.segment_id)?.content ?? "", loaded: texts.has(segment.segment_id), contentLength: segment.content_length, contentHash: segment.content_hash, order }] : [];
     });
   return {
     sourceSegments: mapSide(sourceDocument, "source"),
     targetSegments: mapSide(targetDocument, "target"),
-    alignments: snapshot.alignments.map<AlignmentDto>((alignment) => ({
+    alignments: snapshot.alignments.filter(alignment => segmentsById.get(alignment.target_segment_ids[0])?.document_id === targetDocument.document_id).map<AlignmentDto>((alignment) => ({
       id: alignment.alignment_id,
       sourceIds: alignment.source_segment_ids,
       targetIds: alignment.target_segment_ids,

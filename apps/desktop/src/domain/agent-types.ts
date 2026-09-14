@@ -1,4 +1,4 @@
-import type { ProjectSnapshot } from "./kernel-client";
+import type { ProjectIdentity } from "./kernel-client";
 
 export type AgentParams = Record<string, unknown>;
 
@@ -61,6 +61,7 @@ export interface ContextSnapshot {
 }
 
 export interface SearchSpec {
+  document_ids?: string[] | null;
   query: string;
   regex: boolean;
   case_sensitive: boolean;
@@ -82,7 +83,7 @@ export interface AgentProposal {
 
 export interface AgentProjection {
   binding_id: string | null;
-  project: ProjectSnapshot | null;
+  project: ProjectIdentity | null;
   context: ContextSnapshot | null;
   search_spec: SearchSpec | null;
   search_results: unknown;

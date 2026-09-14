@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 280" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">金毛 · 分层绑定母版</title>
+  <desc id="desc">暖色绘本风格，朝右的四足姿态。四肢和尾巴以无描边重叠区域衔接；各部件与表情独立编辑。局部旋转原点见 rig.json。</desc>
+  <g id="part-tail-base" data-part="tail-base" data-bone="tail-base" transform="translate(92 162)">
+    <title>尾巴 · 根部</title>
+    <path d="M 10 -12 C -2 -15 -18 -13 -31 -21 L -37 -3 Q -14 18 12 12 Z" fill="#E7BD7C"/>
+  </g>
+  <g id="part-tail-mid" data-part="tail-mid" data-bone="tail-mid" transform="translate(63 156)">
+    <title>尾巴 · 中段</title>
+    <path d="M 11 5 C -14 7 -27 -7 -27 -31 Q -16 -21 -9 -31 C -4 -19 2 -14 13 -13 Z" fill="#E7BD7C"/>
+  </g>
+  <g id="part-tail-tip" data-part="tail-tip" data-bone="tail-tip" transform="translate(54 125)">
+    <title>尾巴 · 尾尖</title>
+    <path d="M 0 9 C -24 1 -31 -15 -25 -32 Q -19 -25 -18 -23 Q -20 -42 -10 -48 Q -9 -37 -5 -34 Q 2 -46 7 -42 C 7 -31 17 -30 15 -17 Q 14 -3 0 9 Z" fill="#E7BD7C"/><path d="M -15 -13 Q -19 -25 -15 -30 Q -12 -22 -7 -19 Q -7 -28 -1 -30 Q 1 -19 7 -17 Q 8 -7 0 -3 Z" fill="#EFD099"/>
+  </g>
+  <g id="part-hind-far-upper" data-part="hind-far-upper" data-bone="hind-far-upper" transform="translate(122 187)">
+    <title>后远侧 · 大腿</title>
+    <path d="M -19 -12 C -5 -22 14 -15 17 -2 C 21 11 10 24 4 28 C -5 31 -17 23 -20 12 C -23 4 -24 -6 -19 -12 Z" fill="#CCA368"/>
+  </g>
+  <g id="part-hind-far-lower" data-part="hind-far-lower" data-bone="hind-far-lower" transform="translate(124 206)">
+    <title>后远侧 · 小腿</title>
+    <path d="M -9 -8 Q 0 -13 10 -7 L 11 17 Q 0 25 -10 18 Z" fill="#CCA368"/>
+  </g>
+  <g id="part-hind-far-paw" data-part="hind-far-paw" data-bone="hind-far-paw" transform="translate(125 222)">
+    <title>后远侧 · 爪子</title>
+    <path d="M -10 -5 Q -2 -9 7 -4 C 14 -5 21 0 20 6 Q 19 11 10 11 L -10 11 Q -17 10 -15 4 Z" fill="#CCA368"/>
+  </g>
+  <g id="part-front-far-upper" data-part="front-far-upper" data-bone="front-far-upper" transform="translate(213 185)">
+    <title>前远侧 · 上肢</title>
+    <path d="M -12 -12 Q -2 -20 11 -10 Q 15 6 10 23 Q 0 30 -10 23 C -13 13 -15 -2 -12 -12 Z" fill="#CCA368"/>
+  </g>
+  <g id="part-front-far-lower" data-part="front-far-lower" data-bone="front-far-lower" transform="translate(213 205)">
+    <title>前远侧 · 下肢</title>
+    <path d="M -9 -8 Q 0 -13 10 -7 L 11 17 Q 0 25 -10 18 Z" fill="#CCA368"/>
+  </g>
+  <g id="part-front-far-paw" data-part="front-far-paw" data-bone="front-far-paw" transform="translate(213 222)">
+    <title>前远侧 · 爪子</title>
+    <path d="M -10 -5 Q -2 -9 7 -4 C 14 -5 21 0 20 6 Q 19 11 10 11 L -10 11 Q -17 10 -15 4 Z" fill="#CCA368"/>
+  </g>
+  <g id="part-body" data-part="body" data-bone="body" transform="translate(155 158)">
+    <title>身体</title>
+    <path d="M -76 -22 C -59 -47 -20 -42 4 -39 C 34 -40 59 -27 66 -9 C 76 17 60 37 34 45 C 8 51 -36 49 -59 37 C -78 29 -85 1 -76 -22 Z" fill="#E7BD7C"/><path d="M -56 26 Q -9 43 43 22 L 37 41 C 5 52 -36 48 -59 34 Z" fill="#EFD099"/>
+  </g>
+  <g id="part-bib" data-part="bib" data-bone="body" transform="translate(155 158)">
+    <title>胸前绒毛</title>
+    <path d="M 21 -28 C 48 -42 73 -17 68 8 L 74 14 L 66 17 L 68 24 L 58 23 L 60 33 L 48 29 L 44 40 L 35 31 L 26 38 L 27 27 L 17 29 L 22 19 L 13 13 Q 21 5 15 -4 Z" fill="#FAE5BA"/><path d="M 37 -9 Q 39 8 31 16 M 49 -6 Q 56 6 51 17" fill="none" stroke="#E9CEA0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="part-hind-near-upper" data-part="hind-near-upper" data-bone="hind-near-upper" transform="translate(106 190)">
+    <title>后近侧 · 大腿</title>
+    <path d="M -19 -12 C -5 -22 14 -15 17 -2 C 21 11 10 24 4 28 C -5 31 -17 23 -20 12 C -23 4 -24 -6 -19 -12 Z" fill="#E7BD7C"/><path d="M -15 -3 Q -20 10 -12 17" fill="none" stroke="#C9995A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="part-hind-near-lower" data-part="hind-near-lower" data-bone="hind-near-lower" transform="translate(108 209)">
+    <title>后近侧 · 小腿</title>
+    <path d="M -9 -8 Q 0 -13 10 -7 L 11 17 Q 0 25 -10 18 Z" fill="#E7BD7C"/>
+  </g>
+  <g id="part-hind-near-paw" data-part="hind-near-paw" data-bone="hind-near-paw" transform="translate(109 225)">
+    <title>后近侧 · 爪子</title>
+    <path d="M -10 -5 Q -2 -9 7 -4 C 14 -5 21 0 20 6 Q 19 11 10 11 L -10 11 Q -17 10 -15 4 Z" fill="#EFD099"/><path d="M 7 5 L 7 8 M 13 5 L 13 8" fill="none" stroke="#C9995A" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="part-front-near-upper" data-part="front-near-upper" data-bone="front-near-upper" transform="translate(193 188)">
+    <title>前近侧 · 上肢</title>
+    <path d="M -12 -12 Q -2 -20 11 -10 Q 15 6 10 23 Q 0 30 -10 23 C -13 13 -15 -2 -12 -12 Z" fill="#E7BD7C"/>
+  </g>
+  <g id="part-front-near-lower" data-part="front-near-lower" data-bone="front-near-lower" transform="translate(193 208)">
+    <title>前近侧 · 下肢</title>
+    <path d="M -9 -8 Q 0 -13 10 -7 L 11 17 Q 0 25 -10 18 Z" fill="#E7BD7C"/>
+  </g>
+  <g id="part-front-near-paw" data-part="front-near-paw" data-bone="front-near-paw" transform="translate(193 225)">
+    <title>前近侧 · 爪子</title>
+    <path d="M -10 -5 Q -2 -9 7 -4 C 14 -5 21 0 20 6 Q 19 11 10 11 L -10 11 Q -17 10 -15 4 Z" fill="#EFD099"/><path d="M 7 5 L 7 8 M 13 5 L 13 8" fill="none" stroke="#C9995A" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="part-ear-far" data-part="ear-far" data-bone="ear-far" transform="translate(241 100)">
+    <title>耳朵 · 远侧</title>
+    <path d="M -12 -5 Q 4 -14 18 -4 C 33 13 27 42 10 48 C -2 52 -5 37 -6 21 Z" fill="#CCA368"/>
+  </g>
+  <g id="part-head" data-part="head" data-bone="head" transform="translate(209 123)">
+    <title>头部</title>
+    <path d="M -45 -17 C -41 -38 -18 -45 6 -41 C 28 -43 48 -30 51 -9 L 56 10 C 64 18 56 33 42 39 C 23 50 -4 46 -23 40 L -39 37 L -36 30 L -48 27 L -44 20 L -52 17 C -54 4 -51 -7 -45 -17 Z" fill="#EFD099"/><path d="M -20 -35 Q -4 -43 10 -36 Q 17 -35 22 -29 Q 0 -34 -16 -28 Z" fill="#F6DCAA"/><ellipse cx="-20" cy="24" rx="8" ry="4" fill="#E7B991"/><ellipse cx="44" cy="22" rx="7" ry="4" fill="#E7B991"/>
+  </g>
+  <g id="part-ear-near" data-part="ear-near" data-bone="ear-near" transform="translate(170 99)">
+    <title>耳朵 · 近侧</title>
+    <path d="M -11 -5 C -2 -17 13 -14 20 -4 C 21 14 14 35 3 46 C -5 55 -16 49 -20 40 C -26 25 -23 3 -11 -5 Z" fill="#CE9C61"/><path d="M -12 6 C -18 18 -16 35 -7 38 C 0 39 9 18 10 7 Q 0 -1 -12 6 Z" fill="#DBAD72"/><path d="M -10 11 Q -15 23 -9 31" fill="none" stroke="#C79258" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="part-muzzle" data-part="muzzle" data-bone="muzzle" transform="translate(236 145)">
+    <title>口鼻绒毛</title>
+    <path d="M -29 -5 C -22 -17 -7 -14 2 -12 C 15 -16 35 -7 32 5 C 31 19 14 22 0 21 C -15 22 -37 15 -29 -5 Z" fill="#FAE5BA"/>
+  </g>
+  <g id="part-eye-far-open" data-part="eye-far-open" data-bone="eye-far" transform="translate(202 127)">
+    <title>眼睛 · 远侧睁眼</title>
+    <path d="M -6 0 C -6 -9 5 -10 6 -1 L 6 3 C 4 10 -5 8 -6 2 Z" fill="#624638"/><ellipse cx="-2" cy="-2" rx="1.7" ry="2" fill="#FFF8EB"/><path d="M -8 -11 Q -3 -14 3 -12" fill="none" stroke="#C9995A" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="part-eye-far-closed" data-part="eye-far-closed" data-bone="eye-far" transform="translate(202 127)" display="none">
+    <title>眼睛 · 远侧闭眼</title>
+    <path d="M -7 0 Q 0 7 7 0" fill="none" stroke="#624638" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="part-eye-near-open" data-part="eye-near-open" data-bone="eye-near" transform="translate(238 127)">
+    <title>眼睛 · 近侧睁眼</title>
+    <path d="M -6 0 C -6 -9 5 -10 6 -1 L 6 3 C 4 10 -5 8 -6 2 Z" fill="#624638"/><ellipse cx="-2" cy="-2" rx="1.7" ry="2" fill="#FFF8EB"/><path d="M -8 -11 Q -3 -14 3 -12" fill="none" stroke="#C9995A" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="part-eye-near-closed" data-part="eye-near-closed" data-bone="eye-near" transform="translate(238 127)" display="none">
+    <title>眼睛 · 近侧闭眼</title>
+    <path d="M -7 0 Q 0 7 7 0" fill="none" stroke="#624638" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="part-nose" data-part="nose" data-bone="nose" transform="translate(240 143)">
+    <title>鼻子</title>
+    <path d="M -10 -3 C -7 -8 8 -7 10 -2 Q 10 5 1 8 Q -7 6 -10 -3 Z" fill="#624638"/><path d="M -5 -3 Q -1 -5 3 -3" fill="none" stroke="#A08060" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="part-mouth-smile" data-part="mouth-smile" data-bone="mouth" transform="translate(240 152)">
+    <title>嘴巴 · 微笑</title>
+    <path d="M -11 -1 Q 0 5 12 -1 Q 11 14 1 15 Q -9 14 -11 -1 Z" fill="#624638"/>
+  </g>
+  <g id="part-mouth-open" data-part="mouth-open" data-bone="mouth" transform="translate(240 152)" display="none">
+    <title>嘴巴 · 张开</title>
+    <path d="M -9 0 Q 0 5 10 0 Q 10 15 1 15 Q -8 15 -9 0 Z" fill="#624638"/>
+  </g>
+  <g id="part-tongue" data-part="tongue" data-bone="tongue" transform="translate(240 158)">
+    <title>舌头</title>
+    <path d="M -5 0 Q 0 -2 5 0 L 5 6 Q 0 13 -5 6 Z" fill="#D58E83"/><path d="M 0 1 L 0 5" fill="none" stroke="#BC796F" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

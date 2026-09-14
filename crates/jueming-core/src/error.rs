@@ -7,8 +7,8 @@ use thiserror::Error;
 pub enum CoreError {
     #[error("text is not valid {encoding:?}: {detail}")]
     Decode { encoding: Encoding, detail: String },
-    #[error("GB18030 decoding is unavailable on this platform")]
-    UnsupportedGb18030,
+    #[error("无法自动识别文本编码：{0}")]
+    EncodingDetection(String),
     #[error("alignment must contain at least one segment on each side")]
     EmptyAlignment,
     #[error("an alignment contains duplicate segment references")]

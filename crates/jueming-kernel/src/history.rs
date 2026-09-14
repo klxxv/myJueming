@@ -14,6 +14,21 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 impl KernelService {
+    pub fn snapshot_at_revision(
+        &self,
+        project_path: impl AsRef<Path>,
+        current: &ProjectSnapshot,
+        revision_id: RevisionId,
+    ) -> Result<ProjectSnapshot, KernelError> {
+        validate_snapshot(current)?;
+        let layout = ProjectLayout::new(project_path.as_ref())?;
+        let snapshot = read_revision_snapshot(&layout, current, revision_id)?;
+        if snapshot.project.project_id != current.project.project_id {
+            return Err(KernelError::RevisionProjectMismatch);
+        }
+        validate_snapshot(&snapshot)?;
+        Ok(snapshot)
+    }
     pub fn list_revisions(
         &self,
         project_path: impl AsRef<Path>,
@@ -132,6 +147,12 @@ impl KernelService {
             return Err(KernelError::RevisionProjectMismatch);
         }
         target.revisions = current.revisions.clone();
+        // Older content does not remove newer schema records from append-only history.
+        if matches!(current.contract_version.as_str(), "1.1" | "2.0") {
+            target.contract_version = current.contract_version.clone();
+        }
+        target.command_receipts = current.command_receipts.clone();
+        target.project.current_revision_id = current.project.current_revision_id;
         let revision_id = next_revision_id(current);
         advance_revision_with_operation(&mut target, operation, 1, summary, revision_id);
         validate_snapshot(&target)?;

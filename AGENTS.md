@@ -27,7 +27,7 @@
 - 桌面端：Tauri 2，入口位于 `apps/desktop/src-tauri/`。
 - 前端：Vue 3 Composition API、TypeScript strict、Vite，位于 `apps/desktop/src/`。
 - 领域核心：Rust crates，位于 `crates/jueming-core/`、`crates/jueming-kernel/`、`crates/jueming-storage/` 和 `crates/jueming-protocol/`。
-- 前端基础库：TanStack Virtual 负责虚拟列表；Atlaskit Pragmatic Drag and Drop 负责排序拖拽；Lucide 提供图标。
+- 前端基础库：主平行视图使用现有 `AlignedWorkspaceViewport` + `useAlignedBlockLayout` 计算对齐与可视区裁剪；TanStack Virtual 负责搜索结果虚拟列表；Atlaskit Pragmatic Drag and Drop 负责排序拖拽；Lucide 提供图标。
 - 包管理：pnpm workspace，版本由根目录 `package.json` 和 `pnpm-lock.yaml` 锁定。
 - CI：`.github/workflows/package-desktop.yml`。
 
@@ -37,7 +37,7 @@
 
 - `SegmentId`、`AlignmentId`、`RevisionId` 等是稳定 opaque ID，不能用数组索引、DOM 索引、行号或 Chunk offset 替代。
 - Segment 是 canonical relation unit；顺序由独立 `SegmentOrder` 表达。
-- Alignment 只引用 Segment，必须支持 1:1、1:n、n:1 和 n:m；一个 Segment 默认最多属于一个 active Alignment。
+- Alignment 只引用 Segment，必须支持 1:1、1:n、n:1 和 n:m；一个 Segment 在同一原文／译本文档对内最多属于一个 active Alignment；工程 2.0 可共享原文并分别绑定多份译本，见 ADR-018。
 - 重排不能改变 Segment 身份或 Alignment 关系。
 - HumanAnnotation 是 sidecar，不能把批注正文塞进 Segment 或机器标注层。
 - 每个成功 canonical ChangeSet 都追加完整 Revision；Undo、Redo 和 Restore 也产生新 Revision。
@@ -55,7 +55,7 @@
 - Merge：使用 Ctrl/Command 多选至少两个真实 Alignment。
 - Order：只能从中文侧编号手柄开始拖拽；触控板滚动不应误触拖拽。
 - `Ctrl/Command+F` 是当前审阅视图查找，工程级搜索由独立入口和 Kernel query 完成。
-- 长列表继续使用虚拟化；不要把全部 Segment 常驻 DOM，也不要增加空闲轮询、无限动画或常驻 `will-change`。
+- 主平行视图以现有布局实现为准，不迁回 TanStack Virtual。长列表继续使用虚拟化；不要把全部 Segment 常驻 DOM，也不要增加空闲轮询、无限动画或常驻 `will-change`。
 - Windows 与 macOS 快捷键、触控板和打包要求见 `docs/platform/desktop-platform-guide-v0.1.md`。
 
 ## 开发与验证

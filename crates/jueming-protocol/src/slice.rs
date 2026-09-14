@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ParallelSliceRequest {
+    #[serde(default)]
+    pub segment_ids: Vec<SegmentId>,
     pub project_id: ProjectId,
     pub source_document_id: DocumentId,
     pub target_document_id: DocumentId,

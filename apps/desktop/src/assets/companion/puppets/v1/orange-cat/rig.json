@@ -1,0 +1,590 @@
+{
+  "version": 1,
+  "id": "orange-cat",
+  "label": "胖橘猫",
+  "viewBox": [
+    0,
+    0,
+    320,
+    280
+  ],
+  "origin": [
+    155,
+    158
+  ],
+  "groundY": 235,
+  "defaultExpression": "awake",
+  "expressions": [
+    "awake",
+    "sleep",
+    "happy"
+  ],
+  "bones": [
+    {
+      "id": "root",
+      "parent": null,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": "body",
+      "parent": "root",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": "tail-base",
+      "parent": "body",
+      "x": -63,
+      "y": 4
+    },
+    {
+      "id": "tail-mid",
+      "parent": "tail-base",
+      "x": -29,
+      "y": -6
+    },
+    {
+      "id": "tail-tip",
+      "parent": "tail-mid",
+      "x": -9,
+      "y": -31
+    },
+    {
+      "id": "hind-far-upper",
+      "parent": "body",
+      "x": -33,
+      "y": 29
+    },
+    {
+      "id": "hind-far-lower",
+      "parent": "hind-far-upper",
+      "x": 2,
+      "y": 19
+    },
+    {
+      "id": "hind-far-paw",
+      "parent": "hind-far-lower",
+      "x": 1,
+      "y": 16
+    },
+    {
+      "id": "front-far-upper",
+      "parent": "body",
+      "x": 58,
+      "y": 27
+    },
+    {
+      "id": "front-far-lower",
+      "parent": "front-far-upper",
+      "x": 0,
+      "y": 20
+    },
+    {
+      "id": "front-far-paw",
+      "parent": "front-far-lower",
+      "x": 0,
+      "y": 17
+    },
+    {
+      "id": "hind-near-upper",
+      "parent": "body",
+      "x": -49,
+      "y": 32
+    },
+    {
+      "id": "hind-near-lower",
+      "parent": "hind-near-upper",
+      "x": 2,
+      "y": 19
+    },
+    {
+      "id": "hind-near-paw",
+      "parent": "hind-near-lower",
+      "x": 1,
+      "y": 16
+    },
+    {
+      "id": "front-near-upper",
+      "parent": "body",
+      "x": 38,
+      "y": 30
+    },
+    {
+      "id": "front-near-lower",
+      "parent": "front-near-upper",
+      "x": 0,
+      "y": 20
+    },
+    {
+      "id": "front-near-paw",
+      "parent": "front-near-lower",
+      "x": 0,
+      "y": 17
+    },
+    {
+      "id": "head",
+      "parent": "body",
+      "x": 51,
+      "y": -31
+    },
+    {
+      "id": "ear-far",
+      "parent": "head",
+      "x": -37,
+      "y": -28
+    },
+    {
+      "id": "ear-near",
+      "parent": "head",
+      "x": 32,
+      "y": -29
+    },
+    {
+      "id": "muzzle",
+      "parent": "head",
+      "x": 5,
+      "y": 23
+    },
+    {
+      "id": "eye-far",
+      "parent": "head",
+      "x": -18,
+      "y": 7
+    },
+    {
+      "id": "eye-near",
+      "parent": "head",
+      "x": 21,
+      "y": 6
+    },
+    {
+      "id": "nose",
+      "parent": "head",
+      "x": 5,
+      "y": 22
+    },
+    {
+      "id": "mouth",
+      "parent": "head",
+      "x": 5,
+      "y": 28
+    },
+    {
+      "id": "tongue",
+      "parent": "mouth",
+      "x": 0,
+      "y": 6
+    },
+    {
+      "id": "whiskers-far",
+      "parent": "head",
+      "x": -40,
+      "y": 24
+    },
+    {
+      "id": "whiskers-near",
+      "parent": "head",
+      "x": 46,
+      "y": 23
+    }
+  ],
+  "parts": [
+    {
+      "id": "tail-base",
+      "label": "尾巴 · 根部",
+      "bone": "tail-base",
+      "bounds": [
+        -44,
+        -21,
+        63,
+        38
+      ],
+      "file": "parts/tail-base.svg"
+    },
+    {
+      "id": "tail-mid",
+      "label": "尾巴 · 中段",
+      "bone": "tail-mid",
+      "bounds": [
+        -25,
+        -46,
+        40,
+        61
+      ],
+      "file": "parts/tail-mid.svg"
+    },
+    {
+      "id": "tail-tip",
+      "label": "尾巴 · 尾尖",
+      "bone": "tail-tip",
+      "bounds": [
+        -14,
+        -42,
+        36,
+        57
+      ],
+      "file": "parts/tail-tip.svg"
+    },
+    {
+      "id": "hind-far-upper",
+      "label": "后远侧 · 大腿",
+      "bone": "hind-far-upper",
+      "bounds": [
+        -17,
+        -19,
+        31,
+        50
+      ],
+      "file": "parts/hind-far-upper.svg"
+    },
+    {
+      "id": "hind-far-lower",
+      "label": "后远侧 · 小腿",
+      "bone": "hind-far-lower",
+      "bounds": [
+        -10,
+        -13,
+        21,
+        37
+      ],
+      "file": "parts/hind-far-lower.svg"
+    },
+    {
+      "id": "hind-far-paw",
+      "label": "后远侧 · 爪子",
+      "bone": "hind-far-paw",
+      "bounds": [
+        -15,
+        -9,
+        33,
+        22
+      ],
+      "file": "parts/hind-far-paw.svg"
+    },
+    {
+      "id": "front-far-upper",
+      "label": "前远侧 · 上肢",
+      "bone": "front-far-upper",
+      "bounds": [
+        -13,
+        -18,
+        25,
+        47
+      ],
+      "file": "parts/front-far-upper.svg"
+    },
+    {
+      "id": "front-far-lower",
+      "label": "前远侧 · 下肢",
+      "bone": "front-far-lower",
+      "bounds": [
+        -10,
+        -13,
+        21,
+        37
+      ],
+      "file": "parts/front-far-lower.svg"
+    },
+    {
+      "id": "front-far-paw",
+      "label": "前远侧 · 爪子",
+      "bone": "front-far-paw",
+      "bounds": [
+        -15,
+        -9,
+        33,
+        22
+      ],
+      "file": "parts/front-far-paw.svg"
+    },
+    {
+      "id": "body",
+      "label": "身体",
+      "bone": "body",
+      "bounds": [
+        -78,
+        -48,
+        144,
+        106
+      ],
+      "file": "parts/body.svg"
+    },
+    {
+      "id": "bib",
+      "label": "胸前绒毛",
+      "bone": "body",
+      "bounds": [
+        25,
+        -23,
+        41,
+        58
+      ],
+      "file": "parts/bib.svg"
+    },
+    {
+      "id": "hind-near-upper",
+      "label": "后近侧 · 大腿",
+      "bone": "hind-near-upper",
+      "bounds": [
+        -17,
+        -19,
+        31,
+        50
+      ],
+      "file": "parts/hind-near-upper.svg"
+    },
+    {
+      "id": "hind-near-lower",
+      "label": "后近侧 · 小腿",
+      "bone": "hind-near-lower",
+      "bounds": [
+        -10,
+        -13,
+        21,
+        37
+      ],
+      "file": "parts/hind-near-lower.svg"
+    },
+    {
+      "id": "hind-near-paw",
+      "label": "后近侧 · 爪子",
+      "bone": "hind-near-paw",
+      "bounds": [
+        -15,
+        -9,
+        33,
+        22
+      ],
+      "file": "parts/hind-near-paw.svg"
+    },
+    {
+      "id": "front-near-upper",
+      "label": "前近侧 · 上肢",
+      "bone": "front-near-upper",
+      "bounds": [
+        -13,
+        -18,
+        25,
+        47
+      ],
+      "file": "parts/front-near-upper.svg"
+    },
+    {
+      "id": "front-near-lower",
+      "label": "前近侧 · 下肢",
+      "bone": "front-near-lower",
+      "bounds": [
+        -10,
+        -13,
+        21,
+        37
+      ],
+      "file": "parts/front-near-lower.svg"
+    },
+    {
+      "id": "front-near-paw",
+      "label": "前近侧 · 爪子",
+      "bone": "front-near-paw",
+      "bounds": [
+        -15,
+        -9,
+        33,
+        22
+      ],
+      "file": "parts/front-near-paw.svg"
+    },
+    {
+      "id": "ear-far",
+      "label": "耳朵 · 远侧",
+      "bone": "ear-far",
+      "bounds": [
+        -22,
+        -33,
+        46,
+        53
+      ],
+      "file": "parts/ear-far.svg"
+    },
+    {
+      "id": "ear-near",
+      "label": "耳朵 · 近侧",
+      "bone": "ear-near",
+      "bounds": [
+        -22,
+        -32,
+        46,
+        52
+      ],
+      "file": "parts/ear-near.svg"
+    },
+    {
+      "id": "head",
+      "label": "头部",
+      "bone": "head",
+      "bounds": [
+        -67,
+        -46,
+        129,
+        96
+      ],
+      "file": "parts/head.svg"
+    },
+    {
+      "id": "muzzle",
+      "label": "口鼻绒毛",
+      "bone": "muzzle",
+      "bounds": [
+        -32,
+        -14,
+        63,
+        34
+      ],
+      "file": "parts/muzzle.svg"
+    },
+    {
+      "id": "eye-far-open",
+      "label": "眼睛 · 远侧睁眼",
+      "bone": "eye-far",
+      "bounds": [
+        -11,
+        -16,
+        19,
+        26
+      ],
+      "file": "parts/eye-far-open.svg",
+      "expressions": [
+        "awake"
+      ]
+    },
+    {
+      "id": "eye-far-closed",
+      "label": "眼睛 · 远侧闭眼",
+      "bone": "eye-far",
+      "bounds": [
+        -11,
+        -4,
+        22,
+        11
+      ],
+      "file": "parts/eye-far-closed.svg",
+      "expressions": [
+        "sleep",
+        "happy"
+      ]
+    },
+    {
+      "id": "eye-near-open",
+      "label": "眼睛 · 近侧睁眼",
+      "bone": "eye-near",
+      "bounds": [
+        -11,
+        -16,
+        19,
+        26
+      ],
+      "file": "parts/eye-near-open.svg",
+      "expressions": [
+        "awake"
+      ]
+    },
+    {
+      "id": "eye-near-closed",
+      "label": "眼睛 · 近侧闭眼",
+      "bone": "eye-near",
+      "bounds": [
+        -11,
+        -4,
+        22,
+        11
+      ],
+      "file": "parts/eye-near-closed.svg",
+      "expressions": [
+        "sleep",
+        "happy"
+      ]
+    },
+    {
+      "id": "nose",
+      "label": "鼻子",
+      "bone": "nose",
+      "bounds": [
+        -8,
+        -6,
+        16,
+        13
+      ],
+      "file": "parts/nose.svg"
+    },
+    {
+      "id": "mouth-smile",
+      "label": "嘴巴 · 微笑",
+      "bone": "mouth",
+      "bounds": [
+        -12,
+        -5,
+        25,
+        15
+      ],
+      "file": "parts/mouth-smile.svg",
+      "expressions": [
+        "awake",
+        "sleep"
+      ]
+    },
+    {
+      "id": "mouth-open",
+      "label": "嘴巴 · 张开",
+      "bone": "mouth",
+      "bounds": [
+        -11,
+        -2,
+        23,
+        19
+      ],
+      "file": "parts/mouth-open.svg",
+      "expressions": [
+        "happy"
+      ]
+    },
+    {
+      "id": "tongue",
+      "label": "舌头",
+      "bone": "tongue",
+      "bounds": [
+        -7,
+        -3,
+        14,
+        15
+      ],
+      "file": "parts/tongue.svg",
+      "expressions": [
+        "happy"
+      ]
+    },
+    {
+      "id": "whiskers-far",
+      "label": "胡须 · 远侧",
+      "bone": "whiskers-far",
+      "bounds": [
+        -21,
+        -7,
+        24,
+        17
+      ],
+      "file": "parts/whiskers-far.svg"
+    },
+    {
+      "id": "whiskers-near",
+      "label": "胡须 · 近侧",
+      "bone": "whiskers-near",
+      "bounds": [
+        -3,
+        -7,
+        22,
+        17
+      ],
+      "file": "parts/whiskers-near.svg"
+    }
+  ]
+}

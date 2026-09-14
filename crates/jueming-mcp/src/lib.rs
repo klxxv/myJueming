@@ -31,7 +31,7 @@ use url::Url;
 use uuid::Uuid;
 
 const CALL_PATH: &str = "v1/agent/call";
-const MAX_RESPONSE_BYTES: usize = 2 * 1_024 * 1_024;
+const MAX_RESPONSE_BYTES: usize = 10 * 1_024 * 1_024;
 
 /// Sidecar configuration. The token is sourced from the sidecar environment, never arguments.
 #[derive(Clone)]
@@ -287,6 +287,8 @@ impl McpServer {
         )]);
         result.structured_content = Some(serde_json::json!({
             "transport": "stdio",
+            "research_methods": jueming_application::RESEARCH_METHODS,
+            "algorithm_plugins": {"managed_by":"LocalAppHost", "live_availability_method":"capabilities.get"},
             "tools": tools,
             "executable_plugin_loading": {
                 "available": false,
@@ -318,6 +320,40 @@ pub async fn smoke(config: SidecarConfig) -> Result<(), BridgeError> {
 #[tool_router]
 impl McpServer {
     /// Describes the external-safe application contract and native-only approval boundary.
+    #[tool(
+        name = "jueming_research_call",
+        description = "Discover live local slots/schemas, start asynchronous research, and read bounded results. Call capabilities.get first; feature activation and human confirmation remain native UI actions."
+    )]
+    async fn research_call(
+        &self,
+        Parameters(input): Parameters<ResearchCallRequest>,
+    ) -> CallToolResult {
+        let Some(descriptor) =
+            jueming_application::research_method(&input.method).filter(|d| !d.native_only)
+        else {
+            return CallToolResult::error(vec![ContentBlock::text(
+                "This method is not exposed to MCP.",
+            )]);
+        };
+        if descriptor.requires_binding && input.binding_id.is_none() {
+            return CallToolResult::error(vec![ContentBlock::text(
+                "Bind a project session first.",
+            )]);
+        }
+        into_tool_result(
+            self.bridge
+                .call_with_request_id(
+                    input
+                        .request_id
+                        .unwrap_or_else(|| Uuid::now_v7().to_string()),
+                    input.method,
+                    input.params,
+                    input.binding_id,
+                )
+                .await,
+        )
+    }
+
     #[tool(
         name = "jueming_describe",
         description = "Describe Jueming's safe external MCP contract."
@@ -844,6 +880,15 @@ struct BindingRequest {
     binding_id: String,
 }
 
+#[derive(Deserialize, JsonSchema)]
+struct ResearchCallRequest {
+    method: String,
+    #[serde(default)]
+    params: Map<String, Value>,
+    binding_id: Option<String>,
+    request_id: Option<String>,
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct NavigateRequest {
@@ -1175,6 +1220,61 @@ mod tests {
     use rmcp::model::CallToolRequestParams;
     use tokio::sync::Mutex as AsyncMutex;
 
+    #[tokio::test]
+    async fn research_mcp_uses_real_host_catalog_and_enforces_native_and_binding_boundaries() {
+        async fn dispatch(
+            State(host): State<Arc<jueming_application::LocalAppHost>>,
+            Json(call): Json<AgentCall>,
+        ) -> Json<AgentReply> {
+            Json(host.dispatch(call).expect("read-only catalog dispatch"))
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}/", listener.local_addr().unwrap());
+        let router = Router::new()
+            .route("/v1/agent/call", post(dispatch))
+            .with_state(Arc::new(jueming_application::LocalAppHost::new()));
+        let task = tokio::spawn(async move {
+            let _ = axum::serve(listener, router).await;
+        });
+        let server =
+            McpServer::new(SidecarConfig::new(address, "test-only-token").unwrap()).unwrap();
+        for method in [
+            "capabilities.get",
+            "slots.list",
+            "schemas.list",
+            "operators.list",
+            "slots.migrations",
+        ] {
+            let result = server
+                .research_call(Parameters(ResearchCallRequest {
+                    method: method.into(),
+                    params: Map::new(),
+                    binding_id: None,
+                    request_id: None,
+                }))
+                .await;
+            assert!(!result.is_error.unwrap_or(false), "{method}: {result:?}");
+        }
+        for method in [
+            "features.enable",
+            "research.confirm",
+            "plugins.install_local",
+            "pipeline.start",
+            "pool.read_batch",
+        ] {
+            let result = server
+                .research_call(Parameters(ResearchCallRequest {
+                    method: method.into(),
+                    params: Map::new(),
+                    binding_id: None,
+                    request_id: None,
+                }))
+                .await;
+            assert_eq!(result.is_error, Some(true), "{method}");
+        }
+        task.abort();
+    }
+
     #[test]
     fn refuses_non_loopback_bridge() {
         assert!(SidecarConfig::new("http://example.invalid:3000/", "token").is_err());
@@ -1230,6 +1330,7 @@ mod tests {
             "jueming_cancel_operation",
             "jueming_application_settings_metadata",
             "jueming_tool_discovery",
+            "jueming_research_call",
         ] {
             assert!(names.contains(name), "missing advertised tool {name}");
         }

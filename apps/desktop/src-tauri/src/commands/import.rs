@@ -8,7 +8,11 @@ pub(crate) fn preview_import(
     request: PreviewImportRequest,
 ) -> Result<ImportPreviewResponse, String> {
     KernelService
-        .preview_import(&request.input, &request.profile)
+        .preview_import_with_detection(
+            &request.input,
+            &request.profile,
+            request.auto_detect_encoding,
+        )
         .map_err(|error| error.to_string())
 }
 

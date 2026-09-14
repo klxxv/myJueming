@@ -15,13 +15,16 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+mod native;
 mod pipeline;
+mod pool;
+mod research;
 
 const MAX_SEARCH_PAGE: usize = 200;
 const MAX_RETRY_CACHE: usize = 256;
@@ -34,6 +37,7 @@ static JOURNAL_FAIL_ON_WRITE: AtomicUsize = AtomicUsize::new(usize::MAX);
 
 #[derive(Clone)]
 struct OpenProject {
+    writer_lock: Arc<std::fs::File>,
     path: PathBuf,
     snapshot: ProjectSnapshot,
 }
@@ -129,6 +133,9 @@ struct Binding {
 /// and external transports place it on a blocking worker rather than creating
 /// competing snapshot holders.
 pub struct LocalAppHost {
+    feature: Arc<crate::feature::FeatureManager>,
+    research: Arc<crate::research::ResearchService>,
+    graph: Arc<crate::graph::GraphService>,
     kernel: KernelService,
     state: Mutex<HostState>,
     events: broadcast::Sender<AppEvent>,
@@ -144,6 +151,9 @@ impl LocalAppHost {
     pub fn new() -> Self {
         let (events, _) = broadcast::channel(256);
         Self {
+            feature: Arc::new(crate::feature::FeatureManager::default()),
+            research: Arc::new(crate::research::ResearchService::default()),
+            graph: Arc::new(crate::graph::GraphService::default()),
             kernel: KernelService,
             state: Mutex::new(HostState::default()),
             events,
@@ -180,7 +190,7 @@ impl LocalAppHost {
         let project = state
             .current
             .as_ref()
-            .map(|current| current.snapshot.clone());
+            .map(|current| json!({"project": current.snapshot.project}));
         let search_results = state
             .latest_search
             .as_ref()
@@ -197,22 +207,57 @@ impl LocalAppHost {
         &self,
         request: &CreateProjectRequest,
     ) -> Result<ProjectSnapshot, AppError> {
-        let snapshot = self.kernel.create_project(request).map_err(kernel_error)?;
-        self.install_project(
-            PathBuf::from(&request.project_path),
-            snapshot.clone(),
-            "native",
-        )?;
-        Ok(snapshot)
+        self.load_project(Path::new(&request.project_path), Some(request))
     }
 
     pub fn open_project(
         &self,
         project_path: impl AsRef<Path>,
     ) -> Result<ProjectSnapshot, AppError> {
-        let path = project_path.as_ref().to_path_buf();
-        let snapshot = self.kernel.open_project(&path).map_err(kernel_error)?;
-        self.install_project(path, snapshot.clone(), "native")?;
+        self.load_project(project_path.as_ref(), None)
+    }
+
+    fn load_project(
+        &self,
+        path: &Path,
+        create: Option<&CreateProjectRequest>,
+    ) -> Result<ProjectSnapshot, AppError> {
+        let mut state = self.lock()?;
+        if create.is_none() && !path.join("project.json").is_file() {
+            return Err(AppError::new("not_found", "Project does not exist."));
+        }
+        let layout = jueming_storage::ProjectLayout::new(path)
+            .map_err(|e| AppError::new("io_error", e.to_string()))?;
+        layout
+            .ensure()
+            .map_err(|e| AppError::new("io_error", e.to_string()))?;
+        let path =
+            std::fs::canonicalize(path).map_err(|e| AppError::new("io_error", e.to_string()))?;
+        let writer_lock = if let Some(current) = state
+            .current
+            .as_ref()
+            .filter(|current| current.path == path)
+        {
+            current.writer_lock.clone()
+        } else {
+            Arc::new(
+                layout
+                    .acquire_writer_lock()
+                    .map_err(|e| AppError::new("project_locked", e.to_string()))?,
+            )
+        };
+        if create.is_some() && path.join("project.json").exists() {
+            return Err(AppError::new(
+                "project_exists",
+                "An existing project cannot be overwritten.",
+            ));
+        }
+        let snapshot = match create {
+            Some(request) => self.kernel.create_project(request),
+            None => self.kernel.open_project(&path),
+        }
+        .map_err(kernel_error)?;
+        self.install_project(&mut state, path, snapshot.clone(), writer_lock, "native")?;
         Ok(snapshot)
     }
 
@@ -254,6 +299,19 @@ impl LocalAppHost {
         ) -> Result<ProjectSnapshot, KernelError>,
     ) -> Result<ProjectSnapshot, AppError> {
         let mut state = self.lock()?;
+        self.mutate_locked(&mut state, origin, operation)
+    }
+
+    fn mutate_locked(
+        &self,
+        state: &mut HostState,
+        origin: &str,
+        operation: impl FnOnce(
+            &KernelService,
+            &ProjectSnapshot,
+            &Path,
+        ) -> Result<ProjectSnapshot, KernelError>,
+    ) -> Result<ProjectSnapshot, AppError> {
         let current = state
             .current
             .as_ref()
@@ -270,6 +328,7 @@ impl LocalAppHost {
         let revised =
             next.project.current_revision_id != current.snapshot.project.current_revision_id;
         state.current = Some(OpenProject {
+            writer_lock: current.writer_lock,
             path: current.path,
             snapshot: next.clone(),
         });
@@ -286,7 +345,7 @@ impl LocalAppHost {
                 context.window_focused = false;
                 context.focused_control = None;
             }
-            self.publish_locked(&mut state, "revision_advanced", None, origin, json!({"project_id": next.project.project_id, "revision_id": next.project.current_revision_id}));
+            self.publish_locked(state, "revision_advanced", None, origin, json!({"project_id": next.project.project_id, "revision_id": next.project.current_revision_id}));
         }
         Ok(next)
     }
@@ -300,22 +359,25 @@ impl LocalAppHost {
 
     fn install_project(
         &self,
+        state: &mut HostState,
         path: PathBuf,
         snapshot: ProjectSnapshot,
+        writer_lock: Arc<std::fs::File>,
         origin: &str,
     ) -> Result<(), AppError> {
         let mut proposals = read_journal(&path, snapshot.project.project_id)?;
         if reconcile_applying_proposals(&snapshot, &mut proposals) {
             persist_journal(
                 &OpenProject {
+                    writer_lock: writer_lock.clone(),
                     path: path.clone(),
                     snapshot: snapshot.clone(),
                 },
                 &proposals,
             )?;
         }
-        let mut state = self.lock()?;
         state.current = Some(OpenProject {
+            writer_lock,
             path,
             snapshot: snapshot.clone(),
         });
@@ -332,11 +394,17 @@ impl LocalAppHost {
         state.preview_claim_order.clear();
         state.operations.clear();
         state.operation_owners.clear();
-        self.publish_locked(&mut state, "project_changed", None, origin, json!({"project_id": snapshot.project.project_id, "revision_id": snapshot.project.current_revision_id}));
+        self.publish_locked(state, "project_changed", None, origin, json!({"project_id": snapshot.project.project_id, "revision_id": snapshot.project.current_revision_id}));
         Ok(())
     }
 
     fn dispatch_as(&self, call: AgentCall, trusted_native: bool) -> Result<AgentReply, AppError> {
+        if !trusted_native && crate::research_method(&call.method).is_some_and(|d| d.native_only) {
+            return Err(AppError::new(
+                "native_ui_required",
+                "This operation is available only to the trusted native client",
+            ));
+        }
         if !trusted_native
             && matches!(
                 call.method.as_str(),
@@ -371,6 +439,16 @@ impl LocalAppHost {
         }
         let request_id = call.request_id.clone();
         let data = match call.method.as_str() {
+            method if method.starts_with("pool.") => {
+                self.pool_call(method, call.params, call.binding_id.as_deref())?
+            }
+            method if research::is_research_method(method) => self.research_call(
+                method,
+                Value::Object(call.params),
+                call.binding_id.as_deref(),
+                trusted_native,
+                &request_id,
+            )?,
             "app.describe" => {
                 json!({"contract_version": APPLICATION_CONTRACT_VERSION, "approval": "native_ui_only"})
             }
@@ -916,13 +994,15 @@ impl LocalAppHost {
         let changed_spec = state.search_spec.query != spec.query
             || state.search_spec.regex != spec.regex
             || state.search_spec.case_sensitive != spec.case_sensitive
-            || state.search_spec.language_id != spec.language_id;
+            || state.search_spec.language_id != spec.language_id
+            || state.search_spec.document_ids != spec.document_ids;
         state.search_spec = spec.clone();
         let response = self
             .kernel
             .search_segments(
                 &snapshot,
                 &SearchSegmentsRequest {
+                    document_ids: spec.document_ids.clone(),
                     project_id: snapshot.project.project_id,
                     query: spec.query.clone(),
                     regex: spec.regex,
@@ -1117,6 +1197,7 @@ impl LocalAppHost {
         }
         let current = state.current.as_ref().expect("checked");
         let preview_request = ReplacePreviewRequest {
+            document_ids: None,
             project_id: current.snapshot.project.project_id,
             query: input.query,
             replacement: input.replacement,
@@ -1230,6 +1311,7 @@ impl LocalAppHost {
             }
         };
         state.current = Some(OpenProject {
+            writer_lock: current.writer_lock,
             path: current.path,
             snapshot: next.clone(),
         });
@@ -1483,6 +1565,19 @@ fn to_map<T: Serialize>(value: &T) -> Result<serde_json::Map<String, Value>, App
     }
 }
 fn scoped_method(method: &str) -> bool {
+    if let Some(descriptor) = crate::research_method(method) {
+        return descriptor.requires_binding;
+    }
+    if method == "research.call" {
+        return false;
+    }
+    if matches!(
+        method,
+        "capabilities.get" | "slots.list" | "schemas.list" | "schemas.get" | "operators.list"
+    ) || method.starts_with("features.")
+    {
+        return false;
+    }
     !matches!(
         method,
         "app.describe"
@@ -1498,6 +1593,16 @@ fn scoped_method(method: &str) -> bool {
     )
 }
 fn retryable_method(method: &str) -> bool {
+    if matches!(
+        method,
+        "research.start"
+            | "research.confirm"
+            | "research.merge_groups"
+            | "pipeline.start"
+            | "pipeline.save_method_v2"
+    ) {
+        return true;
+    }
     matches!(
         method,
         "ui.navigate"
@@ -1611,9 +1716,11 @@ mod tests {
     fn request(path: &Path) -> CreateProjectRequest {
         let profile = ImportProfile::new(Encoding::Utf8, SegmentationMode::NonEmptyLine);
         CreateProjectRequest {
+            additional_targets: Vec::new(),
             project_path: path.to_string_lossy().into_owned(),
             name: "recovery".into(),
             source: ImportSideRequest {
+                expected_sha256: None,
                 language_id: "zh-CN".into(),
                 title: "source".into(),
                 input: TextInput::Paste {
@@ -1623,6 +1730,7 @@ mod tests {
                 profile: profile.clone(),
             },
             target: ImportSideRequest {
+                expected_sha256: None,
                 language_id: "en".into(),
                 title: "target".into(),
                 input: TextInput::Paste {

@@ -11,10 +11,12 @@ mod import;
 mod persistence;
 mod project;
 mod projection;
+mod research;
 mod revision;
 mod search;
 mod sidecar;
 mod validation;
+mod workspace;
 
 pub use error::KernelError;
 pub use validation::validate_snapshot;

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { agentRuntimeClient, type AgentRuntimeProviderKind, type AgentRuntimeStatus } from "../domain/agent-runtime-client";
+import { t } from "../i18n";
+import type { EmbeddedSettingsMessageKey } from "../i18n/embedded-settings-messages";
 const emit = defineEmits<{ changed: [status: AgentRuntimeStatus] }>();
 const available = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 const providerKind = ref<AgentRuntimeProviderKind>("loopback");
@@ -9,8 +11,10 @@ const model = ref("");
 const apiKey = ref("");
 const secretConfigured = ref(false);
 const busy = ref(false);
-const notice = ref("");
+const noticeKey = ref<EmbeddedSettingsMessageKey | null>(null);
 const error = ref<string | null>(null);
+const msg = (key: EmbeddedSettingsMessageKey, params?: Record<string, string | number>) =>
+  t(key, params);
 onMounted(async () => {
   if (!available) return;
   try { const status = await agentRuntimeClient.status(); providerKind.value = status.provider_kind; endpoint.value = status.endpoint; model.value = status.model; secretConfigured.value = status.api_key_configured; }
@@ -18,11 +22,11 @@ onMounted(async () => {
 });
 async function configure() {
   if (!available || busy.value || !model.value.trim()) return;
-  busy.value = true; error.value = null;
+  busy.value = true; error.value = null; noticeKey.value = null;
   try {
     const config = await agentRuntimeClient.configure({ provider_kind: providerKind.value, endpoint: endpoint.value.trim(), model: model.value.trim(), api_key: apiKey.value || undefined });
     apiKey.value = ""; secretConfigured.value = config.api_key_configured;
-    notice.value = config.secret_storage === "session_memory" ? "配置已保存；此设备的密钥仅在本次会话保留" : "模型配置已保存";
+    noticeKey.value = config.secret_storage === "session_memory" ? "modelSavedSessionSecret" : "modelSaved";
     emit("changed", await agentRuntimeClient.status());
   } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }
   finally { busy.value = false; }
@@ -30,16 +34,16 @@ async function configure() {
 </script>
 
 <template>
-  <form class="model-settings" aria-label="内置助手模型" data-agent-context="exclude" @submit.prevent="configure">
-    <h3>内置助手模型</h3>
-    <p>连接你自己的模型服务。每次发送携带当前上下文，工程修改仍需审核。</p>
-    <label>服务类型<select v-model="providerKind" :disabled="!available"><option value="loopback">本机模型 · OpenAI 兼容接口</option><option value="https">远程 HTTPS · OpenAI 兼容接口</option></select></label>
-    <p v-if="providerKind === 'https'">发送的消息、选中内容和工具返回内容会交给你配置的服务。</p>
-    <label>服务地址<input v-model="endpoint" type="url" :disabled="!available" placeholder="http://127.0.0.1:11434/v1/" required /></label>
-    <label>模型名称<input v-model="model" :disabled="!available" placeholder="填写服务中实际可用的模型名称" required /></label>
-    <label>API 密钥<input v-model="apiKey" type="password" autocomplete="new-password" :disabled="!available" :placeholder="secretConfigured ? '已设置 · 留空保留当前服务的密钥' : '本机服务可留空'" /></label>
-    <button type="submit" :disabled="busy || !available || !model.trim()">{{ busy ? '保存中…' : '保存模型配置' }}</button>
-    <p v-if="error" role="alert">{{ error }}</p><p v-if="notice" role="status">{{ notice }}</p>
+  <form class="model-settings" :aria-label="msg('modelAria')" data-agent-context="exclude" @submit.prevent="configure">
+    <h3>{{ msg("modelTitle") }}</h3>
+    <p>{{ msg("modelDescription") }}</p>
+    <label>{{ msg("modelServiceType") }}<select v-model="providerKind" :disabled="!available"><option value="loopback">{{ msg("modelLocalProvider") }}</option><option value="https">{{ msg("modelRemoteProvider") }}</option></select></label>
+    <p v-if="providerKind === 'https'">{{ msg("modelRemoteDisclosure") }}</p>
+    <label>{{ msg("modelEndpoint") }}<input v-model="endpoint" type="url" :disabled="!available" placeholder="http://127.0.0.1:11434/v1/" required /></label>
+    <label>{{ msg("modelName") }}<input v-model="model" :disabled="!available" :placeholder="msg('modelNamePlaceholder')" required /></label>
+    <label>{{ msg("modelApiKey") }}<input v-model="apiKey" type="password" autocomplete="new-password" :disabled="!available" :placeholder="secretConfigured ? msg('modelSecretConfigured') : msg('modelSecretOptional')" /></label>
+    <button type="submit" :disabled="busy || !available || !model.trim()">{{ busy ? msg("modelSaving") : msg("modelSave") }}</button>
+    <p v-if="error" role="alert">{{ error }}</p><p v-if="noticeKey" role="status">{{ msg(noticeKey) }}</p>
   </form>
 </template>
 

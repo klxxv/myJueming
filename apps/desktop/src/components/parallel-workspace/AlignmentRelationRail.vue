@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { Link2, Link2Off } from "@lucide/vue";
 import type { AlignmentBlockView } from "../../domain/workspace-projection";
+import { t } from "../../i18n";
 
 const props = withDefaults(defineProps<{
   block: AlignmentBlockView;
@@ -22,12 +23,12 @@ const emit = defineEmits<{
 const relationKind = computed(() => `${props.block.sourceSegments.length}:${props.block.targetSegments.length}`);
 const relationLabel = computed(() => props.block.linked
   ? `A${String(props.block.index + 1).padStart(3, "0")} · ${relationKind.value}`
-  : "未对齐");
+  : t("puiUnaligned"));
 const canQuickAction = computed(() => props.writable && (props.block.linked
   || (props.block.sourceSegments.length > 0 && props.block.targetSegments.length > 0)));
 const quickActionLabel = computed(() => props.block.linked
-  ? `快速解除 ${relationLabel.value}`
-  : `快速建立 ${relationKind.value} Alignment`);
+  ? t("puiQuickUnlink", { p0: relationLabel.value })
+  : t("puiQuickLink", { p0: relationKind.value }));
 </script>
 
 <template>
@@ -46,8 +47,8 @@ const quickActionLabel = computed(() => props.block.linked
         class="alignment-relation__label"
         type="button"
         :aria-pressed="operationSelected"
-        :aria-label="block.linked ? `选择 ${relationLabel}` : '选择未对齐句段块'"
-        :title="block.linked ? '选择完整 Alignment；Ctrl/⌘ 可多选用于 Group' : '选择两侧未对齐 Segment'"
+        :aria-label="block.linked ? t('puiSelectRelation', { p0: relationLabel }) : t('puiSelectUnalignedBlock')"
+        :title="t(block.linked ? 'puiSelectAlignmentTitle' : 'puiSelectUnalignedTitle')"
         @click.stop="emit('select', $event)"
       >{{ relationLabel }}</button>
       <button

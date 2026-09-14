@@ -46,7 +46,8 @@ _更新时间：2026-09-01。本文是仓库级快速入口；正式架构依据
 - Segment 选择和 Alignment 选择是两套状态：前者服务 Link，后者服务 Unlink/Merge/Split；跳转锚点不制造操作选择。
 - 编辑退出、模式切换和成功的 Alignment 操作必须清理暂态选择，避免旧单元格残留高亮。
 - 拖拽使用 `@atlaskit/pragmatic-drag-and-drop`，只从中文侧显式手柄启动；虚拟行卸载时注销监听。
-- 长列表使用 `@tanstack/vue-virtual`，不把全工程 Segment 常驻 DOM。
+- 主平行视图采用现有 `AlignedWorkspaceViewport` + `useAlignedBlockLayout`：按 Alignment 计算双侧高度、可视区裁剪与 overscan、稳定 ID 锚定和 ResizeObserver 测量。搜索结果使用 `@tanstack/vue-virtual`；不把全工程 Segment 常驻 DOM。
+- 双栏工作区在导入／打开工程或切换文档对时建立 `useWorkspaceIndex` 内存索引；仅接受 Kernel 返回的结构，后续 Revision 按稳定 ID 增加、替换和删除条目。正文 Slice 只更新对应对象的响应式正文／加载状态，不重建对齐投影；正文淘汰同时清空索引对象中的正文。对齐检查复用 ID 索引，可视区用二分定位；逐帧布局诊断需显式开启 `VITE_ALIGNMENT_LAYOUT_DEBUG=true`。缓存可随时重建，不写入 canonical 历史。
 - UI 图标使用 Lucide；桌面品牌图标统一从 `assets/brand/jueming-aligner-icon-master-v2.png` 生成。
 - 设备设置使用版本化 TypeScript Schema 和 Pinia 单一 Store；Vue 组件不直接读写持久化。桌面端经 typed `KernelClient` 调用 Rust 适配器并写入 Tauri Store，浏览器预览仅使用独立 localStorage fallback；设置数据永远不进入 `.jm`。
 - 设置导航由 capability registry 驱动。只有 `available` 能力显示可操作页面；`UNBOUND` 的账号、桌宠、语料库服务、上传、社区、Agent、插件和通知不显示假按钮。动效由同一 `MotionPolicy` 汇总系统辅助功能、全局模式、后台状态和局部开关。
@@ -54,6 +55,7 @@ _更新时间：2026-09-01。本文是仓库级快速入口；正式架构依据
 ### 主题与视觉
 
 - 当前项目不使用 Tailwind；主题由全局语义 CSS 变量和组件 scoped CSS 组成。
+- 下拉选择统一使用可见的原生 `<select>`，保留系统选项菜单、键盘交互和表单语义。macOS WebKit 原生按钮放大后字号/内边距受限且箭头遮字，因此收起态由全局 CSS 仿制 macOS 的圆角按钮与蓝色双箭头，默认最小高度 34 px，搜索与书签工具栏为 38 px；文字为 13 px，箭头有独立的右侧留白。组件只调整布局尺寸，不叠加透明 select 或另建弹出选项列表；背景复用主题变量，兼容护眼模式。强制颜色模式恢复平台绘制。
 - 字体优先系统 UI 字体；字号、行高和字重由 `styles.css` 的 `--jm-font-*` / `--jm-line-height-*` token 管理，采用 Apple HIG macOS 的 13/16（Body）、12/15（Callout）、11/14（Subheadline）、15/20（Title 3）、17/22（Title 2）层级，在 WebView 中使用 CSS px 而非 CSS pt。UI 使用 400/500/600，17 px 页面与弹窗标题保持 Regular；有意强调的 15 px 区域标题使用 Semibold。
 - 中文辅助信息至少使用 11 px，不再使用 9 px 小字；多行说明保留适合中文的行距。双语正文独立使用 16/15.5 px 和现有阅读缩放，不随 UI 密度缩成 13 px；编号、键盘提示复用系统等宽字体栈。排版调整不改变控件点击尺寸、模式状态机或虚拟列表机制。
 - 明亮与护眼模式共享 `paper/surface/input/hover/status` 表面色合同。新增组件不得硬编码 `#fff` 作为中性表面，应复用 `apps/desktop/src/styles.css` 中的变量。
@@ -85,6 +87,22 @@ _更新时间：2026-09-01。本文是仓库级快速入口；正式架构依据
 - 小花园默认静态，生动模式通过懒加载 Web Animations renderer 实现有限反馈。静态、隐藏、减少动态、后台和编辑安静模式可释放渲染资源，普通 DOM 审核按钮独立工作。`CompanionRenderer` 为未来 Spine/Pixi 资源适配保留接口，当前未安装 Spine。
 - Agent 和桌宠设置页现已接入真实能力；任意外部插件运行、云协作、自动语义对齐等仍保持未绑定。声明式扩展 registry 不等于已运行插件。
 
+### 2026-09-13 架构审查修复
+
+- 工程会话持有 `.writer.lock` 的 OS 排他锁，进程退出自动释放；不删除锁文件以避免 inode 替换导致双写。读取与安装工程在同一 Host 临界区完成，同一 Host 重开当前工程复用锁。新建不能覆盖已有工程。
+- Kernel 落盘另以 `.commit.lock` 串行化，校验磁盘 project/revision 后才发布后继 Revision。相同快照 flush 不重写历史；已提交 Revision 不得被旧快照覆盖，未被 `project.json` 引用的孤儿 Revision 仍可恢复覆盖。
+- 原生 canonical 写入统一经 `execute_command(CommandEnvelope)`；裸参数写命令退出 Tauri 注册。弃用的 Alignment 名称仅在 envelope 解析时映射为 Group/Ungroup。`command_receipts` 是向后兼容的可选持久化字段，与 Revision 同一原子快照提交；Undo/Redo/Restore 保留累计回执，重试返回原提交版本，异参复用和过期版本拒绝。
+- 工程打开／创建复用 Edit 的保存、放弃、继续编辑守卫；保存失败保留草稿，保存中切换等待完成。编辑会话冻结起始工程和版本，失败重试保留同一 command ID。批注草稿同样冻结版本、保留失败输入；异步内容合并／拆分确认拒绝过期草稿。
+- `WorkspaceProject` 只提供结构、文本 hash/长度、summary、历史摘要及 sidecar；canonical `ProjectSnapshot` 留在 Rust。正文通过最多 200 个稳定 ID 的 `load_parallel_slice` 读取，检查工程、版本、文档和范围。前端正文缓存有界，按 hash 保留未变内容并拒收旧响应；可见区域触发加载。
+- Agent 同步投影只提供 ProjectIdentity，不复制 canonical 工程；新版本才读取 workspace 结构。当前视图 Find 逐批读取该视图的 Slice，在前端匹配并只保留命中 ID，不创建 Project Search session，也不把全文留在缓存。主平行视图继续使用既有布局实现。
+
+### 2026-09-13 桌宠分件素材准备
+
+- `anime-dev` 分支新增独立的 SVG puppet v1 资源包：橘猫 31 片、金毛 29 片。`master.svg` 保存美术源，`rig.json` 保存关节父子关系、局部原点和独立绘制顺序；切片及部件总览由 `scripts/companion/export-parts.py` 导出。
+- `motions.json` 将局部动作片段与场景位移分开，提供走路、跳上猫窝、睡觉和去花园的有限动作原型。纯采样器不拥有计时器；独立开发入口 `/companion-lab.html` 提供关节检查、切片下载和手动播放，减少动态、后台及失焦时停止播放。
+- 此阶段是素材和动作验证，生产 Companion 仍使用原有静态 SVG / Web Animations；没有引入 Pixi 或 Spine。资源格式、开发与后续接入约定见 `docs/design/companion/svg-puppet-pack-v1.md`。
+- 按用户选定的圆脸眯眼橘猫参考图，增加 Image Gen 插画帧通道：猫/金毛各 16 帧、独立 atlas 和单次 GIF 预览；页面用纯帧采样器及有限 rAF 控制暂停/终点，不内嵌自动循环 GIF。SVG 绑定保留为独立检查通道，尚未自动混用两套 renderer。内部预览通过 CLI 覆盖为 `127.0.0.1:1422`，保留 Tauri 默认 1420 与 HMR 1421。详细素材来源、动作与限制见 `docs/design/companion/sprite-hybrid-v1.md`。
+
 ## 明确延期
 
 MVP 不实现 POS、Lemma、NER、自动语义对齐、OCR、云协作和外部插件加载。新增这些能力前，应先确认 Slot/Artifact 合同、资源与安全边界，并新增 ADR，而不是直接把 Provider 逻辑嵌入 Vue 组件或现有 Segment schema。
@@ -95,3 +113,29 @@ MVP 不实现 POS、Lemma、NER、自动语义对齐、OCR、云协作和外部�
 2. 新增 ADR，记录 Context、Decision、Consequences 和迁移方案。
 3. 更新 `docs/adr/000-index.md`、Phase 0 合同版本及本总览。
 4. 再修改 Rust Core、KernelClient、前端交互和持久化实现。
+
+
+### 2026-09-13 多译本工程、自研 Panel 和导入向导
+
+- 领域变更见 ADR-018：显式共享原文／多译本的工程 2.0；旧双文档 1.0／1.1 可继续读取。Alignment 占用按文档对隔离；原文 Split／Merge 覆盖所有译本关系；每份资源记录独立 ImportProfile。
+- WorkspacePanelStrip 是自研展示容器，使用已有 Atlaskit 做列拖拽，支持键盘调序、指针／键盘调宽，按工程 ID 在设备 localStorage 保存布局。不引入 Dockview，不把 Panel ID 写进 canonical 数据。
+- comparison-projection 组合现有双列 block 投影；两文档路径直接使用原算法。多文档中重叠 n:m 形成共享展示带，但保留每条独立 Alignment 和绑定按钮；AlignedDocumentList 仅渲染可视区。固定高度的绑定栏保证正文起点一致，测量取各列最大值撑齐，宽度变化仅清除该列测量。交叠 n:m 组内按每条真实关系的起点建立高度约束，以最长路径分配 Segment 位置；无法同时满足的交叉约束保留文本顺序并标示交叉绑定。单个巨大 n:m 组内部同样按 Segment 位置裁剪正文与 DOM，滚动锚点跟随稳定 SegmentId。
+- 多列支持分别高亮／解除真实绑定、跳至所选文档对使用原有编辑工具、全译本有界视图查找。文档对切换复用未保存草稿保护；搜索和替换增加可选 document_ids，以区分同语种译本。导出按译本分组，保留所有未绑定文本。既有译法研究界面继续以首份译本为目标，其候选、证据指纹及确认检查均按该文档隔离，不把其他列候选混入首份译本名下。
+- 新建向导顺序为工程信息、原文、译本 1…N、确认；每次增加译本新增独立页面。SISU 展示文案改为 seg 分段；真实分段仍沿用物理非空行加清洗。预览提供实际边界、清理前后文本与清洗原因，每页 20 段。请求／会话代数拦截迟到结果；Kernel 在任何落盘前校验所有输入和预览 SHA。
+- 验证入口：tests/comparison/run-contracts.mjs、tests/comparison/browser-regression.mjs、tests/import-wizard/browser-regression.mjs 与 crates/jueming-kernel/tests/comparison.rs；浏览器回归使用实际 Vue/App 加确定性 Host 桥，真实落盘／解码／历史由 Rust 测试覆盖。
+
+
+### 2026-09-13 导入自动编码识别
+
+- 接入 `chardetng 1.0.0` 与 `encoding_rs 0.8.41`。BOM 优先、UTF-8 校验、统计检测依次执行；ISO-2022-JP 转义文本由检测器处理。GB18030 改为纯 Rust 跨平台严格解码，无效字节不替换。
+- 新建向导每份文本默认独立自动识别，预览显示具体编码和识别依据；保留手动编码选择。手动切换、重选文件和关闭向导均沿用已有请求世代保护，过期结果不能覆盖当前结果。
+- 自动选项只存在于预览请求。创建直接复制成功预览返回的 profile 并携带 SHA-256，持久化 SourceAsset 与主文档 profile 均为具体编码。新增编码合同见 ADR-019。
+
+### 2026-09-13 新建向导删除译本入口
+
+- 每个可删除译本的步骤旁始终显示独立删除按钮，无需先完成前置步骤或进入该译本页面；至少保留一份译本，创建工程或选择文件期间禁用删除。
+- 删除当前页时返回前一份文本，删除其他页保留当前页与预览；默认译本名称跟随剩余编号，已命名译本与其他导入设置保持原值。删除会作废该译本的待返回预览并恢复页内焦点。
+
+### 2026-09-13 批注侧栏直角外观
+
+- 批注侧栏外框改为直角，取消左上、左下的 16px 圆角；下拉框外框与箭头底色恢复原有圆角。

@@ -6,6 +6,8 @@ rust-version.workspace = true
 authors.workspace = true
 
 [dependencies]
+chardetng = "1.0.0"
+encoding_rs = "0.8.41"
 serde.workspace = true
 thiserror.workspace = true
 uuid.workspace = true

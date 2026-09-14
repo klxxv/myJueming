@@ -9,6 +9,21 @@ use std::collections::HashSet;
 use std::path::Path;
 
 impl KernelService {
+    /// A successful native no-op still records its durable command receipt.
+    pub fn commit_unchanged_command(
+        &self,
+        path: &Path,
+        mut snapshot: ProjectSnapshot,
+    ) -> Result<ProjectSnapshot, KernelError> {
+        crate::revision::advance_revision(
+            &mut snapshot,
+            "no_change",
+            0,
+            "Command completed without content changes".into(),
+        );
+        self.save_project(path, &snapshot)?;
+        Ok(snapshot)
+    }
     pub fn open_project(
         &self,
         project_path: impl AsRef<Path>,
@@ -49,14 +64,18 @@ impl KernelService {
             .iter()
             .filter(|segment| segment.document_id == target_document.document_id)
             .count() as u64;
+        let pair_ids =
+            crate::projection::alignment_ids_for_document(snapshot, target_document.document_id);
         let source_linked: HashSet<_> = snapshot
             .alignments
             .iter()
+            .filter(|alignment| pair_ids.contains(&alignment.alignment_id))
             .flat_map(|alignment| alignment.source_segment_ids.iter().copied())
             .collect();
         let target_linked: HashSet<_> = snapshot
             .alignments
             .iter()
+            .filter(|alignment| pair_ids.contains(&alignment.alignment_id))
             .flat_map(|alignment| alignment.target_segment_ids.iter().copied())
             .collect();
         Ok(ProjectSummary {

@@ -2,6 +2,7 @@ import { computed } from "vue";
 import { storeToRefs } from "pinia";
 import type { KernelClient } from "../domain/kernel-client";
 import { useAppSettingsStore } from "../stores/app-settings";
+import type { LocalizedMessage } from "../i18n";
 
 export type {
   AppTheme,
@@ -12,7 +13,7 @@ export type {
 type UseAppSettingsOptions = {
   detectedMacOS: boolean;
   kernelClient: Pick<KernelClient, "loadAppSettings" | "saveAppSettings" | "resetAppSettings" | "clearCache">;
-  onStatus: (message: string) => void;
+  onStatus: (message: LocalizedMessage) => void;
 };
 
 export function useAppSettings(options: UseAppSettingsOptions) {

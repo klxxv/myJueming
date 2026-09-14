@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-55 -45 117 93" fill="none" role="img" aria-label="头部">
+  <title>头部</title>
+<path xmlns="http://www.w3.org/2000/svg" d="M -45 -17 C -41 -38 -18 -45 6 -41 C 28 -43 48 -30 51 -9 L 56 10 C 64 18 56 33 42 39 C 23 50 -4 46 -23 40 L -39 37 L -36 30 L -48 27 L -44 20 L -52 17 C -54 4 -51 -7 -45 -17 Z" fill="#EFD099" />
+<path xmlns="http://www.w3.org/2000/svg" d="M -20 -35 Q -4 -43 10 -36 Q 17 -35 22 -29 Q 0 -34 -16 -28 Z" fill="#F6DCAA" />
+<ellipse xmlns="http://www.w3.org/2000/svg" cx="-20" cy="24" rx="8" ry="4" fill="#E7B991" />
+<ellipse xmlns="http://www.w3.org/2000/svg" cx="44" cy="22" rx="7" ry="4" fill="#E7B991" />
+  
+</svg>

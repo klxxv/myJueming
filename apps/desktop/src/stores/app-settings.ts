@@ -9,11 +9,12 @@ import {
   type AppSettingsEnvelope,
 } from "../settings/schema";
 import { createSettingsCapabilities } from "../settings/capabilities";
+import { setUiLocale, t, formatNumber, type LocalizedMessage } from "../i18n";
 
 type AppSettingsStoreOptions = {
   detectedMacOS: boolean;
   kernelClient: Pick<KernelClient, "loadAppSettings" | "saveAppSettings" | "resetAppSettings" | "clearCache">;
-  onStatus: (message: string) => void;
+  onStatus: (message: LocalizedMessage) => void;
 };
 
 const SAVE_DEBOUNCE_MS = 320;
@@ -73,22 +74,22 @@ export const useAppSettingsStore = defineStore("app-settings", () => {
   });
 
   const shortcutRows = computed<Array<[string, string]>>(() => [
-    ["新建 / 打开工程", `${shortcutLabels.value.newProject} / ${shortcutLabels.value.openProject}`],
-    ["保存工程", shortcutLabels.value.save],
-    ["审阅内查找", shortcutLabels.value.find],
-    ["下一处 / 上一处", `${shortcutLabels.value.nextFind} / ${shortcutLabels.value.previousFind}`],
-    ["撤销 / 重做", `${shortcutLabels.value.undo} / ${shortcutLabels.value.redo}`],
-    ["保存句段并退出", `${shortcutLabels.value.commitEdit} · Esc`],
+    [t("shortcutNewOpen"), `${shortcutLabels.value.newProject} / ${shortcutLabels.value.openProject}`],
+    [t("saveProject"), shortcutLabels.value.save],
+    [t("shortcutFind"), shortcutLabels.value.find],
+    [t("shortcutNextPrevious"), `${shortcutLabels.value.nextFind} / ${shortcutLabels.value.previousFind}`],
+    [t("shortcutUndoRedo"), `${shortcutLabels.value.undo} / ${shortcutLabels.value.redo}`],
+    [t("shortcutSaveExit"), `${shortcutLabels.value.commitEdit} · Esc`],
   ]);
 
-  const motionSummary = computed(() => {
-    if (settings.value.device.motion.mode === "system") {
-      return systemReducedMotion.value ? "跟随系统 · 已减少" : "跟随系统";
-    }
-    return settings.value.device.motion.mode === "standard"
-      ? "标准"
-      : settings.value.device.motion.mode === "reduced" ? "减少" : "关闭非必要动画";
-  });
+  function currentMotionSummaryKey() {
+    const mode = settings.value.device.motion.mode;
+    if (mode === "system") return systemReducedMotion.value ? "runtimeMotionSystemReduced" : "runtimeMotionSystem";
+    if (mode === "standard") return "standard";
+    return mode === "reduced" ? "runtimeMotionReduced" : "runtimeMotionOff";
+  }
+
+  const motionSummary = computed(() => t(currentMotionSummaryKey()));
 
   function configure(options: AppSettingsStoreOptions) {
     client = options.kernelClient;
@@ -100,6 +101,7 @@ export const useAppSettingsStore = defineStore("app-settings", () => {
   function applySettingsToDocument() {
     const root = document.documentElement;
     const device = settings.value.device;
+    setUiLocale(device.general.interfaceLanguage);
     root.dataset.theme = device.appearance.theme;
     root.dataset.lineSpacing = device.appearance.lineSpacing;
     root.dataset.listDensity = device.appearance.listDensity;
@@ -181,14 +183,15 @@ export const useAppSettingsStore = defineStore("app-settings", () => {
     try {
       await client.saveAppSettings(settings.value);
     } catch (error) {
-      saveError.value = error instanceof Error ? error.message : String(error);
-      onStatus(`设置保存失败：${saveError.value}`);
+      const message = error instanceof Error ? error.message : String(error);
+      saveError.value = message;
+      onStatus(() => t("runtimeSettingsSaveFailed", { p0: message }));
     } finally {
       saving.value = false;
     }
   }
 
-  function schedulePersist(status?: string) {
+  function schedulePersist(status?: LocalizedMessage) {
     applySettingsToDocument();
     if (status) onStatus(status);
     if (saveTimer) clearTimeout(saveTimer);
@@ -209,8 +212,9 @@ export const useAppSettingsStore = defineStore("app-settings", () => {
       }
     } catch (error) {
       settings.value = createDefaultAppSettings(detectedMacOS.value);
-      saveError.value = error instanceof Error ? error.message : String(error);
-      onStatus(`读取设置失败，已使用默认值：${saveError.value}`);
+      const message = error instanceof Error ? error.message : String(error);
+      saveError.value = message;
+      onStatus(() => t("runtimeSettingsLoadFailed", { p0: message }));
     }
     attachRuntimeListeners();
     hydrated.value = true;
@@ -218,7 +222,7 @@ export const useAppSettingsStore = defineStore("app-settings", () => {
   }
 
   function applyGeneralSettings() {
-    schedulePersist("通用偏好已更新");
+    schedulePersist(() => t("runtimeGeneralUpdated"));
   }
 
   function applyUiSettings() {
@@ -226,21 +230,23 @@ export const useAppSettingsStore = defineStore("app-settings", () => {
   }
 
   function applyAccessibilitySettings() {
-    schedulePersist("辅助功能偏好已更新");
+    schedulePersist(() => t("runtimeAccessibilityUpdated"));
   }
 
   function applyInteractionSettings(notifyUser = true) {
+    const platform = usesMacShortcuts.value ? "macOS" : "Windows / Linux";
     schedulePersist(notifyUser
-      ? `快捷键已切换为${usesMacShortcuts.value ? "macOS" : "Windows / Linux"}布局`
+      ? () => t("shortcutChanged", { p0: platform })
       : undefined);
   }
 
   function applyMotionSettings() {
-    schedulePersist(`动态效果：${motionSummary.value}`);
+    const summaryKey = currentMotionSummaryKey();
+    schedulePersist(() => t("runtimeMotionUpdated", { p0: t(summaryKey) }));
   }
 
   function applyPersistenceSettings() {
-    schedulePersist("自动保存与缓存策略已更新");
+    schedulePersist(() => t("persistenceUpdated"));
   }
 
   function rememberSettingsSection(section: string) {
@@ -254,7 +260,7 @@ export const useAppSettingsStore = defineStore("app-settings", () => {
     settings.value = createDefaultAppSettings(detectedMacOS.value);
     applySettingsToDocument();
     await persistNow();
-    onStatus("已恢复本机默认设置");
+    onStatus(() => t("runtimeSettingsReset"));
   }
 
   async function clearProjectCache(manual = true) {
@@ -264,9 +270,11 @@ export const useAppSettingsStore = defineStore("app-settings", () => {
       const removedBytes = await client.clearCache();
       settings.value.device.persistence.lastCacheCleanupAt = Date.now();
       await persistNow();
-      if (manual) onStatus(`已清理 ${(removedBytes / 1024).toFixed(1)} KB 可重建缓存；Revision 历史未删除`);
+      const removedKilobytes = removedBytes / 1024;
+      if (manual) onStatus(() => t("cacheCleared", { p0: formatNumber(removedKilobytes, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) }));
     } catch (error) {
-      if (manual) onStatus(`缓存清理失败：${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      if (manual) onStatus(() => t("cacheFailed", { p0: message }));
     } finally {
       cacheCleaning.value = false;
     }

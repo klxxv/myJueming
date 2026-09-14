@@ -13,6 +13,9 @@ if (!esbuildPackage.startsWith(path.join(workspace, "node_modules"))) {
 }
 
 const productionContracts = [
+  "tests/workspace-index/run-contracts.mjs",
+  "tests/comparison/run-contracts.mjs",
+  "tests/architecture/run-contracts.mjs",
   "tests/agent-context/run-agent-context-contract.mjs",
   "tests/agent-context/run-agent-workspace-wire-contract.mjs",
   "tests/agent-context/agent-client-stream-contract.mjs",

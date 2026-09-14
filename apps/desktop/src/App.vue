@@ -2,7 +2,8 @@
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { confirm, open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Check, ChevronDown, Download, Eye, FilePlus2, Folder, FolderOpen, History, Link2, ListOrdered, MessageSquareText, Monitor, PanelLeft, Pencil, Redo2, Save, Search, Settings2, Sparkles, Star, Undo2, Workflow } from "@lucide/vue";
+import { Check, ChevronDown, Download, Eye, FilePlus2, Folder, FolderOpen, HelpCircle, History, Link2, ListOrdered, MessageSquareText, Monitor, PanelLeft, Pencil, Redo2, Save, Search, Settings2, Sparkles, Star, Undo2, Workflow, X } from "@lucide/vue";
+import ComparisonWorkspace from "./components/ComparisonWorkspace.vue";
 import ParallelWorkspace, { type OperationSelectionContext } from "./components/ParallelWorkspace.vue";
 import AnnotationPanel, { type AnnotationDraft, type AnnotationFilter, type AnnotationItem } from "./components/AnnotationPanel.vue";
 import HistoryWorkspace, { type HistoryDiff, type RevisionItem } from "./components/HistoryWorkspace.vue";
@@ -17,11 +18,16 @@ import AgentModelSettings from "./components/AgentModelSettings.vue";
 import { agentRuntimeClient, type AgentRuntimeMessage, type AgentRuntimeStatus, type AgentRuntimeEvent } from "./domain/agent-runtime-client";
 const loadPipelineWorkspace = () => import("./components/PipelineWorkspace.vue");
 const PipelineWorkspace = defineAsyncComponent(loadPipelineWorkspace);
+const ResearchWorkspace = defineAsyncComponent(() => import("./components/ResearchWorkspace.vue"));
+import { researchClient } from "./domain/research-client";
+import type { FeatureSnapshot } from "./domain/research-types";
 import { pipelineClient } from "./domain/pipeline-client";
 import type { PipelineMethodProposal } from "./domain/pipeline-types";
 import CompanionHabitat from "./components/CompanionHabitat.vue";
 import CompanionGarden from "./components/CompanionGarden.vue";
+import gardenPawIcon from "./assets/companion/garden-paw-button-v1.png";
 import GuidanceOverlay from "./components/GuidanceOverlay.vue";
+import ParallelTutorial from "./components/ParallelTutorial.vue";
 import type { CompanionActivity } from "./domain/companion";
 import type { ReviewableProposal } from "./components/AgentActionBar.vue";
 import { useAgentWorkspace } from "./composables/useAgentWorkspace";
@@ -31,12 +37,20 @@ import type { SearchSegmentsResponse } from "./domain/kernel-client";
 import { useAppSettings } from "./composables/useAppSettings";
 import type { ReorderIntent } from "./composables/useOrderDragAndDrop";
 import { useViewModeController } from "./composables/useViewModeController";
+import { useWorkspaceText } from "./composables/useWorkspaceText";
+import { useWorkspaceIndex } from "./composables/useWorkspaceIndex";
+import { useTutorialWorkspace } from "./composables/useTutorialWorkspace";
+import { formatDate, t, type LocalizedMessage } from "./i18n";
+import { formatError, LocalizedError, rawErrorMessage, revisionAction, revisionSummary } from "./i18n/kernel-messages";
+import { PARALLEL_TUTORIAL_GLOBAL_CONFIG, parallelTutorialSteps, type TutorialPreset } from "./domain/parallel-tutorial";
+import type { CommandContext, CommandScope } from "./domain/kernel-client";
 import { useStructureMutations } from "./composables/useStructureMutations";
 import { alignments as fixtureAlignments, sourceSegments, targetSegments } from "./data/governmentFixture";
-import { createKernelClient, snapshotToWorkspace, type AlignmentDto, type BookmarkPreviewDto, type ExportFormat, type LanguageSide, type ProjectSnapshot, type ProjectSummaryDto, type ReplacePreviewRequest, type RevisionComparison, type SegmentDto, type WorkspaceMode } from "./domain/kernel-client";
+import { createKernelClient, type AlignmentDto, type BookmarkPreviewDto, type ExportFormat, type LanguageSide, type WorkspaceProject, type ProjectSummaryDto, type ReplacePreviewRequest, type RevisionComparison, type SegmentDto, type WorkspaceMode } from "./domain/kernel-client";
 import "./styles.css";
 
-type NavId = "project" | "parallel" | "search" | "bookmarks" | "history" | "pipeline" | "settings";
+type NavId = "project" | "parallel" | "search" | "bookmarks" | "history" | "pipeline" | "research" | "settings";
+type WorkspaceDraftHandle = { hasDirtyDraft: () => boolean; saveDraft: () => Promise<boolean>; discardDraft: () => void };
 type ModeMenuId = WorkspaceMode | "annotation";
 type ParallelWorkspaceExposed = {
   clearSelection: () => void;
@@ -44,22 +58,37 @@ type ParallelWorkspaceExposed = {
   revealSegments: (sourceIds: string[], targetIds: string[]) => Promise<void>;
   openFind: () => void;
   navigateFind: (direction: 1 | -1) => void;
+  prepareTutorial: (preset: TutorialPreset) => Promise<void>;
 };
 type NewProjectDialogExposed = { open: () => Promise<void> };
 const detectedMacOS = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
 const isTauriRuntime = "__TAURI_INTERNALS__" in window;
-const kernelClient = createKernelClient();
+const tutorialActive = ref(false);
+const tutorialGuideOpen = ref(false);
+const tutorialStep = ref(0);
+const autoStartTutorialOnThisLaunch = (() => {
+  if (!PARALLEL_TUTORIAL_GLOBAL_CONFIG.autoStartOnFirstLaunch) return false;
+  try { return localStorage.getItem(PARALLEL_TUTORIAL_GLOBAL_CONFIG.firstLaunchStorageKey) !== "1"; }
+  catch { return true; }
+})();
+const rememberTutorialLaunch = () => {
+  try { localStorage.setItem(PARALLEL_TUTORIAL_GLOBAL_CONFIG.firstLaunchStorageKey, "1"); }
+  catch { /* Storage can be unavailable in hardened webviews; the tutorial still works. */ }
+};
+const commandScope = (): CommandScope | null => !tutorialActive.value && projectSnapshot.value ? { project_id: projectSnapshot.value.project.project_id, base_revision_id: projectSnapshot.value.project.current_revision_id } : null;
+const kernelClient = createKernelClient(commandScope);
+const workspaceText = useWorkspaceText(kernelClient);
+const workspaceIndex = useWorkspaceIndex();
 const activeNav = ref<NavId>("parallel");
 const selectedAlignmentId = ref("alignment-000004");
 const busy = ref(false);
-const statusMessage = ref(isTauriRuntime ? "尚未打开工程" : "演示预览 · 浏览器模式");
-const exportOpen = ref(false);
+const statusMessage = ref<LocalizedMessage>(() => isTauriRuntime ? t("projectNone") : t("demoPreview"));
 const annotationOpen = ref(false);
 const assistantOpen = ref(false);
 const rightPanelTab = ref<"agent" | "annotations">("agent");
 const rightPanelOpen = computed(() => annotationOpen.value || assistantOpen.value);
 const agentBusy = ref(false);
-const agentActionError = ref<string | null>(null);
+const agentActionError = ref<Error | string | null>(null);
 const runtimeStatus = ref<AgentRuntimeStatus | null>(null);
 const runtimeMessages = ref<AgentRuntimeMessage[]>([]);
 const runtimeSessions = new Map<string, string>();
@@ -76,8 +105,24 @@ const guidance = ref<{ selector: string; label: string; key: number } | null>(nu
 const gardenVisible = computed(() => settings.value.device.pet.enabled && settings.value.device.pet.presentation !== "hidden");
 const gardenStrolling = ref(false);
 const companionActivity = computed<CompanionActivity>(() => agentProposals.value.length ? "awaiting_approval" : agentBusy.value || runtimeRunning.value ? "running" : "idle");
+const gardenOpen = computed(() => gardenStrolling.value || companionActivity.value !== "idle");
 const pipelineProposals = ref<PipelineMethodProposal[]>([]);
-const pipelineWorkspaceRef = ref<{ revealNode: (nodeId: string) => Promise<boolean>; reload: () => Promise<void>; hasDirtyDraft: () => boolean } | null>(null);
+const pipelineWorkspaceRef = ref<(WorkspaceDraftHandle & { revealNode: (nodeId: string) => Promise<boolean>; reload: () => Promise<void> }) | null>(null);
+const researchWorkspaceRef = ref<WorkspaceDraftHandle | null>(null);
+const pipelineDirty = ref(false);
+const researchDirty = ref(false);
+const researchFeature = ref<FeatureSnapshot | null>(null);
+const researchFeatureBusy = ref(false);
+const researchVisited = ref(false);
+const researchHistoryAvailable = ref(false);
+let researchHistoryGeneration = 0;
+let featureRequestGeneration = 0;
+let featureNavigationIntent: { projectId: string | null; navigationGeneration: number } | null = null;
+let navigationGeneration = 0;
+const workspaceLeave = ref<{ label: () => string; handle: WorkspaceDraftHandle; resolve: (value: boolean) => void } | null>(null);
+const workspaceLeaveBusy = ref(false);
+const historyTransitionPending = ref(false);
+watch(activeNav, tab => { navigationGeneration++; if (tab === "research") researchVisited.value = true; });
 const annotationWidth = ref(355);
 const annotationResizing = ref(false);
 const annotationContextSegmentId = ref<string | null>(null);
@@ -92,13 +137,26 @@ const nativeReplacePreview = ref<UiReplacePreview | null>(null);
 const nativeReplaceRequest = ref<ReplacePreviewRequest | null>(null);
 const replacePreviewLoading = ref(false);
 const replacePreviewError = ref<string | null>(null);
+const displayedReplacePreviewError = computed(() => replacePreviewError.value === null ? null : formatError(replacePreviewError.value));
 let replacePreviewGeneration = 0;
 const workspaceOperationSelection = ref<OperationSelectionContext>({ segmentIds: [], alignmentIds: [] });
 const annotationFilter = ref<AnnotationFilter>("all");
 const selectedAnnotationId = ref<string | null>(null);
 const selectedRevisionId = ref<string | null>(null);
 const baseRevisionId = ref<string | null>(null);
-const historyDiff = ref<HistoryDiff | null>(null);
+type HistoryDiffState = Omit<HistoryDiff, "summary"> & {
+  summaryCounts: { segments: number; order: number; alignments: number };
+};
+const historyDiffState = ref<HistoryDiffState | null>(null);
+const historyDiff = computed<HistoryDiff | null>(() => historyDiffState.value ? {
+  ...historyDiffState.value,
+  segmentId: historyDiffState.value.segmentId || t("structureChange"),
+  summary: t("diffSummary", {
+    p0: historyDiffState.value.summaryCounts.segments,
+    p1: historyDiffState.value.summaryCounts.order,
+    p2: historyDiffState.value.summaryCounts.alignments,
+  }),
+} : null);
 const orderBaseline = ref<Record<LanguageSide, string[]>>({ source: [], target: [] });
 const pendingNav = ref<NavId | null>(null);
 const parallelWorkspaceRef = ref<ParallelWorkspaceExposed | null>(null);
@@ -107,37 +165,45 @@ const bookmarkPreviews = ref<BookmarkPreviewDto[]>([]);
 const sourceRows = ref<SegmentDto[]>(sourceSegments.map((segment) => ({ ...segment })));
 const targetRows = ref<SegmentDto[]>(targetSegments.map((segment) => ({ ...segment })));
 const alignmentRows = ref<AlignmentDto[]>(fixtureAlignments.map((alignment) => ({ ...alignment })));
-const projectSnapshot = ref<ProjectSnapshot | null>(null);
-const workspaceWritable = computed(() => projectSnapshot.value !== null || !isTauriRuntime);
+const tutorialWorkspace = useTutorialWorkspace(sourceRows, targetRows, alignmentRows);
+const tutorialBookmarkIds = ref<string[]>([]);
+const tutorialAnnotations = ref<AnnotationItem[]>([]);
+const projectSnapshot = ref<WorkspaceProject | null>(null);
+const activeTargetDocumentId = ref<string>();
+const comparisonOpen = ref(true);
+const comparisonWorkspaceRef = ref<{ openFind: () => Promise<void>; navigateFind: (direction: number) => Promise<void> } | null>(null);
+const hasMultipleTranslations = computed(() => (projectSnapshot.value?.documents.length ?? 0) > 2);
+const showComparison = computed(() => hasMultipleTranslations.value && comparisonOpen.value && activeMode.value === "review");
+const activeTargetDocument = computed(() => projectSnapshot.value?.documents.find(document => document.document_id === activeTargetDocumentId.value) ?? projectSnapshot.value?.documents[1]);
+const workspaceWritable = computed(() => tutorialActive.value || projectSnapshot.value !== null || !isTauriRuntime);
 const projectSummary = ref<ProjectSummaryDto>({ project_id: "fixture-project", name: "2024政府工作报告_中英对齐", source_label: "report_zh.txt", target_label: "report_en.txt", source_count: 8, target_count: 8, alignment_count: 8, source_unlinked_count: 0, target_unlinked_count: 0, revision_id: "0" });
 
-const modeItems: Array<{ id: WorkspaceMode; label: string; hint: string; icon: typeof Eye }> = [
-  { id: "review", label: "审阅排序", hint: "Review + Order", icon: Eye },
-  { id: "edit", label: "编辑模式", hint: "Edit", icon: Pencil },
-  { id: "order", label: "排序模式", hint: "Order", icon: ListOrdered },
-  { id: "history", label: "历史模式", hint: "History", icon: History },
-];
-const annotationModeItem: { id: "annotation"; label: string; hint: string; icon: typeof Eye } = {
+const modeItems = computed<Array<{ id: WorkspaceMode; label: string; hint: string; icon: typeof Eye }>>(() => [
+  { id: "review", label: t("modeReview"), hint: t("modeReviewHint"), icon: Eye },
+  { id: "edit", label: t("modeEdit"), hint: t("modeEditHint"), icon: Pencil },
+  { id: "order", label: t("modeOrder"), hint: t("modeOrderHint"), icon: ListOrdered },
+  { id: "history", label: t("modeHistory"), hint: t("modeHistoryHint"), icon: History },
+]);
+const annotationModeItem = computed<{ id: "annotation"; label: string; hint: string; icon: typeof Eye }>(() => ({
   id: "annotation",
-  label: "批注模式",
-  hint: "Annotation",
+  label: t("modeAnnotation"),
+  hint: t("modeAnnotationHint"),
   icon: MessageSquareText,
-};
-const modeMenuItems: Array<{ id: ModeMenuId; label: string; hint: string; icon: typeof Eye }> = [
-  ...modeItems,
-  annotationModeItem,
-];
-const navItems: Array<{ id: NavId; label: string; hint?: string; icon: typeof Folder }> = [
-  { id: "project", label: "项目", icon: Folder }, { id: "parallel", label: "平行视图", icon: PanelLeft },
-  { id: "search", label: "搜索", icon: Search }, { id: "bookmarks", label: "书签", icon: Star },
-  { id: "history", label: "历史", icon: History },
-  { id: "pipeline", label: "Pipeline", hint: "处理流程", icon: Workflow },
-  { id: "settings", label: "设置", icon: Settings2 },
-];
-const currentMode = computed(() => {
-  if (activeNav.value === "search") return { id: activeMode.value, label: "搜索", hint: "Search", icon: Search };
-  return modeItems.find((item) => item.id === activeMode.value) ?? modeItems[0];
-});
+}));
+const modeMenuItems = computed<Array<{ id: ModeMenuId; label: string; hint: string; icon: typeof Eye }>>(() => [
+  ...modeItems.value,
+  annotationModeItem.value,
+]);
+const navItems = computed<Array<{ id: NavId; label: string; hint?: string; icon: typeof Folder }>>(() => [
+  { id: "project", label: t("navProject"), icon: Folder }, { id: "parallel", label: t("navParallel"), icon: PanelLeft },
+  { id: "search", label: t("navSearch"), icon: Search }, { id: "bookmarks", label: t("navBookmarks"), icon: Star },
+  { id: "history", label: t("navHistory"), icon: History },
+  { id: "pipeline", label: t("navPipeline"), icon: Workflow },
+  { id: "settings", label: t("navSettings"), icon: Settings2 },
+]);
+const visibleNavItems = computed(() => researchFeature.value?.status === "ready" || researchVisited.value || researchHistoryAvailable.value
+  ? [...navItems.value.slice(0, -1), { id: "research" as const, label: t("navResearch"), icon: Search }, ...navItems.value.slice(-1)]
+  : navItems.value);
 const segmentLabels = computed(() => new Map([...sourceRows.value, ...targetRows.value].map((segment) => [segment.id, String(segment.order + 1).padStart(6, "0")])));
 const alignmentLabels = computed(() => new Map(alignmentRows.value.map((alignment) => [alignment.id, segmentLabels.value.get(alignment.sourceIds[0] ?? alignment.targetIds[0] ?? "") ?? alignment.id.slice(0, 8)])));
 const segmentLabel = (segmentId: string) => segmentLabels.value.get(segmentId) ?? segmentId.slice(0, 8);
@@ -145,14 +211,16 @@ const alignmentLabel = (alignmentId: string | null | undefined) => {
   const alignment = alignmentRows.value.find((candidate) => candidate.id === alignmentId);
   return alignment ? segmentLabel(alignment.sourceIds[0] ?? alignment.targetIds[0] ?? alignment.id) : "—";
 };
-const humanizeSummary = (summary: string) => summary.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, (id) => segmentLabels.value.get(id) ?? alignmentLabels.value.get(id) ?? id.slice(0, 8));
-const revisionItems = computed<RevisionItem[]>(() => [...(projectSnapshot.value?.revisions ?? [])].reverse().map((revision) => ({ id: revision.revision_id, label: `R${revision.revision_id}`, timestamp: new Date(revision.created_at).toLocaleString("zh-CN", { hour12: false }), action: revision.change_set.operation.replace(/_/g, " "), summary: humanizeSummary(revision.summary), current: revision.revision_id === projectSummary.value.revision_id })));
-const canUndo = computed(() => (projectSnapshot.value?.revisions.length ?? 0) > 1);
-const canRedo = computed(() => { const revisions = projectSnapshot.value?.revisions ?? []; return revisions[revisions.length - 1]?.change_set.operation.startsWith("undo:") ?? false; });
-const annotations = computed<AnnotationItem[]>(() => (projectSnapshot.value?.annotations ?? []).map((annotation, index) => ({ id: annotation.annotation_id, number: index + 1, status: annotation.status, title: annotation.title, body: annotation.body, createdAt: new Date(annotation.updated_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }), links: annotation.linked_segment_ids.map((segmentId) => { const segment = [...sourceRows.value, ...targetRows.value].find((candidate) => candidate.id === segmentId); return { side: segment?.side ?? "source", segmentId, label: segmentLabel(segmentId), text: segment?.text }; }) })));
-const bookmarkedSegmentIds = computed(() => (projectSnapshot.value?.bookmarks ?? []).map((bookmark) => bookmark.segment_id));
-const annotatedSegmentIds = computed(() => [...new Set((projectSnapshot.value?.annotations ?? []).flatMap((annotation) => annotation.linked_segment_ids))]);
-const notify = (message: string) => { statusMessage.value = message; };
+const humanizeSummary = (summary: string) => revisionSummary(summary).replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, (id) => segmentLabels.value.get(id) ?? alignmentLabels.value.get(id) ?? id.slice(0, 8));
+const revisionItems = computed<RevisionItem[]>(() => [...(projectSnapshot.value?.revisions ?? [])].reverse().map((revision) => ({ id: revision.revision_id, label: `R${revision.revision_id}`, timestamp: formatDate(revision.created_at), action: revisionAction(revision.change_set.operation), summary: humanizeSummary(revision.summary), current: revision.revision_id === projectSummary.value.revision_id })));
+const canUndo = computed(() => tutorialActive.value ? tutorialWorkspace.canUndo.value : (projectSnapshot.value?.revisions.length ?? 0) > 1);
+const canRedo = computed(() => tutorialActive.value ? tutorialWorkspace.canRedo.value : (() => { const revisions = projectSnapshot.value?.revisions ?? []; return revisions[revisions.length - 1]?.change_set.operation.startsWith("undo:") ?? false; })());
+const annotations = computed<AnnotationItem[]>(() => tutorialActive.value
+  ? tutorialAnnotations.value.map((annotation) => ({ ...annotation, createdAt: t("shellJustNow") }))
+  : (projectSnapshot.value?.annotations ?? []).map((annotation, index) => ({ id: annotation.annotation_id, number: index + 1, status: annotation.status, title: annotation.title, body: annotation.body, createdAt: formatDate(annotation.updated_at, true), links: annotation.linked_segment_ids.map((segmentId) => { const segment = [...sourceRows.value, ...targetRows.value].find((candidate) => candidate.id === segmentId); return { side: segment?.side ?? "source", segmentId, label: segmentLabel(segmentId), text: segment?.text }; }) })));
+const bookmarkedSegmentIds = computed(() => tutorialActive.value ? tutorialBookmarkIds.value : (projectSnapshot.value?.bookmarks ?? []).map((bookmark) => bookmark.segment_id));
+const annotatedSegmentIds = computed(() => tutorialActive.value ? [...new Set(tutorialAnnotations.value.flatMap(annotation => annotation.links.map(link => link.segmentId)))] : [...new Set((projectSnapshot.value?.annotations ?? []).flatMap((annotation) => annotation.linked_segment_ids))]);
+const notify = (message: LocalizedMessage) => { statusMessage.value = message; };
 const {
   settings,
   capabilities,
@@ -189,8 +257,9 @@ const {
   onStatus: notify,
 });
 const requireOpenProject = () => {
+  if (tutorialActive.value) return true;
   if (projectSnapshot.value) return true;
-  notify("当前是演示预览，请先新建或打开本地 .jm 工程");
+  notify(() => t("demoReadOnly"));
   if (isTauriRuntime) activeNav.value = "project";
   return false;
 };
@@ -210,30 +279,64 @@ const {
   confirmPendingWithDiscard,
   cancelPendingTransition,
   forceMode,
+  guardProjectChange: guardBodyProjectChange,
 } = useViewModeController({
   autosaveDelayMs: autoSaveDelayMs,
-  persist: async (segmentId, text) => persistSegment(segmentId, text),
+  scope: commandScope,
+  persist: persistSegment,
   onStatus: notify,
 });
 const dirty = computed(() => hasDirtyDraft.value || isSavingDraft.value);
-const processedTotal = computed(() => Math.max(projectSummary.value.source_count, projectSummary.value.target_count));
-const progressPercentage = computed(() => Math.round(100 * projectSummary.value.alignment_count / Math.max(1, processedTotal.value)));
-const alignmentStatus = computed(() => projectSummary.value.source_unlinked_count + projectSummary.value.target_unlinked_count === 0 ? "1:1" : "待校对");
+const hasWorkspaceDraft = computed(() => pipelineDirty.value || researchDirty.value);
+const guardWorkspaceDrafts = async (): Promise<boolean> => {
+  if (workspaceLeave.value) return false;
+  const handles: Array<[() => string, WorkspaceDraftHandle | null]> = [[() => t("navPipeline"), pipelineWorkspaceRef.value], [() => t("navResearch"), researchWorkspaceRef.value]];
+  for (const [getLabel, handle] of handles) {
+    if (!handle?.hasDirtyDraft()) continue;
+    const allowed = await new Promise<boolean>(resolve => { workspaceLeave.value = { label: getLabel, handle, resolve }; });
+    if (!allowed) return false;
+  }
+  return true;
+};
+const resolveWorkspaceLeave = async (action: "save" | "discard" | "stay") => {
+  const pending = workspaceLeave.value;
+  if (!pending || workspaceLeaveBusy.value) return;
+  if (action === "stay") { workspaceLeave.value = null; pending.resolve(false); return; }
+  workspaceLeaveBusy.value = true;
+  try {
+    if (action === "save" && !await pending.handle.saveDraft()) return;
+    if (action === "discard") pending.handle.discardDraft();
+    if (pending.handle.hasDirtyDraft()) return;
+    workspaceLeave.value = null; pending.resolve(true);
+  } catch (cause) { const detail = errorMessage(cause); notify(() => t("shellDraftSaveFailed", { p0: formatError(detail) })); }
+  finally { workspaceLeaveBusy.value = false; }
+};
+const guardProjectChange = async () => await guardWorkspaceDrafts() && await guardBodyProjectChange();
+const processedTotal = computed(() => {
+  if (tutorialActive.value) return Math.max(projectSummary.value.source_count, projectSummary.value.target_count);
+  const snapshot = projectSnapshot.value;
+  if (!snapshot || snapshot.documents.length <= 2) return Math.max(projectSummary.value.source_count, projectSummary.value.target_count);
+  const sourceCount = snapshot.segment_orders[0]?.entries.length ?? 0;
+  return snapshot.segment_orders.slice(1).reduce((sum, order) => sum + Math.max(sourceCount, order.entries.length), 0);
+});
+const progressPercentage = computed(() => Math.min(100, Math.round(100 * projectSummary.value.alignment_count / Math.max(1, processedTotal.value))));
+const alignmentStatus = computed(() => projectSummary.value.source_unlinked_count + projectSummary.value.target_unlinked_count === 0 ? "1:1" : t("needsReview"));
 const footerStatusMessage = computed(() => busy.value
-  ? "处理中…"
+  ? t("processing")
   : isSavingDraft.value
-    ? "自动保存中…"
+    ? t("autosaving")
     : dirty.value
-      ? `待自动保存（${autoSaveDelayMs.value / 1000}s）`
-      : statusMessage.value);
+      ? t("autosavePending", { p0: autoSaveDelayMs.value / 1000 })
+      : typeof statusMessage.value === "function" ? statusMessage.value() : statusMessage.value);
 let unlistenClose: (() => void) | null = null;
 
 const closeWindowSafely = async () => {
+  if (!await guardWorkspaceDrafts()) return;
   const saved = await persistDraft(true, "close");
   if (!saved) return;
   await flushSettings();
   if (projectSnapshot.value) {
-    try { await kernelClient.flushProject(); } catch (error) { notify(`关闭前保存失败：${errorMessage(error)}`); return; }
+    try { await kernelClient.flushProject(); } catch (error) { const detail = errorMessage(error); notify(() => t("closeSaveFailed", { p0: formatError(detail) })); return; }
   }
   const currentWindow = getCurrentWindow();
   unlistenClose?.();
@@ -241,19 +344,24 @@ const closeWindowSafely = async () => {
   await currentWindow.close();
 };
 
-const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : error && typeof error === "object" && "message" in error ? String(error.message) : String(error);
 const closeAnnotationPanel = () => {
   annotationOpen.value = false;
   assistantOpen.value = false;
   annotationContextSegmentId.value = null;
 };
 const applySnapshot = async (
-  snapshot: ProjectSnapshot,
+  snapshot: WorkspaceProject,
   resetView = false,
   selectFirstAlignmentOnMissing = true,
 ) => {
+  const previous = projectSnapshot.value?.project;
+  if (!resetView && previous?.project_id === snapshot.project.project_id && BigInt(previous.current_revision_id) >= BigInt(snapshot.project.current_revision_id)) return;
   const previousAlignmentId = selectedAlignmentId.value;
-  const workspace = snapshotToWorkspace(snapshot);
+  workspaceText.selectProject(snapshot);
+  if (resetView || !snapshot.documents.slice(1).some(document => document.document_id === activeTargetDocumentId.value)) activeTargetDocumentId.value = snapshot.documents[1].document_id;
+  if (resetView) comparisonOpen.value = true;
+  const workspace = workspaceIndex.selectProject(snapshot, workspaceText.texts.value, activeTargetDocumentId.value);
   projectSnapshot.value = snapshot;
   agentWorkspace.setProjectSnapshot(snapshot);
   sourceRows.value = workspace.sourceSegments;
@@ -262,8 +370,9 @@ const applySnapshot = async (
   selectedAlignmentId.value = !resetView && workspace.alignments.some((alignment) => alignment.id === previousAlignmentId)
     ? previousAlignmentId
     : selectFirstAlignmentOnMissing ? (workspace.alignments[0]?.id ?? "") : "";
-  projectSummary.value = await kernelClient.getProjectSummary();
-  try { bookmarkPreviews.value = await kernelClient.listBookmarks(); } catch { bookmarkPreviews.value = []; }
+  projectSummary.value = snapshot.summary;
+  bookmarkPreviews.value = [];
+  void refreshBookmarkPreviews();
   if (resetView) {
     orderBaseline.value = {
       source: workspace.sourceSegments.map((segment) => segment.id),
@@ -276,85 +385,152 @@ const applySnapshot = async (
     resetSearch();
   }
 };
-const acceptAgentSearch = ({ spec, results }: { spec: SearchSpec | null; results: unknown }) => {
+const refreshVisibleRows = () => {
+  if (!projectSnapshot.value) return;
+  workspaceIndex.updateTexts(workspaceText.texts.value);
+};
+watch(workspaceText.texts, refreshVisibleRows);
+const findCurrentPair = (query: string, cancelled: () => boolean) => workspaceText.find(query, cancelled, [projectSnapshot.value?.documents[0].document_id ?? "", activeTargetDocument.value?.document_id ?? ""]);
+const openComparisonPair = async (documentId: string, alignmentId?: string) => {
+  if (busy.value || !await guardProjectChange() || !projectSnapshot.value?.documents.slice(1).some(document => document.document_id === documentId)) return;
+  clearWorkspaceSelection();
+  activeTargetDocumentId.value = documentId;
+  const workspace = workspaceIndex.selectProject(projectSnapshot.value, workspaceText.texts.value, documentId);
+  sourceRows.value = workspace.sourceSegments; targetRows.value = workspace.targetSegments; alignmentRows.value = workspace.alignments;
+  orderBaseline.value = { source: workspace.sourceSegments.map(segment => segment.id), target: workspace.targetSegments.map(segment => segment.id) };
+  selectedAlignmentId.value = alignmentId ?? workspace.alignments[0]?.id ?? "";
+  comparisonOpen.value = false; forceMode("review");
+};
+const returnToComparison = async () => {
+  if (busy.value || !await guardProjectChange()) return;
+  clearWorkspaceSelection(); forceMode("review"); comparisonOpen.value = true;
+};
+const loadVisibleSegments = async (ids: string[]) => {
+  if (tutorialActive.value || !projectSnapshot.value) return;
+  try { await workspaceText.visible([...ids, ...(editSession.value ? [editSession.value.segmentId] : [])]); }
+  catch (error) { const detail = errorMessage(error); notify(() => t("shellTextLoadFailed", { p0: formatError(detail) })); }
+};
+async function refreshBookmarkPreviews() {
+  if (activeNav.value !== "bookmarks" || !projectSnapshot.value) return;
+  const scope = projectSnapshot.value;
+  try {
+    const previews = await kernelClient.listBookmarks();
+    if (scope === projectSnapshot.value) bookmarkPreviews.value = previews;
+  } catch (error) { const detail = errorMessage(error); notify(() => t("shellBookmarksLoadFailed", { p0: formatError(detail) })); }
+}
+watch(activeNav, () => { void refreshBookmarkPreviews(); });
+const acceptAgentSearch = async ({ spec, results }: { spec: SearchSpec | null; results: unknown }) => {
   if (spec) {
     searchQuery.value = spec.query;
     searchRegex.value = spec.regex;
     searchCaseSensitive.value = spec.case_sensitive;
-    searchSide.value = spec.language_id === projectSnapshot.value?.project.source_language ? "source" : spec.language_id === projectSnapshot.value?.project.target_language ? "target" : "both";
+    searchSide.value = spec.document_ids?.length === 1 && spec.document_ids[0] === projectSnapshot.value?.documents[0].document_id ? "source" : spec.document_ids?.length === 1 ? "target" : "both";
   }
   const response = results as SearchSegmentsResponse | null;
   if (!response || !Array.isArray(response.hits)) { searchResults.value = []; return; }
   if (response.revision_id !== projectSnapshot.value?.project.current_revision_id) return;
-  const byId = new Map([...sourceRows.value, ...targetRows.value].map(row => [row.id, row]));
+  const searchScope = projectSnapshot.value;
+  const relations = new Map(searchScope!.alignments.map(alignment => [alignment.alignment_id, alignment]));
+  const sourceDocumentId = searchScope!.documents[0].document_id;
+  await workspaceText.ensure(response.hits.flatMap(hit => {
+    const relation = relations.get(hit.alignment_id ?? "");
+    return [hit.segment_id, ...(relation?.source_segment_ids.slice(0, 1) ?? []), ...(relation?.target_segment_ids.slice(0, 1) ?? [])];
+  }));
+  if (searchScope !== projectSnapshot.value) return;
+  refreshVisibleRows();
   searchResults.value = response.hits.map(hit => {
-    const alignment = alignmentRows.value.find(item => item.id === hit.alignment_id);
-    const sourceId = hit.language_id === projectSnapshot.value?.project.source_language ? hit.segment_id : alignment?.sourceIds[0] ?? null;
-    const targetId = hit.language_id === projectSnapshot.value?.project.target_language ? hit.segment_id : alignment?.targetIds[0] ?? null;
-    return { id: hit.segment_id, label: segmentLabel(hit.segment_id), sourceId, targetId, sourceText: sourceId ? byId.get(sourceId)?.text ?? "" : "", targetText: targetId ? byId.get(targetId)?.text ?? "" : "", alignmentId: hit.alignment_id, alignmentLabel: alignmentLabel(hit.alignment_id) };
+    const relation = relations.get(hit.alignment_id ?? "");
+    const isSource = hit.document_id === sourceDocumentId;
+    const sourceId = isSource ? hit.segment_id : relation?.source_segment_ids[0] ?? null;
+    const targetId = !isSource ? hit.segment_id : relation?.target_segment_ids[0] ?? null;
+    const document = searchScope!.documents.find(document => document.document_id === hit.document_id);
+    const order = searchScope!.segment_orders.find(order => order.document_id === hit.document_id)?.entries.findIndex(entry => entry.segment_id === hit.segment_id) ?? -1;
+    const text = (id: string | null) => id === hit.segment_id ? hit.content : id ? workspaceText.texts.value.get(id)?.content ?? "" : "";
+    return { id: hit.segment_id, label: `${document?.title ?? t("content")} · ${order + 1}`, sourceId, targetId, sourceText: text(sourceId), targetText: text(targetId), alignmentId: hit.alignment_id, alignmentLabel: alignmentLabel(hit.alignment_id) };
   });
 };
 const agentWorkspace = useAgentWorkspace({
   tab: () => activeNav.value,
   mode: () => activeMode.value,
   projectSnapshot: () => projectSnapshot.value,
-  selection: () => activeNav.value === "parallel" && projectSnapshot.value ? { segmentIds: [...new Set([...workspaceOperationSelection.value.segmentIds, ...(editSession.value ? [editSession.value.segmentId] : [])])], alignmentIds: workspaceOperationSelection.value.alignmentIds } : { segmentIds: [], alignmentIds: [] },
+  selection: () => activeNav.value === "parallel" && !tutorialActive.value && projectSnapshot.value ? { segmentIds: [...new Set([...workspaceOperationSelection.value.segmentIds, ...(editSession.value ? [editSession.value.segmentId] : [])])], alignmentIds: workspaceOperationSelection.value.alignmentIds } : { segmentIds: [], alignmentIds: [] },
   searchState: () => ({ query: searchQuery.value, regex: searchRegex.value, caseSensitive: searchCaseSensitive.value, languageId: searchSide.value === "source" ? projectSnapshot.value?.project.source_language ?? null : searchSide.value === "target" ? projectSnapshot.value?.project.target_language ?? null : null }),
   selectionSharingEnabled: () => settings.value.device.agent.shareSelection,
   canLeaveDraft: () => {
-    if (!dirty.value) return true;
-    notify("请先保存或放弃当前编辑，再让助手跳转");
+    if (!dirty.value && !hasWorkspaceDraft.value) return true;
+    notify(() => t("shellAssistantSaveBeforeNavigate"));
     return false;
   },
   navigate: async (tab) => {
-    if (!navItems.some(item => item.id === tab)) throw new Error("助手请求了不可用的页面");
+    if (!visibleNavItems.value.some(item => item.id === tab)) throw new Error(t("shellAssistantPageUnavailable"));
     const scope = projectSnapshot.value?.project;
     if (tab === "pipeline") await loadPipelineWorkspace();
-    if (scope?.project_id !== projectSnapshot.value?.project.project_id || scope?.current_revision_id !== projectSnapshot.value?.project.current_revision_id) throw new Error("工程状态已变化，请重新请求跳转");
+    if (scope?.project_id !== projectSnapshot.value?.project.project_id || scope?.current_revision_id !== projectSnapshot.value?.project.current_revision_id) throw new Error(t("shellProjectStateChanged", { p0: t("shellActivityNavigate") }));
     setNav(tab as NavId);
     await nextTick();
-    if (activeNav.value !== tab) throw new Error("当前编辑尚未允许切换页面");
-    guidance.value = { selector: `[data-nav-id="${CSS.escape(tab)}"]`, label: `已到达${navItems.find(item => item.id === tab)?.label ?? tab}`, key: Date.now() };
+    if (activeNav.value !== tab) throw new Error(t("shellEditBlocksNavigation"));
+    guidance.value = { selector: `[data-nav-id="${CSS.escape(tab)}"]`, label: t("shellArrivedAt", { p0: visibleNavItems.value.find(item => item.id === tab)?.label ?? tab }), key: Date.now() };
   },
   reveal: async ({ segment_id, alignment_id, node_id }) => {
     const scope = projectSnapshot.value?.project;
     if (node_id) {
       await loadPipelineWorkspace();
-      if (scope?.project_id !== projectSnapshot.value?.project.project_id || scope?.current_revision_id !== projectSnapshot.value?.project.current_revision_id) throw new Error("工程状态已变化，请重新请求定位");
+      if (scope?.project_id !== projectSnapshot.value?.project.project_id || scope?.current_revision_id !== projectSnapshot.value?.project.current_revision_id) throw new Error(t("shellProjectStateChanged", { p0: t("shellActivityReveal") }));
       setNav("pipeline"); await nextTick();
-      if (!await pipelineWorkspaceRef.value?.revealNode(node_id)) throw new Error("未找到对应的 Pipeline 节点");
-      guidance.value = { selector: `[data-pipeline-node-id="${CSS.escape(node_id)}"]`, label: "已定位到这个节点", key: Date.now() };
+      if (!await pipelineWorkspaceRef.value?.revealNode(node_id)) throw new Error(t("shellPipelineNodeMissing"));
+      guidance.value = { selector: `[data-pipeline-node-id="${CSS.escape(node_id)}"]`, label: t("shellLocatedNode"), key: Date.now() };
       return;
     }
     const alignment = alignmentRows.value.find(item => item.id === alignment_id);
     const segmentId = segment_id ?? alignment?.sourceIds[0] ?? alignment?.targetIds[0];
-    if (!segmentId || ![...sourceRows.value, ...targetRows.value].some(row => row.id === segmentId)) throw new Error("当前工程中未找到该句段");
+    if (!segmentId || ![...sourceRows.value, ...targetRows.value].some(row => row.id === segmentId)) throw new Error(t("shellSegmentMissing"));
     setNav("parallel");
     await nextTick();
-    if (!await parallelWorkspaceRef.value?.focusSegment(segmentId)) throw new Error("句段尚未完成定位");
-    guidance.value = { selector: `[data-segment-id="${CSS.escape(segmentId)}"]`, label: "已定位到这个句段", key: Date.now() };
+    if (!await parallelWorkspaceRef.value?.focusSegment(segmentId)) throw new Error(t("shellSegmentLocatePending"));
+    guidance.value = { selector: `[data-segment-id="${CSS.escape(segmentId)}"]`, label: t("shellLocatedSegment"), key: Date.now() };
   },
-  onProjectSnapshot: async snapshot => { await applySnapshot(snapshot); },
+  onProjectSnapshot: async identity => {
+    if (tutorialActive.value) return;
+    const view = await kernelClient.getCurrentProject();
+    if (view.project.project_id !== identity.project.project_id || view.project.current_revision_id !== identity.project.current_revision_id) return;
+    await applySnapshot(view);
+  },
   onSearchState: acceptAgentSearch,
+  onProjection: () => refreshResearchFeature(),
   onAppEvent: async event => {
     if (event.kind === "pipeline_changed") { pipelineRefreshKey.value++; await reloadPipelineProposals(); }
+    if (["capabilities_changed", "slot_binding_changed"].includes(event.kind)) pipelineRefreshKey.value++;
+    if (["feature_changed", "capabilities_changed", "preparation_progress", "slot_binding_changed"].includes(event.kind)) await refreshResearchFeature();
   },
 });
+const displayedAgentActionError = computed(() => {
+  const error = agentActionError.value ?? agentWorkspace.error.value;
+  return error === null ? null : formatError(error);
+});
 const agentProjectKey = computed(() => projectSnapshot.value?.project.project_id ?? "application");
+watch(() => [projectSnapshot.value?.project.project_id, agentWorkspace.binding.value?.binding_id] as const, async ([projectId, binding]) => {
+  const generation = ++researchHistoryGeneration;
+  researchHistoryAvailable.value = false;
+  if (!isTauriRuntime || !projectId || !binding) return;
+  try {
+    const history = await researchClient.listRuns(binding);
+    if (generation === researchHistoryGeneration) researchHistoryAvailable.value = history.some(run => run.project_id === projectId);
+  } catch (cause) { if (generation === researchHistoryGeneration) { const detail = errorMessage(cause); notify(() => t("shellResearchHistoryFailed", { p0: formatError(detail) })); } }
+}, { immediate: true });
 const agentDraft = computed({
   get: () => agentWorkspace.store.ensureProjectScope(agentProjectKey.value).drafts.composer ?? "",
   set: value => agentWorkspace.store.setDraft(agentProjectKey.value, "composer", value),
 });
-const agentActivityLabels: Record<string, string> = { navigation_requested: "跳转页面", reveal_requested: "定位内容", search_changed: "更新搜索", proposal_changed: "更新修改提案", operation_changed: "操作状态", revision_advanced: "工程已保存", project_changed: "工程已切换" };
-const agentActivity = computed(() => agentWorkspace.store.activity.filter(event => event.kind !== "context_changed").map(event => ({ id: event.sequence, title: agentActivityLabels[event.kind] ?? event.kind, status: event.origin === "native" ? "应用内" : "外部助手" })));
+const agentActivityLabels = computed<Record<string, string>>(() => ({ navigation_requested: t("shellActivityNavigate"), reveal_requested: t("shellActivityReveal"), search_changed: t("shellActivitySearch"), proposal_changed: t("shellActivityProposal"), operation_changed: t("shellActivityOperation"), revision_advanced: t("shellActivitySaved"), project_changed: t("shellActivityProjectChanged") }));
+const agentActivity = computed(() => agentWorkspace.store.activity.filter(event => event.kind !== "context_changed").map(event => ({ id: event.sequence, title: agentActivityLabels.value[event.kind] ?? event.kind, status: event.origin === "native" ? t("shellActivityNative") : t("shellActivityExternal") })));
 const textProposals = computed<ReviewableProposal[]>(() => agentWorkspace.store.proposals.filter(proposal => proposal.status === "pending").flatMap(proposal => {
   const preview = proposal.preview as { base_revision_id?: string; items?: Array<{ segment_id: string; before: string; after: string }> } | undefined;
   if (!proposal.proposal_id || !preview?.items) return [];
   const selectedIds = (proposal.request as { selected_segment_ids?: string[] } | undefined)?.selected_segment_ids ?? [];
   const changes = preview.items.filter(item => !selectedIds.length || selectedIds.includes(item.segment_id));
-  return [{ id: proposal.proposal_id, title: "审核文本替换", status: "pending", revision: preview.base_revision_id ?? proposal.base_revision_id ?? "—", changes: changes.map(item => ({ id: item.segment_id, before: item.before, after: item.after })) }];
+  return [{ id: proposal.proposal_id, title: t("shellReviewTextReplace"), status: "pending", revision: preview.base_revision_id ?? proposal.base_revision_id ?? "—", changes: changes.map(item => ({ id: item.segment_id, before: item.before, after: item.after })) }];
 }));
-const agentProposals = computed<ReviewableProposal[]>(() => [...textProposals.value, ...pipelineProposals.value.filter(proposal => proposal.status === "pending").map(proposal => ({ id: proposal.proposal_id, title: `审核方法 · ${proposal.before.name}`, status: proposal.status, revision: proposal.base_canonical_revision_id, changes: [{ id: proposal.method_id, before: JSON.stringify(proposal.before.current.plan.nodes.map(node => ({ operator: node.operator, config: node.config })), null, 2), after: JSON.stringify(proposal.request.plan.nodes.map(node => ({ operator: node.operator, config: node.config })), null, 2) }] }))]);
+const agentProposals = computed<ReviewableProposal[]>(() => [...textProposals.value, ...pipelineProposals.value.filter(proposal => proposal.status === "pending").map(proposal => ({ id: proposal.proposal_id, title: t("shellReviewMethod", { p0: proposal.before.name }), status: proposal.status, revision: proposal.base_canonical_revision_id, changes: [{ id: proposal.method_id, before: JSON.stringify(proposal.before.current.plan.nodes.map(node => ({ operator: node.operator, config: node.config })), null, 2), after: JSON.stringify(proposal.request.plan.nodes.map(node => ({ operator: node.operator, config: node.config })), null, 2) }] }))]);
 async function reloadPipelineProposals() {
   const binding = agentWorkspace.binding.value?.binding_id;
   if (!binding) { pipelineProposals.value = []; return; }
@@ -363,7 +539,7 @@ async function reloadPipelineProposals() {
 }
 watch(() => agentWorkspace.binding.value?.binding_id, () => { pipelineProposals.value = []; void reloadPipelineProposals(); });
 const reviewAgentProposal = async (id: string, approve: boolean) => {
-  if (approve && dirty.value) { notify("请先保存当前编辑，再审核助手修改"); return; }
+  if (approve && dirty.value) { notify(() => t("shellAssistantSaveBeforeReview")); return; }
   const bindingId = agentWorkspace.binding.value?.binding_id;
   if (!bindingId) return;
   agentBusy.value = true;
@@ -373,8 +549,8 @@ const reviewAgentProposal = async (id: string, approve: boolean) => {
       await (approve ? pipelineClient.approveUpdate(id, bindingId) : pipelineClient.rejectUpdate(id, bindingId));
       await reloadPipelineProposals();
     } else await agentClient.call(approve ? "proposal.approve" : "proposal.reject", { proposal_id: id }, bindingId);
-    notify(approve ? "助手修改已保存为新版本" : "已拒绝助手修改");
-  } catch (error) { agentActionError.value = errorMessage(error); }
+    notify(() => t(approve ? "shellAssistantAccepted" : "shellAssistantRejected"));
+  } catch (error) { agentActionError.value = rawErrorMessage(error); }
   finally { agentBusy.value = false; }
 };
 const openAgentSettings = () => { rememberSettingsSection("agent"); setNav("settings"); };
@@ -386,7 +562,7 @@ async function loadRuntimeHistory() {
     const history = await agentRuntimeClient.history({ project_id: projectId, session_id: runtimeSessions.get(projectId), limit: 80 });
     if (generation !== runtimeHistoryGeneration || projectId !== projectSnapshot.value?.project.project_id) return;
     runtimeSessions.set(projectId, history.session_id); runtimeMessages.value = history.messages;
-  } catch (error) { if (generation === runtimeHistoryGeneration && projectId === projectSnapshot.value?.project.project_id) { runtimeMessages.value = []; agentActionError.value = errorMessage(error); } }
+  } catch (error) { if (generation === runtimeHistoryGeneration && projectId === projectSnapshot.value?.project.project_id) { runtimeMessages.value = []; agentActionError.value = rawErrorMessage(error); } }
 }
 async function handleRuntimeEvent(event: AgentRuntimeEvent) {
   runtimeSessions.set(event.project_id, event.session_id);
@@ -394,7 +570,7 @@ async function handleRuntimeEvent(event: AgentRuntimeEvent) {
   if (event.project_id !== projectSnapshot.value?.project.project_id) return;
   if (event.kind === "run_failed") {
     const payload = event.payload as { error?: string };
-    agentActionError.value = payload.error ?? "助手执行失败，请检查模型配置";
+    agentActionError.value = payload.error ?? new LocalizedError("shellAssistantFailed");
   }
   await loadRuntimeHistory();
 }
@@ -405,7 +581,7 @@ async function initializeRuntime() {
     unlistenRuntimeResync = await agentRuntimeClient.subscribeResync(() => { void refreshRuntimeState(); });
     await refreshRuntimeState();
   }
-  catch (error) { agentActionError.value = errorMessage(error); }
+  catch (error) { agentActionError.value = rawErrorMessage(error); }
 }
 async function refreshRuntimeState() {
   try {
@@ -413,7 +589,7 @@ async function refreshRuntimeState() {
     runtimeStatus.value = status;
     runtimeRuns.value = Object.fromEntries(Object.entries(runtimeRuns.value).map(([id, run]) => [id, status.active_run_ids.includes(run.runId) ? run : { ...run, state: "interrupted" }]));
     await loadRuntimeHistory();
-  } catch (error) { agentActionError.value = errorMessage(error); }
+  } catch (error) { agentActionError.value = rawErrorMessage(error); }
 }
 async function sendAgentMessage(text: string) {
   const projectId = projectSnapshot.value?.project.project_id;
@@ -424,20 +600,20 @@ async function sendAgentMessage(text: string) {
   runtimeStarting.value = projectId;
   try {
     await agentWorkspace.publishContext();
-    if (projectId !== projectSnapshot.value?.project.project_id) throw new Error("工程已切换，请在当前工程重新发送");
+    if (projectId !== projectSnapshot.value?.project.project_id) throw new Error(t("shellProjectChangedResend"));
     const context = agentWorkspace.recordOutboundMessage(projectId, messageId, crypto.randomUUID(), text);
     const result = await agentRuntimeClient.start({ project_id: projectId, prompt: text, context, session_id: runtimeSessions.get(projectId) });
     runtimeSessions.set(projectId, result.session_id); runtimeRuns.value = { ...runtimeRuns.value, [projectId]: { runId: result.run_id, state: result.state } };
     agentWorkspace.store.markMessageSent(projectId, messageId);
     if (agentWorkspace.store.ensureProjectScope(projectId).drafts.composer === sentDraft) agentWorkspace.store.setDraft(projectId, "composer", "");
     await loadRuntimeHistory();
-  } catch (error) { if (projectId === projectSnapshot.value?.project.project_id) agentActionError.value = errorMessage(error); agentWorkspace.store.markMessageFailed(projectId, messageId, errorMessage(error)); }
+  } catch (error) { if (projectId === projectSnapshot.value?.project.project_id) agentActionError.value = rawErrorMessage(error); agentWorkspace.store.markMessageFailed(projectId, messageId, errorMessage(error)); }
   finally { if (runtimeStarting.value === projectId) runtimeStarting.value = null; }
 }
 async function cancelAgentRun() {
   const run = runtimeRuns.value[agentProjectKey.value];
   if (!run) return;
-  try { await agentRuntimeClient.cancel(run.runId); } catch (error) { agentActionError.value = errorMessage(error); }
+  try { await agentRuntimeClient.cancel(run.runId); } catch (error) { agentActionError.value = rawErrorMessage(error); }
 }
 watch(() => projectSnapshot.value?.project.project_id, () => { runtimeMessages.value = []; void loadRuntimeHistory(); });
 watch(() => agentProposals.value.length, count => {
@@ -459,12 +635,13 @@ onMounted(async () => {
       if (recentProjectPath) {
         try {
           await applySnapshot(await kernelClient.openProject(recentProjectPath), true);
-          notify(`已重新打开 ${projectSummary.value.name}`);
+          const projectName = projectSummary.value.name;
+          notify(() => t("projectReopened", { p0: projectName }));
         } catch {
           localStorage.removeItem("jueming-last-project-path");
         }
       }
-    } else if (general.value.startupDestination === "project-picker" && isTauriRuntime) {
+    } else if (!autoStartTutorialOnThisLaunch && general.value.startupDestination === "project-picker" && isTauriRuntime) {
       await openProject();
     }
   }
@@ -472,19 +649,28 @@ onMounted(async () => {
   else if (isTauriRuntime) {
     activeNav.value = "project";
     selectedAlignmentId.value = "";
-    notify("尚未打开工程，请新建或打开本地 .jm 工程");
+    notify(() => t("projectOpenPrompt"));
   }
   if (isTauriRuntime) {
     unlistenClose = await getCurrentWindow().onCloseRequested((event) => { event.preventDefault(); void closeWindowSafely(); });
+  }
+  if (autoStartTutorialOnThisLaunch) {
+    await nextTick();
+    await startTutorial();
+    if (tutorialActive.value) rememberTutorialLaunch();
   }
 });
 const previousRevisionId = () => { const revisions = projectSnapshot.value?.revisions ?? []; return revisions[revisions.length - 2]?.revision_id ?? projectSummary.value.revision_id; };
 const applyModeContext = (mode: WorkspaceMode) => {
   activeNav.value = mode === "history" ? "history" : "parallel";
-  exportOpen.value = false;
   if (mode === "history") void selectHistoryRevision(previousRevisionId());
 };
 const setMode = (mode: WorkspaceMode) => {
+  if (tutorialActive.value && mode === "history") { notify(() => t("shellTutorialHistoryNotice")); return; }
+  if (hasWorkspaceDraft.value) {
+    void guardWorkspaceDrafts().then(allowed => { if (allowed) setMode(mode); });
+    return;
+  }
   pendingNav.value = null;
   if (requestMode(mode) === "applied") applyModeContext(mode);
 };
@@ -494,6 +680,11 @@ const applyNavContext = (nav: NavId) => {
   else if (activeMode.value === "history") forceMode("review");
 };
 const setNav = (nav: NavId) => {
+  if (tutorialActive.value && nav !== "parallel") { notify(() => t("shellTutorialFinishFirst")); return; }
+  if (nav !== activeNav.value && hasWorkspaceDraft.value) {
+    void guardWorkspaceDrafts().then(allowed => { if (allowed) setNav(nav); });
+    return;
+  }
   if (activeMode.value === "edit" && nav !== "parallel") {
     pendingNav.value = nav;
     if (requestMode(nav === "history" ? "history" : "review") === "guarded") return;
@@ -501,6 +692,156 @@ const setNav = (nav: NavId) => {
   pendingNav.value = null;
   applyNavContext(nav);
 };
+type TutorialReturnState = {
+  source: SegmentDto[];
+  target: SegmentDto[];
+  alignments: AlignmentDto[];
+  summary: ProjectSummaryDto;
+  selectedAlignmentId: string;
+  activeNav: NavId;
+  activeMode: WorkspaceMode;
+  orderBaseline: Record<LanguageSide, string[]>;
+  comparisonOpen: boolean;
+};
+let tutorialReturnState: TutorialReturnState | null = null;
+const syncTutorialSummary = () => {
+  if (!tutorialActive.value) return;
+  const aligned = new Set(alignmentRows.value.flatMap(alignment => [...alignment.sourceIds, ...alignment.targetIds]));
+  projectSummary.value = {
+    ...projectSummary.value,
+    source_count: sourceRows.value.length,
+    target_count: targetRows.value.length,
+    alignment_count: alignmentRows.value.length,
+    source_unlinked_count: sourceRows.value.filter(segment => !aligned.has(segment.id)).length,
+    target_unlinked_count: targetRows.value.filter(segment => !aligned.has(segment.id)).length,
+    revision_id: String(tutorialWorkspace.revision.value),
+  };
+};
+const prepareTutorialStep = async (index: number) => {
+  if (!tutorialActive.value) return;
+  tutorialStep.value = Math.min(parallelTutorialSteps.length - 1, Math.max(0, index));
+  if (editSession.value) discardAndExit();
+  const step = parallelTutorialSteps[tutorialStep.value];
+  if (step.preset !== "context") closeAnnotationPanel();
+  activeNav.value = "parallel";
+  forceMode(step.mode);
+  await nextTick();
+  await parallelWorkspaceRef.value?.prepareTutorial(step.preset);
+};
+const resetTutorial = async () => {
+  if (!tutorialActive.value) return;
+  if (editSession.value) discardAndExit();
+  tutorialWorkspace.reset();
+  tutorialBookmarkIds.value = [];
+  tutorialAnnotations.value = [];
+  selectedAnnotationId.value = null;
+  orderBaseline.value = { source: sourceRows.value.map(segment => segment.id), target: targetRows.value.map(segment => segment.id) };
+  syncTutorialSummary();
+  await prepareTutorialStep(tutorialStep.value);
+  notify(() => t("shellTutorialReset"));
+};
+async function startTutorial() {
+  if (tutorialActive.value) {
+    tutorialGuideOpen.value = true;
+    await prepareTutorialStep(tutorialStep.value);
+    return;
+  }
+  if (busy.value || !await guardProjectChange()) return;
+  tutorialReturnState = {
+    source: sourceRows.value, target: targetRows.value, alignments: alignmentRows.value,
+    summary: projectSummary.value, selectedAlignmentId: selectedAlignmentId.value,
+    activeNav: activeNav.value, activeMode: activeMode.value,
+    orderBaseline: orderBaseline.value, comparisonOpen: comparisonOpen.value,
+  };
+  closeAnnotationPanel();
+  clearWorkspaceSelection();
+  tutorialActive.value = true;
+  tutorialGuideOpen.value = true;
+  tutorialWorkspace.start();
+  tutorialBookmarkIds.value = [];
+  tutorialAnnotations.value = [];
+  selectedAnnotationId.value = null;
+  selectedAlignmentId.value = "tutorial-alignment-1";
+  comparisonOpen.value = false;
+  projectSummary.value = { project_id: "tutorial", name: "政府工作报告 · 平行视图引导", source_label: "政府工作报告_中文节选.txt", target_label: "Government_Work_Report_excerpt.txt", source_count: 8, target_count: 8, alignment_count: 6, source_unlinked_count: 1, target_unlinked_count: 1, revision_id: "0" };
+  orderBaseline.value = { source: sourceRows.value.map(segment => segment.id), target: targetRows.value.map(segment => segment.id) };
+  await prepareTutorialStep(0);
+  notify(() => t("shellTutorialEntered"));
+}
+const dismissTutorialGuide = () => {
+  if (!tutorialActive.value) return;
+  tutorialGuideOpen.value = false;
+  notify(() => t("shellTutorialDismissed"));
+};
+const closeTutorial = async () => {
+  const previous = tutorialReturnState;
+  if (!tutorialActive.value || !previous) return;
+  if (editSession.value) discardAndExit();
+  closeAnnotationPanel();
+  clearWorkspaceSelection();
+  tutorialGuideOpen.value = false;
+  tutorialActive.value = false;
+  sourceRows.value = previous.source;
+  targetRows.value = previous.target;
+  alignmentRows.value = previous.alignments;
+  projectSummary.value = previous.summary;
+  selectedAlignmentId.value = previous.selectedAlignmentId;
+  orderBaseline.value = previous.orderBaseline;
+  comparisonOpen.value = previous.comparisonOpen;
+  forceMode(previous.activeMode);
+  activeNav.value = previous.activeNav;
+  tutorialReturnState = null;
+  await nextTick();
+  const returnedProjectName = projectSummary.value.name;
+  notify(projectSnapshot.value ? () => t("shellTutorialReturned", { p0: returnedProjectName }) : () => t("shellTutorialExited"));
+};
+const acceptResearchFeature = (feature: FeatureSnapshot) => {
+  const previous = researchFeature.value;
+  researchFeature.value = feature;
+  if ((previous?.status === "ready") !== (feature.status === "ready")) pipelineRefreshKey.value++;
+  if (feature.status !== "ready" || previous?.status === "ready") return;
+  notify(() => t("shellResearchReady"));
+  const intent = featureNavigationIntent; featureNavigationIntent = null;
+  if (intent && intent.navigationGeneration === navigationGeneration && intent.projectId === (projectSnapshot.value?.project.project_id ?? null) && activeNav.value === "settings" && !dirty.value && !hasWorkspaceDraft.value) setNav("research");
+};
+const refreshResearchFeature = async () => {
+  if (!isTauriRuntime) return;
+  const generation = ++featureRequestGeneration;
+  try {
+    const snapshot = await researchClient.capabilities();
+    if (generation !== featureRequestGeneration) return;
+    const feature = snapshot.features.find(item => item.feature_id === "translation_research");
+    if (feature) acceptResearchFeature(feature);
+  } catch (cause) { if (generation === featureRequestGeneration) { const detail = errorMessage(cause); notify(() => t("shellFeatureStatusFailed", { p0: formatError(detail) })); } }
+};
+const researchFeatureAction = async (action: "enable" | "disable" | "cancel" | "retry") => {
+  if (!isTauriRuntime || researchFeatureBusy.value) return;
+  if (action === "disable" && !await guardWorkspaceDrafts()) return;
+  if (action === "enable" || action === "retry") featureNavigationIntent = { projectId: projectSnapshot.value?.project.project_id ?? null, navigationGeneration };
+  else featureNavigationIntent = null;
+  researchFeatureBusy.value = true; const requestGeneration = ++featureRequestGeneration;
+  try {
+    const result = await ({ enable: researchClient.featureEnable, disable: researchClient.featureDisable, cancel: researchClient.featureCancel, retry: researchClient.featureRetry })[action]();
+    if (requestGeneration === featureRequestGeneration) acceptResearchFeature(result);
+    await refreshResearchFeature();
+  } catch (cause) { const detail = errorMessage(cause); notify(() => t("shellResearchActionFailed", { p0: formatError(detail) })); await refreshResearchFeature(); }
+  finally { researchFeatureBusy.value = false; }
+};
+const updateResearchPreferences = async (value: { default_similarity?: string; auto_locate?: boolean }) => {
+  if (!isTauriRuntime || researchFeatureBusy.value) return;
+  researchFeatureBusy.value = true; featureRequestGeneration++;
+  try { acceptResearchFeature(await researchClient.updatePreferences(value)); }
+  catch (cause) { const detail = errorMessage(cause); notify(() => t("shellResearchPreferencesFailed", { p0: formatError(detail) })); }
+  finally { researchFeatureBusy.value = false; }
+};
+const revealResearchSegment = async (segmentId: string) => {
+  if (!await jumpToSegment(segmentId)) notify(() => t("shellSegmentChanged"));
+};
+const openResearchSettings = () => { rememberSettingsSection("research"); setNav("settings"); };
+const refreshResearchOnFocus = () => { if (document.visibilityState === "visible") void refreshResearchFeature(); };
+watch(activeNav, tab => { if (tab === "settings") void refreshResearchFeature(); });
+onMounted(() => { void refreshResearchFeature(); window.addEventListener("focus", refreshResearchOnFocus); });
+onBeforeUnmount(() => { featureRequestGeneration++; window.removeEventListener("focus", refreshResearchOnFocus); });
 const openAnnotationPanel = (segmentId?: string, alignmentId?: string | null) => {
   if (alignmentId !== undefined) selectedAlignmentId.value = alignmentId ?? "";
   annotationContextSegmentId.value = segmentId ?? null;
@@ -509,39 +850,67 @@ const openAnnotationPanel = (segmentId?: string, alignmentId?: string | null) =>
   }
   annotationOpen.value = true;
   rightPanelTab.value = "annotations";
-  exportOpen.value = false;
 };
-const openNewProject = () => { void newProjectDialogRef.value?.open(); };
+const openNewProject = async () => {
+  if (tutorialActive.value) { notify(() => t("shellCloseTutorialBeforeNew")); return; }
+  if (busy.value || !await guardProjectChange()) return;
+  clearWorkspaceSelection();
+  window.getSelection()?.removeAllRanges();
+  await newProjectDialogRef.value?.open();
+};
 const openProject = async () => {
-  const selected = await open({ directory: true, multiple: false, title: "打开决明工程（.jm 文件夹）" });
-  if (!selected) return;
+  if (tutorialActive.value) { notify(() => t("shellCloseTutorialBeforeOpen")); return; }
+  if (busy.value) return;
+  const selected = await open({ directory: true, multiple: false, title: t("projectOpenDialog") });
+  if (!selected || !await guardProjectChange()) return;
+  clearWorkspaceSelection();
+  window.getSelection()?.removeAllRanges();
   busy.value = true;
-  try { await applySnapshot(await kernelClient.openProject(selected), true); localStorage.setItem("jueming-last-project-path", selected); notify(`已打开 ${projectSummary.value.name}`); }
-  catch (error) { notify(`打开失败：${errorMessage(error)}`); }
+  try { await applySnapshot(await kernelClient.openProject(selected), true); localStorage.setItem("jueming-last-project-path", selected); const projectName = projectSummary.value.name; notify(() => t("projectOpened", { p0: projectName })); }
+  catch (error) { const detail = errorMessage(error); notify(() => t("projectOpenFailed", { p0: formatError(detail) })); }
   finally { busy.value = false; }
 };
-const handleProjectCreated = async (snapshot: ProjectSnapshot, createdProjectPath: string) => {
+const handleProjectCreated = async (snapshot: WorkspaceProject, createdProjectPath: string) => {
   localStorage.setItem("jueming-last-project-path", createdProjectPath);
   try {
     await applySnapshot(snapshot, true);
-    notify(`已创建并保存 ${projectSummary.value.name}`);
+    const projectName = projectSummary.value.name;
+    notify(() => t("projectCreated", { p0: projectName }));
   } catch (error) {
-    notify(`工程已创建，但加载工作区失败：${errorMessage(error)}`);
+    const detail = errorMessage(error);
+    notify(() => t("projectLoadFailed", { p0: formatError(detail) }));
   }
 };
 const saveProject = async () => {
+  if (tutorialActive.value) { notify(() => t("shellTutorialTemporarySaved")); return; }
+  const handle = activeNav.value === "pipeline" ? pipelineWorkspaceRef.value : activeNav.value === "research" ? researchWorkspaceRef.value : null;
+  if (handle?.hasDirtyDraft() && !await handle.saveDraft()) return;
   if (!(await persistDraft(false, "manual"))) return;
-  try { await kernelClient.flushProject(); notify("本地存储 · 已保存"); }
-  catch (error) { notify(`保存失败：${errorMessage(error)}`); }
+  try { await kernelClient.flushProject(); notify(() => t("savedLocally")); }
+  catch (error) { const detail = errorMessage(error); notify(() => t("saveFailedDetail", { p0: formatError(detail) })); }
 };
-async function persistSegment(id: string, text: string) {
-  const segment = [...sourceRows.value, ...targetRows.value].find((item) => item.id === id);
-  if (!segment || segment.text === text) return;
-  await kernelClient.updateSegment(id, text);
-  await applySnapshot(await kernelClient.getCurrentProject());
-  notify("句段已自动保存并写入本地历史");
+async function persistSegment(id: string, text: string, context?: CommandContext): Promise<CommandScope | void> {
+  if (tutorialActive.value) {
+    tutorialWorkspace.edit(id, text);
+    syncTutorialSummary();
+    notify(() => t("segmentAutosaved"));
+    return;
+  }
+  if (!projectSnapshot.value) return;
+  const result = await kernelClient.updateSegment(id, text, context);
+  try { await applySnapshot(await kernelClient.getCurrentProject()); }
+  catch (error) { const detail = errorMessage(error); notify(() => t("shellEditRefreshFailed", { p0: formatError(detail) })); }
+  return { project_id: result.project_id, base_revision_id: result.committed_revision_id };
 }
-const requestSegmentEdit = (segmentId: string, alignmentId: string) => {
+const requestSegmentEdit = async (segmentId: string, alignmentId: string) => {
+  if (editSession.value?.segmentId === segmentId) return;
+  if (editSession.value && editSession.value.segmentId !== segmentId && !await guardProjectChange()) return;
+  const scope = projectSnapshot.value;
+  if (!tutorialActive.value) {
+    try { await workspaceText.ensure([segmentId]); } catch (error) { const detail = errorMessage(error); notify(() => formatError(detail)); return; }
+  }
+  if (scope !== projectSnapshot.value) return;
+  refreshVisibleRows();
   const segment = [...sourceRows.value, ...targetRows.value].find((item) => item.id === segmentId);
   if (!segment) return;
   selectedAlignmentId.value = alignmentId;
@@ -559,11 +928,17 @@ const escapeSegmentEdit = async () => {
 const cancelSegmentEdit = () => { discardAndExit(); activeNav.value = "parallel"; };
 const moveSegment = async (side: LanguageSide, segmentId: string, direction: "up" | "down") => {
   if (!requireOpenProject()) return;
+  if (tutorialActive.value) {
+    const moved = tutorialWorkspace.move(side, segmentId, direction);
+    notify(() => moved ? t("shellTutorialOrderMoved") : t(direction === "up" ? "firstSegment" : "lastSegment"));
+    syncTutorialSummary();
+    return;
+  }
   const rows = side === "source" ? sourceRows : targetRows;
   const index = rows.value.findIndex((item) => item.id === segmentId);
   const targetIndex = direction === "up" ? index - 1 : index + 1;
   if (index < 0 || targetIndex < 0 || targetIndex >= rows.value.length) {
-    notify(direction === "up" ? "已经是第一句" : "已经是最后一句");
+    notify(() => t(direction === "up" ? "firstSegment" : "lastSegment"));
     return;
   }
   const targetSegment = rows.value[targetIndex];
@@ -572,7 +947,7 @@ const moveSegment = async (side: LanguageSide, segmentId: string, direction: "up
     targetId: targetSegment.id,
     edge: direction === "up" ? "before" : "after",
   }))) {
-    notify("已取消跨 Alignment 排序");
+    notify(() => t("reorderCancelled"));
     return;
   }
   const previous = rows.value.map((segment) => ({ ...segment }));
@@ -584,10 +959,10 @@ const moveSegment = async (side: LanguageSide, segmentId: string, direction: "up
     const after = next[targetIndex + 1]?.id;
     await kernelClient.moveSegment(segmentId, before, after);
     await applySnapshot(await kernelClient.getCurrentProject());
-    notify(`${side === "source" ? "中文" : "英文"} Segment 已${direction === "up" ? "上移" : "下移"}，Alignment 关系保持稳定`);
+    notify(() => t("segmentMoved", { p0: t(side === "source" ? "sourceSide" : "targetSide"), p1: t(direction === "up" ? "moveUp" : "moveDown") }));
   } catch (error) {
     rows.value = previous;
-    notify(`排序失败：${errorMessage(error)}`);
+    const detail = errorMessage(error); notify(() => t("reorderFailed", { p0: formatError(detail) }));
   }
 };
 const alignmentIdForSegment = (segmentId: string) => alignmentRows.value.find(
@@ -595,7 +970,7 @@ const alignmentIdForSegment = (segmentId: string) => alignmentRows.value.find(
 )?.id ?? null;
 const describeAlignmentForSegment = (segmentId: string) => {
   const alignmentId = alignmentIdForSegment(segmentId);
-  return alignmentId ? `Alignment ${alignmentLabel(alignmentId)}` : "未对齐区域";
+  return alignmentId ? `${t("alignment")} ${alignmentLabel(alignmentId)}` : t("unalignedArea");
 };
 const confirmCrossAlignmentReorder = async (side: LanguageSide, intent: ReorderIntent) => {
   const sourceAlignmentId = alignmentIdForSegment(intent.segmentId);
@@ -609,28 +984,41 @@ const confirmCrossAlignmentReorder = async (side: LanguageSide, intent: ReorderI
     targetAlignmentId,
     edge: intent.edge,
   })}`);
-  const message = `把${side === "source" ? "中文" : "英文"} Segment ${segmentLabel(intent.segmentId)} 从${describeAlignmentForSegment(intent.segmentId)}拖到${describeAlignmentForSegment(intent.targetId)}附近，会打断当前对齐块的连续顺序。Alignment 关系不会删除，但阅读顺序可能交叉。是否继续？`;
+  const message = t("crossAlignmentWarning", { p0: t(side === "source" ? "sourceSide" : "targetSide"), p1: segmentLabel(intent.segmentId), p2: describeAlignmentForSegment(intent.segmentId), p3: describeAlignmentForSegment(intent.targetId) });
   return isTauriRuntime
-    ? confirm(message, { title: "即将打断对齐块", kind: "warning" })
-    : window.confirm(`即将打断对齐块\n\n${message}`);
+    ? confirm(message, { title: t("crossAlignmentTitle"), kind: "warning" })
+    : window.confirm(t("crossAlignmentConfirm", { p0: message }));
 };
 const reorderSegment = async (side: LanguageSide, orderedSegmentIds: string[], intent: ReorderIntent) => {
   if (!requireOpenProject()) return;
+  if (tutorialActive.value) {
+    tutorialWorkspace.reorder(side, orderedSegmentIds);
+    clearWorkspaceSelection();
+    syncTutorialSummary();
+    notify(() => t("shellTutorialDragSaved"));
+    return;
+  }
   if (!(await confirmCrossAlignmentReorder(side, intent))) {
-    notify("已取消跨 Alignment 排序");
+    notify(() => t("reorderCancelled"));
     return;
   }
   busy.value = true;
-  try { await applySnapshot(await kernelClient.reorderSegments(orderedSegmentIds)); clearWorkspaceSelection(); notify(`${side === "source" ? "中文" : "英文"}列拖拽排序已自动保存，Alignment 关系保持稳定`); }
-  catch (error) { notify(`拖拽排序失败：${errorMessage(error)}`); }
+  try { await applySnapshot(await kernelClient.reorderSegments(orderedSegmentIds)); clearWorkspaceSelection(); notify(() => t("dragSaved", { p0: t(side === "source" ? "sourceSide" : "targetSide") })); }
+  catch (error) { const detail = errorMessage(error); notify(() => t("dragFailed", { p0: formatError(detail) })); }
   finally { busy.value = false; }
 };
 const resetOrder = async () => {
   if (!requireOpenProject()) return;
-  if (!orderBaseline.value.source.length && !orderBaseline.value.target.length) { notify("当前会话没有可恢复的排序基线"); return; }
+  if (tutorialActive.value) {
+    tutorialWorkspace.resetOrder();
+    clearWorkspaceSelection();
+    syncTutorialSummary();
+    notify(() => t("shellTutorialInitialOrderRestored"));
+    return;
+  }
+  if (!orderBaseline.value.source.length && !orderBaseline.value.target.length) { notify(() => t("noOrderBaseline")); return; }
   busy.value = true;
   try {
-    let snapshot: ProjectSnapshot | null = null;
     const currentOrders: Record<LanguageSide, string[]> = {
       source: sourceRows.value.map((segment) => segment.id),
       target: targetRows.value.map((segment) => segment.id),
@@ -638,43 +1026,60 @@ const resetOrder = async () => {
     for (const side of ["source", "target"] as const) {
       const baseline = orderBaseline.value[side];
       if (baseline.length && baseline.join("\u0000") !== currentOrders[side].join("\u0000")) {
-        snapshot = await kernelClient.reorderSegments(baseline);
+        await applySnapshot(await kernelClient.reorderSegments(baseline));
       }
     }
-    if (snapshot) await applySnapshot(snapshot);
     clearWorkspaceSelection();
-    notify("已恢复进入当前审阅排序工作区时的句段顺序");
+    notify(() => t("orderRestored"));
   } catch (error) {
     await applySnapshot(await kernelClient.getCurrentProject());
-    notify(`恢复顺序失败：${errorMessage(error)}`);
+    const detail = errorMessage(error); notify(() => t("orderRestoreFailed", { p0: formatError(detail) }));
   }
   finally { busy.value = false; }
 };
 const linkSegments = async (sourceSegmentIds: string[], targetSegmentIds: string[]) => {
   if (!requireOpenProject()) return;
+  if (tutorialActive.value) {
+    selectedAlignmentId.value = tutorialWorkspace.link(sourceSegmentIds, targetSegmentIds);
+    clearWorkspaceSelection();
+    syncTutorialSummary();
+    const sourceCount = sourceSegmentIds.length;
+    const targetCount = targetSegmentIds.length;
+    notify(() => t("shellTutorialAlignmentCreated", { p0: sourceCount, p1: targetCount }));
+    return;
+  }
   busy.value = true;
   try {
-    let snapshot: ProjectSnapshot;
+    let snapshot: WorkspaceProject;
     try {
       snapshot = await kernelClient.linkSegments(sourceSegmentIds, targetSegmentIds, false);
     } catch (error) {
       const message = errorMessage(error);
       if (!message.includes("confirm replacement before linking") && !message.includes("AlignmentSelectionConflict")) throw error;
       const approved = "__TAURI_INTERNALS__" in window
-        ? await confirm("部分句段已经属于 Alignment。替换现有关系会创建新的 Revision。", { title: "替换现有 Alignment？", kind: "warning" })
-        : window.confirm("部分句段已经属于 Alignment，是否替换现有关系？");
+        ? await confirm(t("replaceAlignmentWarning"), { title: t("replaceAlignmentTitle"), kind: "warning" })
+        : window.confirm(t("replaceAlignmentConfirm"));
       if (!approved) return;
       snapshot = await kernelClient.linkSegments(sourceSegmentIds, targetSegmentIds, true);
     }
     await applySnapshot(snapshot);
     clearWorkspaceSelection();
     selectedAlignmentId.value = alignmentRows.value.find((alignment) => sourceSegmentIds.every((id) => alignment.sourceIds.includes(id)) && targetSegmentIds.every((id) => alignment.targetIds.includes(id)))?.id ?? selectedAlignmentId.value;
-    notify(`已建立 ${sourceSegmentIds.length}:${targetSegmentIds.length} Alignment`);
-  } catch (error) { notify(`Link 失败：${errorMessage(error)}`); }
+    const sourceCount = sourceSegmentIds.length;
+    const targetCount = targetSegmentIds.length;
+    notify(() => t("alignmentCreated", { p0: sourceCount, p1: targetCount }));
+  } catch (error) { const detail = errorMessage(error); notify(() => t("linkFailed", { p0: formatError(detail) })); }
   finally { busy.value = false; }
 };
 const unlinkAlignment = async (alignmentId: string) => {
-  if (!requireOpenProject()) return;
+  if (busy.value || !requireOpenProject()) return;
+  if (tutorialActive.value) {
+    tutorialWorkspace.unlink(alignmentId);
+    clearWorkspaceSelection();
+    syncTutorialSummary();
+    notify(() => t("shellTutorialAlignmentRemoved"));
+    return;
+  }
   const unlinkedAlignment = alignmentRows.value.find((alignment) => alignment.id === alignmentId);
   busy.value = true;
   try {
@@ -687,19 +1092,20 @@ const unlinkAlignment = async (alignmentId: string) => {
         unlinkedAlignment.targetIds,
       );
     }
-    notify("已解除 Alignment，句段保持未对齐");
+    notify(() => t("alignmentRemoved"));
   }
-  catch (error) { notify(`Unlink 失败：${errorMessage(error)}`); }
+  catch (error) { const detail = errorMessage(error); notify(() => t("unlinkFailed", { p0: formatError(detail) })); }
   finally { busy.value = false; }
 };
 const {
-  insertAlignmentGap,
-  mergeSegmentContent,
-  splitSegmentContent,
-  groupAlignments,
-  ungroupAlignment,
+  insertAlignmentGap: insertCanonicalAlignmentGap,
+  mergeSegmentContent: mergeCanonicalSegmentContent,
+  splitSegmentContent: splitCanonicalSegmentContent,
+  groupAlignments: groupCanonicalAlignments,
+  ungroupAlignment: ungroupCanonicalAlignment,
 } = useStructureMutations({
   kernelClient,
+  targetDocumentId: () => activeTargetDocumentId.value,
   sourceRows,
   alignmentRows,
   selectedAlignmentId,
@@ -710,47 +1116,119 @@ const {
   notify,
   errorMessage,
 });
-const performUndo = async () => { busy.value = true; try { await applySnapshot(await kernelClient.undo()); notify("已撤销并保存为新的 Revision"); } catch (error) { notify(`撤销失败：${errorMessage(error)}`); } finally { busy.value = false; } };
-const performRedo = async () => { busy.value = true; try { await applySnapshot(await kernelClient.redo()); notify("已重做并保存为新的 Revision"); } catch (error) { notify(`重做失败：${errorMessage(error)}`); } finally { busy.value = false; } };
-const comparisonToDiff = (comparison: RevisionComparison): HistoryDiff => {
+const insertAlignmentGap = async (segmentId: string, edge: "before" | "after") => {
+  if (!tutorialActive.value) return insertCanonicalAlignmentGap(segmentId, edge);
+  tutorialWorkspace.insertGap(segmentId);
+  clearWorkspaceSelection(); syncTutorialSummary();
+  notify(() => t("shellTutorialGapInserted"));
+};
+const mergeSegmentContent = async (segmentIds: string[], content: string) => {
+  if (!tutorialActive.value) return mergeCanonicalSegmentContent(segmentIds, content);
+  tutorialWorkspace.merge(segmentIds, content);
+  clearWorkspaceSelection(); syncTutorialSummary();
+  const count = segmentIds.length; notify(() => t("shellTutorialSegmentsMerged", { p0: count }));
+};
+const splitSegmentContent = async (segmentId: string, parts: string[]) => {
+  if (!tutorialActive.value) return splitCanonicalSegmentContent(segmentId, parts);
+  tutorialWorkspace.split(segmentId, parts);
+  clearWorkspaceSelection(); syncTutorialSummary();
+  const count = parts.length; notify(() => t("shellTutorialSegmentsSplit", { p0: count }));
+};
+const groupAlignments = async (alignmentIds: string[], unlinkedSegmentIds: string[]) => {
+  if (!tutorialActive.value) return groupCanonicalAlignments(alignmentIds, unlinkedSegmentIds);
+  selectedAlignmentId.value = tutorialWorkspace.group(alignmentIds, unlinkedSegmentIds);
+  clearWorkspaceSelection(); syncTutorialSummary();
+  notify(() => t("shellTutorialGrouped"));
+};
+const ungroupAlignment = async (alignmentId: string, sourceGroups: string[][], targetGroups: string[][]) => {
+  if (!tutorialActive.value) return ungroupCanonicalAlignment(alignmentId, sourceGroups, targetGroups);
+  tutorialWorkspace.ungroup(alignmentId, sourceGroups, targetGroups);
+  clearWorkspaceSelection(); syncTutorialSummary();
+  notify(() => t("shellTutorialUngrouped"));
+};
+const performHistoryChange = async (kind: "undo" | "redo" | "restore", revisionId?: string) => {
+  if (busy.value || historyTransitionPending.value || !requireOpenProject()) return;
+  if ((kind === "undo" && !canUndo.value) || (kind === "redo" && !canRedo.value)) return;
+  if (tutorialActive.value) {
+    if (kind === "undo") tutorialWorkspace.undo();
+    else if (kind === "redo") tutorialWorkspace.redo();
+    else { notify(() => t("shellTutorialNoRevisionRestore")); return; }
+    clearWorkspaceSelection(); syncTutorialSummary();
+    notify(() => t(kind === "undo" ? "shellTutorialUndo" : "shellTutorialRedo"));
+    return;
+  }
+  const projectId = projectSnapshot.value!.project.project_id;
+  const bindingId = agentWorkspace.binding.value?.binding_id;
+  const sameProject = () => projectSnapshot.value?.project.project_id === projectId && agentWorkspace.binding.value?.binding_id === bindingId;
+  const actionLabel = () => kind === "undo" ? t("undo") : kind === "redo" ? t("redo") : t("restoreVersion");
+  let acquiredBusy = false;
+  historyTransitionPending.value = true;
+  try {
+    if (!await guardWorkspaceDrafts()) return;
+    // Only an actual Edit session needs to leave its mode; history browsing and Order retain their mode.
+    if (editSession.value && !await guardBodyProjectChange()) return;
+    if (!sameProject()) { notify(() => t("shellActionRetry", { p0: actionLabel() })); return; }
+    if (kind === "restore") {
+      const approved = isTauriRuntime
+        ? await confirm(t("restoreWarning"), { title: t("restoreConfirm", { p0: revisionId ?? "" }), kind: "warning" })
+        : window.confirm(t("restoreConfirm", { p0: revisionId ?? "" }));
+      if (!approved) return;
+    }
+    if (busy.value || !sameProject()) return;
+    busy.value = true; acquiredBusy = true;
+    // A research draft save may commit before its revision event reaches the UI.
+    const latest = await kernelClient.getCurrentProject();
+    if (!sameProject() || latest.project.project_id !== projectId) { notify(() => t("shellActionRetry", { p0: actionLabel() })); return; }
+    if (hasWorkspaceDraft.value || dirty.value) { notify(() => t("shellNewDraftRetry", { p0: actionLabel() })); return; }
+    await applySnapshot(latest);
+    if ((kind === "undo" && !canUndo.value) || (kind === "redo" && !canRedo.value)) { notify(() => t("shellActionUnavailable", { p0: actionLabel() })); return; }
+    if (kind === "restore" && !latest.revisions.some(revision => revision.revision_id === revisionId)) { notify(() => t("shellRestoreUnavailable")); return; }
+    const snapshot = kind === "undo" ? await kernelClient.undo() : kind === "redo" ? await kernelClient.redo() : await kernelClient.restoreRevision(revisionId!);
+    await applySnapshot(snapshot);
+    const restoredRevisionId = revisionId;
+    notify(kind === "restore" ? () => t("revisionRestored", { p0: restoredRevisionId ?? "" }) : () => t("shellActionSaved", { p0: actionLabel() }));
+    if (kind === "restore") await selectHistoryRevision(revisionId!);
+  } catch (error) { const detail = errorMessage(error); notify(() => t("shellActionFailed", { p0: actionLabel(), p1: formatError(detail) })); }
+  finally { if (acquiredBusy) busy.value = false; historyTransitionPending.value = false; }
+};
+const performUndo = () => performHistoryChange("undo");
+const performRedo = () => performHistoryChange("redo");
+const comparisonToDiff = (comparison: RevisionComparison): HistoryDiffState => {
   const sourceDocumentId = projectSnapshot.value?.documents[0]?.document_id;
   const targetDocumentId = projectSnapshot.value?.documents[1]?.document_id;
   const sourceChange = comparison.segment_changes.find((change) => (change.before ?? change.after)?.document_id === sourceDocumentId);
   const targetChange = comparison.segment_changes.find((change) => (change.before ?? change.after)?.document_id === targetDocumentId);
   return {
-    segmentId: (sourceChange ?? targetChange) ? segmentLabel((sourceChange ?? targetChange)!.segment_id) : "结构变更",
+    segmentId: (sourceChange ?? targetChange) ? segmentLabel((sourceChange ?? targetChange)!.segment_id) : "",
     sourceOld: sourceChange?.before?.content ?? "", sourceNew: sourceChange?.after?.content ?? "",
     targetOld: targetChange?.before?.content ?? "", targetNew: targetChange?.after?.content ?? "",
     deletedLines: comparison.segment_changes.filter((change) => change.before).length,
     addedLines: comparison.segment_changes.filter((change) => change.after).length,
-    summary: `文本 ${comparison.segment_changes.length} 项、顺序 ${comparison.order_changes.length} 项、Alignment ${comparison.alignment_changes.length} 项变更。`,
+    summaryCounts: {
+      segments: comparison.segment_changes.length,
+      order: comparison.order_changes.length,
+      alignments: comparison.alignment_changes.length,
+    },
   };
 };
 const compareHistory = async (fromRevisionId: string, toRevisionId: string) => {
   if (fromRevisionId === toRevisionId) return;
   busy.value = true;
-  try { baseRevisionId.value = fromRevisionId; selectedRevisionId.value = toRevisionId; historyDiff.value = comparisonToDiff(await kernelClient.compareRevision(fromRevisionId, toRevisionId)); }
-  catch (error) { notify(`版本比较失败：${errorMessage(error)}`); }
+  try { baseRevisionId.value = fromRevisionId; selectedRevisionId.value = toRevisionId; historyDiffState.value = comparisonToDiff(await kernelClient.compareRevision(fromRevisionId, toRevisionId)); }
+  catch (error) { const detail = errorMessage(error); notify(() => t("compareFailed", { p0: formatError(detail) })); }
   finally { busy.value = false; }
 };
 const selectHistoryRevision = async (revisionId: string) => {
   const current = projectSummary.value.revision_id;
   const fallback = projectSnapshot.value?.revisions.find((revision) => revision.revision_id !== revisionId)?.revision_id;
   selectedRevisionId.value = revisionId;
-  await compareHistory(revisionId === current ? (fallback ?? current) : revisionId, current);
+  await compareHistory(revisionId === current ? (fallback ?? current) : current, revisionId);
 };
-const restoreHistory = async (revisionId: string) => {
-  const approved = "__TAURI_INTERNALS__" in window ? await confirm("恢复会追加一个新 Revision，现有历史不会删除。", { title: `恢复 R${revisionId}？`, kind: "warning" }) : window.confirm(`恢复 R${revisionId}？`);
-  if (!approved) return;
-  busy.value = true;
-  try { await applySnapshot(await kernelClient.restoreRevision(revisionId)); notify(`已将 R${revisionId} 恢复为新版本`); await selectHistoryRevision(revisionId); }
-  catch (error) { notify(`恢复失败：${errorMessage(error)}`); }
-  finally { busy.value = false; }
-};
+const restoreHistory = (revisionId: string) => performHistoryChange("restore", revisionId);
 const makeSearchRequest = (options: SearchQueryOptions) => {
   const snapshot = projectSnapshot.value;
-  if (!snapshot) throw new Error("请先新建或打开本地工程");
-  return { project_id: snapshot.project.project_id, query: options.query, regex: options.regex, case_sensitive: options.caseSensitive, language_id: options.side === "source" ? snapshot.project.source_language : options.side === "target" ? snapshot.project.target_language : null, base_revision_id: snapshot.project.current_revision_id };
+  if (!snapshot) throw new Error(t("openProjectFirst"));
+  return { project_id: snapshot.project.project_id, query: options.query, regex: options.regex, case_sensitive: options.caseSensitive, language_id: null, document_ids: options.side === "source" ? [snapshot.documents[0].document_id] : options.side === "target" ? [activeTargetDocument.value!.document_id] : null, base_revision_id: snapshot.project.current_revision_id };
 };
 const runSearch = async (options: SearchQueryOptions) => {
   busy.value = true;
@@ -759,23 +1237,16 @@ const runSearch = async (options: SearchQueryOptions) => {
     const request = makeSearchRequest(options);
     if (isTauriRuntime) {
       const binding = agentWorkspace.binding.value?.binding_id;
-      if (!binding) throw new Error("工程连接尚未就绪，请稍后重试");
-      const spec: SearchSpec = { query: request.query, regex: request.regex, case_sensitive: request.case_sensitive, language_id: request.language_id };
+      if (!binding) throw new Error(t("shellProjectConnectionPending"));
+      const spec: SearchSpec = { query: request.query, regex: request.regex, case_sensitive: request.case_sensitive, language_id: request.language_id, document_ids: request.document_ids };
       const result = await agentClient.call<{ total: number }>("search.execute", { spec, expected_revision_id: request.base_revision_id, page_size: 1 }, binding);
-      if (searchProjectId === projectSnapshot.value?.project.project_id) notify(`找到 ${result.data.total} 条结果`);
+      if (searchProjectId === projectSnapshot.value?.project.project_id) { const count = result.data.total; notify(() => t("searchFound", { p0: count })); }
       return;
     }
     const response = await kernelClient.searchSegments(request);
-    const sourceById = new Map(sourceRows.value.map((segment) => [segment.id, segment.text]));
-    const targetById = new Map(targetRows.value.map((segment) => [segment.id, segment.text]));
-    searchResults.value = response.hits.map((hit) => {
-      const alignment = hit.alignment_id ? alignmentRows.value.find((candidate) => candidate.id === hit.alignment_id) : undefined;
-      const sourceId = hit.language_id === projectSnapshot.value?.project.source_language ? hit.segment_id : alignment?.sourceIds[0] ?? null;
-      const targetId = hit.language_id === projectSnapshot.value?.project.target_language ? hit.segment_id : alignment?.targetIds[0] ?? null;
-      return { id: hit.segment_id, label: segmentLabel(hit.segment_id), sourceId, targetId, sourceText: sourceId ? sourceById.get(sourceId) ?? "" : "", targetText: targetId ? targetById.get(targetId) ?? "" : "", alignmentId: hit.alignment_id, alignmentLabel: alignmentLabel(hit.alignment_id) };
-    });
-    notify(`找到 ${response.hits.length} 条结果`);
-  } catch (error) { if (searchProjectId === projectSnapshot.value?.project.project_id) { searchResults.value = []; notify(`搜索失败：${errorMessage(error)}`); } }
+    await acceptAgentSearch({ spec: null, results: response });
+    const count = response.hits.length; notify(() => t("searchFound", { p0: count }));
+  } catch (error) { if (searchProjectId === projectSnapshot.value?.project.project_id) { searchResults.value = []; const detail = errorMessage(error); notify(() => t("searchFailed", { p0: formatError(detail) })); } }
   finally { busy.value = false; }
 };
 const currentReplaceRequest = (): ReplacePreviewRequest => ({ ...makeSearchRequest({ query: searchQuery.value, side: searchSide.value, regex: searchRegex.value, caseSensitive: searchCaseSensitive.value }), replacement: replacement.value });
@@ -791,8 +1262,8 @@ const previewReplacement = async () => {
     const items = response.items.map(item => ({ resultId: item.segment_id, before: item.before, after: item.after }));
     nativeReplaceRequest.value = request;
     nativeReplacePreview.value = { options: { query: request.query, side: searchSide.value, regex: request.regex, caseSensitive: request.case_sensitive }, replacement: request.replacement, resultIds: response.items.map(item => item.segment_id), source: items.filter(item => sourceIds.has(item.resultId)), target: items.filter(item => !sourceIds.has(item.resultId)) };
-    notify(`替换预览包含 ${response.items.length} 个句段`);
-  } catch (error) { if (generation === replacePreviewGeneration) { replacePreviewError.value = errorMessage(error); notify(`替换预览失败：${errorMessage(error)}`); } }
+    const count = response.items.length; notify(() => t("replacePreviewCount", { p0: count }));
+  } catch (error) { if (generation === replacePreviewGeneration) { const detail = rawErrorMessage(error); replacePreviewError.value = detail; notify(() => t("replacePreviewFailed", { p0: formatError(detail) })); } }
   finally { if (generation === replacePreviewGeneration) replacePreviewLoading.value = false; }
 };
 watch(() => [searchQuery.value, searchSide.value, searchRegex.value, searchCaseSensitive.value, replacement.value, projectSnapshot.value?.project.project_id, projectSnapshot.value?.project.current_revision_id], () => {
@@ -800,36 +1271,55 @@ watch(() => [searchQuery.value, searchSide.value, searchRegex.value, searchCaseS
 }, { flush: "sync" });
 const applyReplacement = async (preview: UiReplacePreview) => {
   const request = isTauriRuntime ? nativeReplaceRequest.value : currentReplaceRequest();
-  if (!request || (isTauriRuntime && preview !== nativeReplacePreview.value)) { notify("替换条件或工程版本已变化，请重新预览"); return; }
+  if (!request || (isTauriRuntime && preview !== nativeReplacePreview.value)) { notify(() => t("shellReplacePreviewStale")); return; }
   busy.value = true;
-  try { await applySnapshot(await kernelClient.applyReplace(request, preview.resultIds)); notify(`已原子替换 ${preview.resultIds.length} 个句段`); await runSearch({ query: searchQuery.value, side: searchSide.value, regex: searchRegex.value, caseSensitive: searchCaseSensitive.value }); }
-  catch (error) { notify(`替换失败：${errorMessage(error)}`); }
+  try { await applySnapshot(await kernelClient.applyReplace(request, preview.resultIds)); const count = preview.resultIds.length; notify(() => t("replaceApplied", { p0: count })); await runSearch({ query: searchQuery.value, side: searchSide.value, regex: searchRegex.value, caseSensitive: searchCaseSensitive.value }); }
+  catch (error) { const detail = errorMessage(error); notify(() => t("replaceFailed", { p0: formatError(detail) })); }
   finally { busy.value = false; }
 };
 const jumpToSegment = async (segmentId: string, alignmentId: string | null = null) => {
+  if (!await guardProjectChange()) return false;
+  const snapshot = projectSnapshot.value;
+  if (!tutorialActive.value && snapshot && snapshot.documents.length > 2) {
+    const relation = snapshot.alignments.find(alignment => alignment.alignment_id === alignmentId);
+    const targetSegmentId = relation?.target_segment_ids[0];
+    const segment = snapshot.segments.find(segment => segment.segment_id === (targetSegmentId ?? segmentId));
+    const targetId = segment?.document_id === snapshot.documents[0].document_id ? activeTargetDocument.value!.document_id : segment?.document_id;
+    if (targetId) await openComparisonPair(targetId, alignmentId ?? undefined);
+    comparisonOpen.value = false;
+  }
   const resolvedAlignmentId = alignmentId ?? alignmentRows.value.find((alignment) => [...alignment.sourceIds, ...alignment.targetIds].includes(segmentId))?.id ?? "";
   selectedAlignmentId.value = resolvedAlignmentId;
   activeNav.value = "parallel";
-  activeMode.value = "review";
   await nextTick();
   return parallelWorkspaceRef.value?.focusSegment(segmentId) ?? false;
 };
 const selectSearchResult = (result: SearchResult) => { void jumpToSegment(result.id, result.alignmentId ?? null); };
 const toggleBookmark = async (segmentId: string, alignmentId: string | null) => {
+  if (tutorialActive.value) {
+    tutorialBookmarkIds.value = tutorialBookmarkIds.value.includes(segmentId)
+      ? tutorialBookmarkIds.value.filter(id => id !== segmentId)
+      : [...tutorialBookmarkIds.value, segmentId];
+    const added = tutorialBookmarkIds.value.includes(segmentId); notify(() => t(added ? "shellTutorialBookmarkAdded" : "shellTutorialBookmarkRemoved"));
+    return;
+  }
   const existing = projectSnapshot.value?.bookmarks.find((bookmark) => bookmark.segment_id === segmentId);
   const segment = [...sourceRows.value, ...targetRows.value].find((candidate) => candidate.id === segmentId);
-  const content = segment?.text.replace(/\s+/g, " ").trim() ?? "当前句段";
-  try { await applySnapshot(existing ? await kernelClient.deleteBookmark(existing.bookmark_id) : await kernelClient.createBookmark(segmentId, alignmentId, `书签 ${segmentLabel(segmentId)} · ${content.slice(0, 48)}`)); notify(existing ? "已移除书签" : "已添加书签"); }
-  catch (error) { notify(`书签操作失败：${errorMessage(error)}`); }
+  const content = segment?.text.replace(/\s+/g, " ").trim() ?? t("currentSegment");
+  try { await applySnapshot(existing ? await kernelClient.deleteBookmark(existing.bookmark_id) : await kernelClient.createBookmark(segmentId, alignmentId, t("bookmarkDefaultLabel", { p0: segmentLabel(segmentId), p1: content.slice(0, 48) }))); notify(() => t(existing ? "bookmarkRemoved" : "bookmarkAdded")); }
+  catch (error) { const detail = errorMessage(error); notify(() => t("bookmarkFailed", { p0: formatError(detail) })); }
 };
 const openBookmark = (segmentId: string, alignmentId: string | null) => { void jumpToSegment(segmentId, alignmentId); };
 const openAnnotationLink = (segmentId: string) => { void jumpToSegment(segmentId); };
-const removeBookmark = async (bookmarkId: string) => { try { await applySnapshot(await kernelClient.deleteBookmark(bookmarkId)); notify("已移除书签"); } catch (error) { notify(`移除书签失败：${errorMessage(error)}`); } };
+const removeBookmark = async (bookmarkId: string) => {
+  if (tutorialActive.value) { tutorialBookmarkIds.value = tutorialBookmarkIds.value.filter(id => id !== bookmarkId); notify(() => t("shellTutorialBookmarkRemoved")); return; }
+  try { await applySnapshot(await kernelClient.deleteBookmark(bookmarkId)); notify(() => t("bookmarkRemoved")); } catch (error) { const detail = errorMessage(error); notify(() => t("bookmarkRemoveFailed", { p0: formatError(detail) })); }
+};
 const resetSearch = () => { searchQuery.value = ""; replacement.value = ""; searchResults.value = []; };
-const copyHistoryValue = async (value: string) => { try { await navigator.clipboard.writeText(value); notify("已复制到剪贴板"); } catch { notify("复制失败：系统剪贴板不可用"); } };
+const copyHistoryValue = async (value: string) => { try { await navigator.clipboard.writeText(value); notify(() => t("copied")); } catch { notify(() => t("clipboardUnavailable")); } };
 const toggleSideNav = () => { sideNavCollapsed.value = !sideNavCollapsed.value; localStorage.setItem("jueming-nav-collapsed", String(sideNavCollapsed.value)); };
 const annotationRequest = (draft: AnnotationDraft) => ({ title: draft.title, body: draft.body, status: draft.status, linked_segment_ids: draft.links.map((link) => link.segmentId), alignment_id: selectedAlignmentId.value || null });
-const createAnnotation = async (draft: AnnotationDraft) => {
+const createAnnotation = async (draft: AnnotationDraft, done: (saved: boolean) => void) => {
   const contextSegment = annotationContextSegmentId.value
     ? [...sourceRows.value, ...targetRows.value].find((segment) => segment.id === annotationContextSegmentId.value)
     : undefined;
@@ -838,13 +1328,26 @@ const createAnnotation = async (draft: AnnotationDraft) => {
     ? [{ side: contextSegment.side, segmentId: contextSegment.id }]
     : [...(alignment?.sourceIds ?? []).map((segmentId) => ({ side: "source" as const, segmentId })), ...(alignment?.targetIds ?? []).map((segmentId) => ({ side: "target" as const, segmentId }))];
   const linked = draft.links.length ? draft : { ...draft, links: fallbackLinks };
-  try { await applySnapshot(await kernelClient.createAnnotation(annotationRequest(linked))); notify("批注已创建并自动保存"); }
-  catch (error) { notify(`新建批注失败：${errorMessage(error)}`); }
+  if (tutorialActive.value) {
+    tutorialAnnotations.value = [...tutorialAnnotations.value, { id: `tutorial-annotation-${Date.now()}`, number: tutorialAnnotations.value.length + 1, status: linked.status, title: linked.title, body: linked.body, createdAt: "", links: linked.links.map(link => ({ ...link })) }];
+    notify(() => t("shellTutorialAnnotationAdded")); done(true); return;
+  }
+  try { await applySnapshot(await kernelClient.createAnnotation(annotationRequest(linked), draft.commandContext)); notify(() => t("annotationCreated")); done(true); }
+  catch (error) { const detail = errorMessage(error); notify(() => t("annotationCreateFailed", { p0: formatError(detail) })); done(false); }
 };
-const editAnnotation = async (annotationId: string, draft: AnnotationDraft) => { try { await applySnapshot(await kernelClient.updateAnnotation(annotationId, annotationRequest(draft))); notify("批注已更新"); } catch (error) { notify(`更新批注失败：${errorMessage(error)}`); } };
-const deleteAnnotation = async (annotationId: string) => { const approved = "__TAURI_INTERNALS__" in window ? await confirm("删除批注会保留在 Revision 历史中。", { title: "删除批注？", kind: "warning" }) : window.confirm("删除批注？"); if (!approved) return; try { await applySnapshot(await kernelClient.deleteAnnotation(annotationId)); notify("批注已删除"); } catch (error) { notify(`删除批注失败：${errorMessage(error)}`); } };
-const resolveAnnotation = async (annotationId: string) => { try { await applySnapshot(await kernelClient.resolveAnnotation(annotationId)); notify("批注已标记为解决"); } catch (error) { notify(`解决批注失败：${errorMessage(error)}`); } };
-const exportProject = async (format: ExportFormat) => { exportOpen.value = false; const outputPath = await saveDialog({ title: `导出 ${format.toUpperCase()}`, defaultPath: `${projectSummary.value.name}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] }); if (!outputPath) return; busy.value = true; try { await kernelClient.exportProject(format, outputPath); notify(`已导出 ${outputPath}`); } catch (error) { notify(`导出失败：${errorMessage(error)}`); } finally { busy.value = false; } };
+const editAnnotation = async (annotationId: string, draft: AnnotationDraft, done: (saved: boolean) => void) => {
+  if (tutorialActive.value) { tutorialAnnotations.value = tutorialAnnotations.value.map(annotation => annotation.id === annotationId ? { ...annotation, title: draft.title, body: draft.body, status: draft.status, links: draft.links.map(link => ({ ...link })) } : annotation); notify(() => t("shellTutorialAnnotationUpdated")); done(true); return; }
+  try { await applySnapshot(await kernelClient.updateAnnotation(annotationId, annotationRequest(draft), draft.commandContext)); notify(() => t("annotationUpdated")); done(true); } catch (error) { const detail = errorMessage(error); notify(() => t("annotationUpdateFailed", { p0: formatError(detail) })); done(false); }
+};
+const deleteAnnotation = async (annotationId: string) => {
+  if (tutorialActive.value) { tutorialAnnotations.value = tutorialAnnotations.value.filter(annotation => annotation.id !== annotationId).map((annotation, index) => ({ ...annotation, number: index + 1 })); notify(() => t("shellTutorialAnnotationDeleted")); return; }
+  const approved = "__TAURI_INTERNALS__" in window ? await confirm(t("annotationDeleteWarning"), { title: t("annotationDeleteConfirm"), kind: "warning" }) : window.confirm(t("annotationDeleteConfirm")); if (!approved) return; try { await applySnapshot(await kernelClient.deleteAnnotation(annotationId)); notify(() => t("annotationDeleted")); } catch (error) { const detail = errorMessage(error); notify(() => t("annotationDeleteFailed", { p0: formatError(detail) })); }
+};
+const resolveAnnotation = async (annotationId: string) => {
+  if (tutorialActive.value) { tutorialAnnotations.value = tutorialAnnotations.value.map(annotation => annotation.id === annotationId ? { ...annotation, status: "resolved" } : annotation); notify(() => t("shellTutorialAnnotationResolved")); return; }
+  try { await applySnapshot(await kernelClient.resolveAnnotation(annotationId)); notify(() => t("annotationResolved")); } catch (error) { const detail = errorMessage(error); notify(() => t("annotationResolveFailed", { p0: formatError(detail) })); }
+};
+const exportProject = async (format: ExportFormat) => { const outputPath = await saveDialog({ title: t("exportDialog", { p0: format.toUpperCase() }), defaultPath: `${projectSummary.value.name}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] }); if (!outputPath) return; busy.value = true; try { await kernelClient.exportProject(format, outputPath); const path = outputPath; notify(() => t("exported", { p0: path })); } catch (error) { const detail = errorMessage(error); notify(() => t("exportFailed", { p0: formatError(detail) })); } finally { busy.value = false; } };
 const finishPendingTransition = (mode: WorkspaceMode | undefined, nav: NavId | null) => {
   pendingNav.value = null;
   if (nav) applyNavContext(nav);
@@ -855,10 +1358,10 @@ const savePendingTransition = async () => {
   const nav = pendingNav.value;
   if (await confirmPendingWithSave()) finishPendingTransition(mode, nav);
 };
-const discardPendingTransition = () => {
+const discardPendingTransition = async () => {
   const mode = pendingTransition.value?.mode;
   const nav = pendingNav.value;
-  if (confirmPendingWithDiscard()) finishPendingTransition(mode, nav);
+  if (await confirmPendingWithDiscard()) finishPendingTransition(mode, nav);
 };
 const stayInEdit = () => { pendingNav.value = null; cancelPendingTransition(); };
 const annotationMinimumWidth = 300;
@@ -899,14 +1402,24 @@ const resizeAnnotationWithKeyboard = (event: KeyboardEvent) => {
   else setAnnotationWidth(annotationMaximumWidth());
   localStorage.setItem("jueming-annotation-width", String(Math.round(annotationWidth.value)));
 };
+const exportSelect = (event: Event) => {
+  const select = event.target as HTMLSelectElement;
+  const format = select.value;
+  // Export is an action: reset so the same format can be chosen again after cancel.
+  select.value = "";
+  if (format === "txt" || format === "json" || format === "xml") void exportProject(format);
+};
 const modeSelect = (event: Event) => {
-  const mode = (event.target as HTMLSelectElement).value as ModeMenuId;
+  const select = event.target as HTMLSelectElement;
+  const mode = select.value as ModeMenuId;
   if (mode === "annotation") openAnnotationPanel();
   else setMode(mode);
+  select.value = activeMode.value;
 };
 const handleShortcut = (event: KeyboardEvent) => {
   if (event.isComposing || event.key === "Process") return;
   const key = event.key.toLowerCase();
+  if (key === "escape" && (event.target as HTMLElement | null)?.tagName === "SELECT") return;
   if (key === "escape" && activeMode.value === "edit" && editSession.value) { event.preventDefault(); void escapeSegmentEdit(); return; }
   const primaryModifier = usesMacShortcuts.value ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
   if (!primaryModifier || event.altKey) return;
@@ -916,8 +1429,8 @@ const handleShortcut = (event: KeyboardEvent) => {
   if (key === "o" && !event.shiftKey) { event.preventDefault(); void openProject(); return; }
   if (key === "s" && !event.shiftKey) { event.preventDefault(); void saveProject(); return; }
   if (key === "f" && event.shiftKey) { event.preventDefault(); setNav("search"); return; }
-  if (key === "f" && !event.shiftKey && activeMode.value === "review" && activeNav.value === "parallel") { event.preventDefault(); void parallelWorkspaceRef.value?.openFind(); return; }
-  if (key === "g" && activeMode.value === "review" && activeNav.value === "parallel") { event.preventDefault(); void parallelWorkspaceRef.value?.navigateFind(event.shiftKey ? -1 : 1); return; }
+  if (key === "f" && !event.shiftKey && activeMode.value === "review" && activeNav.value === "parallel") { event.preventDefault(); void (showComparison.value ? comparisonWorkspaceRef.value : parallelWorkspaceRef.value)?.openFind(); return; }
+  if (key === "g" && activeMode.value === "review" && activeNav.value === "parallel") { event.preventDefault(); void (showComparison.value ? comparisonWorkspaceRef.value : parallelWorkspaceRef.value)?.navigateFind(event.shiftKey ? -1 : 1); return; }
   if (editingText) return;
   if (key === "z" && !event.shiftKey) { event.preventDefault(); void performUndo(); }
   else if ((usesMacShortcuts.value && key === "z" && event.shiftKey) || (!usesMacShortcuts.value && (key === "y" || (key === "z" && event.shiftKey)))) { event.preventDefault(); void performRedo(); }
@@ -927,19 +1440,55 @@ onBeforeUnmount(() => { agentWorkspace.dispose(); unlistenRuntime?.(); unlistenR
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'app-shell--garden': gardenVisible }">
-    <header class="app-toolbar"><div class="toolbar-left"><button class="toolbar-button" type="button" :title="`新建工程（${shortcutLabels.newProject}）`" @click="openNewProject"><FilePlus2 :size="19" />新建</button><button class="toolbar-button" type="button" :title="`打开本地工程（${shortcutLabels.openProject}）`" @click="openProject"><FolderOpen :size="19" />打开</button><button class="toolbar-button" type="button" :title="`保存工程（${shortcutLabels.save}）`" @click="saveProject"><Save :size="19" />保存</button><div class="toolbar-divider"></div><div class="toolbar-actions"><div class="toolbar-button--export-wrap"><button class="toolbar-button toolbar-button--export" type="button" title="导出工程" @click="exportOpen = !exportOpen"><Download :size="19" />导出<ChevronDown :size="15" /></button><div v-if="exportOpen" class="export-menu"><button type="button" @click="exportProject('txt')">TXT 文本</button><button type="button" @click="exportProject('json')">JSON 工程</button><button type="button" @click="exportProject('xml')">XML 对齐</button></div></div><div class="toolbar-divider"></div><button class="toolbar-button" type="button" :disabled="!canUndo || busy" :title="`撤销（${shortcutLabels.undo}）`" @click="performUndo"><Undo2 :size="19" />撤销</button><button class="toolbar-button" type="button" :disabled="!canRedo || busy" :title="`重做（${shortcutLabels.redo}）`" @click="performRedo"><Redo2 :size="19" />重做</button><div class="toolbar-divider"></div><button class="toolbar-button" type="button" @click="setNav('settings')"><Settings2 :size="19" />设置</button></div></div><div class="global-panel-buttons"><button class="toolbar-button" type="button" :aria-pressed="rightPanelOpen && rightPanelTab === 'agent'" @click="assistantOpen = true; rightPanelTab = 'agent'"><Sparkles :size="18" />助手<span v-if="agentProposals.length" class="pending-count">{{ agentProposals.length }}</span></button><button class="toolbar-button" type="button" :aria-pressed="rightPanelOpen && rightPanelTab === 'annotations'" @click="openAnnotationPanel()"><MessageSquareText :size="18" />批注</button></div><div class="mode-control" :class="`mode-control--${activeMode}`"><component :is="currentMode.icon" :size="17" /><span>{{ currentMode.label }} <small>{{ currentMode.hint }}</small></span><ChevronDown :size="15" /><select :value="activeMode" aria-label="切换工作模式" @change="modeSelect"><option v-for="item in modeMenuItems" :key="item.id" :value="item.id">{{ item.label }} {{ item.hint }}</option></select></div></header>
+  <div class="app-shell" :class="{ 'app-shell--tutorial': tutorialActive }">
+    <header class="app-toolbar">
+      <div class="toolbar-left">
+        <button class="toolbar-button" type="button" :disabled="tutorialActive" :title="t('newProjectShortcut', { p0: shortcutLabels.newProject })" @click="openNewProject"><FilePlus2 :size="19" />{{ t('new') }}</button>
+        <button class="toolbar-button" type="button" :disabled="tutorialActive" :title="t('openProjectShortcut', { p0: shortcutLabels.openProject })" @click="openProject"><FolderOpen :size="19" />{{ t('open') }}</button>
+        <button class="toolbar-button" type="button" :title="t('saveProjectShortcut', { p0: shortcutLabels.save })" @click="saveProject"><Save :size="19" />{{ t('save') }}</button>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-actions">
+          <label class="toolbar-export"><Download :size="19" aria-hidden="true" /><select :aria-label="t('exportProject')" :disabled="busy || tutorialActive" value="" @change="exportSelect"><option value="" disabled hidden>{{ t('export') }}</option><option value="txt">{{ t('exportTxt') }}</option><option value="json">{{ t('exportJson') }}</option><option value="xml">{{ t('exportXml') }}</option></select></label>
+          <div class="toolbar-divider"></div>
+          <button class="toolbar-button" data-tutorial="history-buttons" type="button" :disabled="!canUndo || busy || historyTransitionPending" :title="t('undoShortcut', { p0: shortcutLabels.undo })" @click="performUndo"><Undo2 :size="19" />{{ t('undo') }}</button>
+          <button class="toolbar-button" type="button" :disabled="!canRedo || busy || historyTransitionPending" :title="t('redoShortcut', { p0: shortcutLabels.redo })" @click="performRedo"><Redo2 :size="19" />{{ t('redo') }}</button>
+          <div class="toolbar-divider"></div>
+          <button class="toolbar-button" type="button" :disabled="tutorialActive" @click="setNav('settings')"><Settings2 :size="19" />{{ t('navSettings') }}</button>
+        </div>
+      </div>
+      <div class="global-panel-buttons">
+        <button class="toolbar-button toolbar-button--help" data-tutorial="help-button" type="button" :aria-label="tutorialActive ? t('shellHelpReopen') : t('shellHelpOpen')" :title="t('shellHelpTitle')" :aria-pressed="tutorialGuideOpen" @click="startTutorial"><HelpCircle :size="18" /></button>
+        <button v-if="tutorialActive" class="toolbar-button" type="button" :aria-label="t('shellExitDemoAria')" :title="t('shellExitDemoTitle')" @click="closeTutorial"><X :size="18" />{{ t('shellExitDemo') }}</button>
+        <button class="toolbar-button" type="button" :disabled="tutorialActive" :aria-pressed="rightPanelOpen && rightPanelTab === 'agent'" @click="assistantOpen = true; rightPanelTab = 'agent'"><Sparkles :size="18" />{{ t('assistant') }}<span v-if="agentProposals.length" class="pending-count">{{ agentProposals.length }}</span></button>
+        <button class="toolbar-button" type="button" :aria-pressed="rightPanelOpen && rightPanelTab === 'annotations'" @click="openAnnotationPanel()"><MessageSquareText :size="18" />{{ t('annotations') }}</button>
+      </div>
+      <div class="mode-control"><select :value="activeMode" :aria-label="t('switchMode')" @change="modeSelect"><option v-for="item in modeMenuItems" :key="item.id" :value="item.id" :disabled="tutorialActive && item.id === 'history'">{{ item.label }} {{ item.hint }}</option></select></div>
+    </header>
     <div class="content-grid" :class="{ 'content-grid--collapsed': sideNavCollapsed, 'content-grid--annotation': rightPanelOpen, 'content-grid--resizing': annotationResizing }" :style="{ '--annotation-width': `${annotationWidth}px` }">
-      <nav class="side-nav" :class="{ 'side-nav--collapsed': sideNavCollapsed }"><button v-for="item in navItems" :key="item.id" :data-nav-id="item.id" class="nav-item" :class="{ 'nav-item--active': activeNav === item.id }" type="button" :title="item.label" @click="setNav(item.id)"><component :is="item.icon" :size="22" :stroke-width="activeNav === item.id ? 2.2 : 1.8" /><span class="nav-label">{{ item.label }}<small v-if="item.hint">{{ item.hint }}</small></span></button><CompanionHabitat :in-garden="gardenStrolling" v-if="gardenVisible && !sideNavCollapsed" :settings="settings.device.pet" :activity="companionActivity" :dirty-editor="dirty" :motion="effectiveMotionMode" /><div class="nav-collapse"><button class="nav-item" type="button" :title="sideNavCollapsed ? '展开侧栏' : '收起侧栏'" @click="toggleSideNav"><ChevronDown :size="21" :style="{ transform: sideNavCollapsed ? 'rotate(-90deg)' : 'rotate(90deg)' }" /><span class="nav-label">{{ sideNavCollapsed ? '展开' : '收起' }}</span></button></div></nav>
+      <nav class="side-nav" :class="{ 'side-nav--collapsed': sideNavCollapsed }"><button v-for="item in visibleNavItems" :key="item.id" :data-nav-id="item.id" class="nav-item" :class="{ 'nav-item--active': activeNav === item.id }" type="button" :disabled="tutorialActive && item.id !== 'parallel'" :title="item.label" @click="setNav(item.id)"><component :is="item.icon" :size="22" :stroke-width="activeNav === item.id ? 2.2 : 1.8" /><span class="nav-label">{{ item.label }}<small v-if="item.hint">{{ item.hint }}</small></span></button><CompanionHabitat :in-garden="gardenStrolling" v-if="gardenVisible && !tutorialActive && !sideNavCollapsed" :settings="settings.device.pet" :activity="companionActivity" :dirty-editor="dirty" :motion="effectiveMotionMode" /><div class="nav-collapse"><button class="nav-item" type="button" :title="sideNavCollapsed ? t('expandSidebar') : t('collapseSidebar')" @click="toggleSideNav"><ChevronDown :size="21" :style="{ transform: sideNavCollapsed ? 'rotate(-90deg)' : 'rotate(90deg)' }" /><span class="nav-label">{{ sideNavCollapsed ? t('expand') : t('collapse') }}</span></button></div></nav>
       <main class="main-stage">
-        <PipelineWorkspace v-if="pipelineVisited" ref="pipelineWorkspaceRef" v-show="activeNav === 'pipeline'" :binding-id="agentWorkspace.binding.value?.binding_id ?? null" :project-id="projectSnapshot?.project.project_id ?? null" :revision-id="projectSummary.revision_id" :source-segments="sourceRows" :refresh-key="pipelineRefreshKey" :available="isTauriRuntime" @status="notify" />
-        <ParallelWorkspace @selection-context="workspaceOperationSelection = $event" ref="parallelWorkspaceRef" v-if="activeNav === 'parallel'" :mode="activeMode" :source-segments="sourceRows" :target-segments="targetRows" :alignments="alignmentRows" :selected-alignment-id="selectedAlignmentId" :bookmarked-segment-ids="bookmarkedSegmentIds" :annotated-segment-ids="annotatedSegmentIds" :edit-session="editSession" :trackpad-optimized="trackpadOptimized" :smooth-navigation="smoothNavigationEnabled" :writable="workspaceWritable" @select="selectedAlignmentId = $event" @request-edit="requestSegmentEdit" @edit-draft="updateDraft" @commit-edit="commitSegmentEdit" @cancel-edit="cancelSegmentEdit" @escape-edit="escapeSegmentEdit" @move="moveSegment" @reorder="reorderSegment" @insert-gap="insertAlignmentGap" @reset-order="resetOrder" @link="linkSegments" @unlink="unlinkAlignment" @merge-segments="mergeSegmentContent" @split-segment="splitSegmentContent" @group="groupAlignments" @ungroup="ungroupAlignment" @bookmark="toggleBookmark" @annotation="openAnnotationPanel" @status="notify" />
-        <SearchReplaceWorkspace :authoritative-results="isTauriRuntime" :native-preview="nativeReplacePreview" :preview-loading="replacePreviewLoading" :preview-error="replacePreviewError" v-else-if="activeNav === 'search'" v-model:query="searchQuery" v-model:side="searchSide" v-model:regex="searchRegex" v-model:case-sensitive="searchCaseSensitive" v-model:replacement="replacement" :results="searchResults" :project-label="projectSummary.name" :loading="busy" @search="runSearch" @select-result="selectSearchResult" @replace-preview="previewReplacement" @apply-replace="applyReplacement" @reset="resetSearch" />
-        <HistoryWorkspace v-else-if="activeNav === 'history'" :revisions="revisionItems" :diff="historyDiff" :base-revision-id="baseRevisionId" :selected-revision-id="selectedRevisionId" :current-revision-id="projectSummary.revision_id" :loading="busy" @select-revision="selectHistoryRevision" @compare="compareHistory" @restore="restoreHistory" @copy-value="copyHistoryValue" />
+        <PipelineWorkspace v-if="pipelineVisited" :active="activeNav === 'pipeline'" ref="pipelineWorkspaceRef" v-show="activeNav === 'pipeline'" :binding-id="agentWorkspace.binding.value?.binding_id ?? null" :project-id="projectSnapshot?.project.project_id ?? null" :revision-id="projectSummary.revision_id" :source-segments="sourceRows" :refresh-key="pipelineRefreshKey" :available="isTauriRuntime" @status="notify" @dirty="pipelineDirty = $event" />
+        <ResearchWorkspace v-if="researchVisited" ref="researchWorkspaceRef" v-show="activeNav === 'research'" :active="activeNav === 'research'" :binding-id="agentWorkspace.binding.value?.binding_id ?? null" :project-id="projectSnapshot?.project.project_id ?? null" :revision-id="projectSummary.revision_id" :available="isTauriRuntime" :feature="researchFeature" :translation-label="projectSummary.target_label" :before-group-change="guardWorkspaceDrafts" @status="notify" @dirty="researchDirty = $event" @reveal="revealResearchSegment" @pipeline="setNav('pipeline')" @settings="openResearchSettings" />
+        <div v-if="activeNav === 'parallel'" class="parallel-stage">
+          <ComparisonWorkspace ref="comparisonWorkspaceRef" :find-in-view="workspaceText.find" v-if="showComparison && projectSnapshot" :project="projectSnapshot" :texts="workspaceText.texts.value" :writable="workspaceWritable && !busy" @visible-segments="loadVisibleSegments" @edit-pair="openComparisonPair" @unlink="unlinkAlignment" />
+          <div v-if="!tutorialActive && hasMultipleTranslations && !showComparison" class="comparison-return"><button class="secondary-button" type="button" @click="returnToComparison">{{ t('shellReturnComparison') }}</button><span>{{ projectSnapshot?.documents[0].title }} ↔ {{ activeTargetDocument?.title }}</span></div>
+        <ParallelWorkspace :source-title="tutorialActive ? t('shellSourceSegments') : projectSnapshot?.documents[0].title" :target-title="tutorialActive ? t('targetSegments') : activeTargetDocument?.title" :revision-key="tutorialActive ? `tutorial-${tutorialWorkspace.revision.value}` : projectSnapshot?.project.current_revision_id" :find-in-view="!tutorialActive && projectSnapshot ? findCurrentPair : undefined" :ensure-segments="tutorialActive ? undefined : workspaceText.ensure" @visible-segments="loadVisibleSegments" @selection-context="workspaceOperationSelection = $event" ref="parallelWorkspaceRef" v-if="!showComparison" :mode="activeMode" :source-segments="sourceRows" :target-segments="targetRows" :alignments="alignmentRows" :selected-alignment-id="selectedAlignmentId" :bookmarked-segment-ids="bookmarkedSegmentIds" :annotated-segment-ids="annotatedSegmentIds" :edit-session="editSession" :trackpad-optimized="trackpadOptimized" :smooth-navigation="smoothNavigationEnabled" :writable="workspaceWritable" :readonly-action-label="!workspaceWritable ? t('shellEnterDemo') : ''" @readonly-action="startTutorial" @select="selectedAlignmentId = $event" @request-edit="requestSegmentEdit" @edit-draft="updateDraft" @commit-edit="commitSegmentEdit" @cancel-edit="cancelSegmentEdit" @escape-edit="escapeSegmentEdit" @move="moveSegment" @reorder="reorderSegment" @insert-gap="insertAlignmentGap" @reset-order="resetOrder" @link="linkSegments" @unlink="unlinkAlignment" @merge-segments="mergeSegmentContent" @split-segment="splitSegmentContent" @group="groupAlignments" @ungroup="ungroupAlignment" @bookmark="toggleBookmark" @annotation="openAnnotationPanel" @status="notify" />
+        </div>
+        <SearchReplaceWorkspace :authoritative-results="isTauriRuntime" :native-preview="nativeReplacePreview" :preview-loading="replacePreviewLoading" :preview-error="displayedReplacePreviewError" v-else-if="activeNav === 'search'" v-model:query="searchQuery" v-model:side="searchSide" v-model:regex="searchRegex" v-model:case-sensitive="searchCaseSensitive" v-model:replacement="replacement" :results="searchResults" :project-label="projectSummary.name" :loading="busy" @search="runSearch" @select-result="selectSearchResult" @replace-preview="previewReplacement" @apply-replace="applyReplacement" @reset="resetSearch" />
+        <HistoryWorkspace v-else-if="activeNav === 'history'" :revisions="revisionItems" :diff="historyDiff" :base-revision-id="baseRevisionId" :selected-revision-id="selectedRevisionId" :current-revision-id="projectSummary.revision_id" :loading="busy || historyTransitionPending" @select-revision="selectHistoryRevision" @compare="compareHistory" @restore="restoreHistory" @copy-value="copyHistoryValue" />
         <SettingsWorkspace
           v-else-if="activeNav === 'settings'"
           v-model:settings="settings"
           :capabilities="capabilities"
+          :research-feature="researchFeature"
+          :research-available="isTauriRuntime"
+          :research-busy="researchFeatureBusy"
+          @research-enable="researchFeatureAction('enable')"
+          @research-disable="researchFeatureAction('disable')"
+          @research-cancel="researchFeatureAction('cancel')"
+          @research-retry="researchFeatureAction('retry')"
+          @research-open="setNav('research')"
+          @research-preferences="updateResearchPreferences"
           :uses-mac-shortcuts="usesMacShortcuts"
           :shortcut-rows="shortcutRows"
           :cache-cleaning="cacheCleaning"
@@ -964,34 +1513,38 @@ onBeforeUnmount(() => { agentWorkspace.dispose(); unlistenRuntime?.(); unlistenR
           <template #agent-settings><AgentConnectionSettings /><AgentModelSettings @changed="runtimeStatus = $event" /></template>
         </SettingsWorkspace>
         <BookmarksWorkspace v-else-if="activeNav === 'bookmarks'" :bookmarks="projectSnapshot?.bookmarks ?? []" :previews="bookmarkPreviews" :source-segments="sourceRows" :target-segments="targetRows" :alignments="alignmentRows" :segment-labels="segmentLabels" :alignment-labels="alignmentLabels" @open="openBookmark" @remove="removeBookmark" />
-        <section v-else-if="activeNav === 'project'" class="aux-view project-view"><Folder :size="28" /><h2>项目</h2><p>{{ projectSummary.name }}</p><div class="project-summary-card"><span>{{ projectSummary.source_count }}</span><small>中文句段</small><span>{{ projectSummary.target_count }}</span><small>English segments</small><span>{{ projectSummary.alignment_count }}</span><small>Alignment</small></div><div class="project-actions"><button type="button" class="primary-button" @click="openProject">打开工程</button><button type="button" class="secondary-button" @click="openNewProject">新建工程</button></div></section>
+        <section v-else-if="activeNav === 'project'" class="aux-view project-view"><Folder :size="28" /><h2>{{ t('shellProjectTitle') }}</h2><p>{{ projectSnapshot ? projectSummary.name : t('projectNone') }}</p><div v-if="projectSnapshot" class="project-summary-card"><span>{{ projectSummary.source_count }}</span><small>{{ t('shellSourceSegments') }}</small><span>{{ projectSummary.target_count }}</span><small>{{ t('shellFirstTargetSegments') }}</small><span>{{ projectSummary.alignment_count }}</span><small>{{ t('alignment') }}</small></div><div class="project-actions"><button type="button" class="primary-button" @click="openProject">{{ t('openProject') }}</button><button type="button" class="secondary-button" @click="openNewProject">{{ t('newProject') }}</button><button v-if="!projectSnapshot" type="button" class="secondary-button" @click="startTutorial">{{ t('shellEnterDemo') }}</button></div></section>
       </main>
       <aside class="annotation-drawer" :class="{ 'annotation-drawer--open': rightPanelOpen }" :aria-hidden="!rightPanelOpen" :inert="!rightPanelOpen">
-        <div class="annotation-resize-handle" role="separator" tabindex="0" aria-label="调整全局侧栏宽度" aria-orientation="vertical" :aria-valuemin="annotationMinimumWidth" :aria-valuemax="annotationMaximumWidth()" :aria-valuenow="Math.round(annotationWidth)" title="拖动调整宽度，双击恢复默认" @pointerdown="startAnnotationResize" @dblclick="resetAnnotationWidth" @keydown="resizeAnnotationWithKeyboard"></div>
-        <GlobalSidePanel v-model:active-tab="rightPanelTab" :project-label="projectSnapshot ? projectSummary.name : '尚未打开工程'" :annotation-count="annotations.length" :pending-count="agentProposals.length" @close="closeAnnotationPanel">
-          <template #agent><AgentPanel v-model:draft="agentDraft" :tab-label="navItems.find(item => item.id === activeNav)?.label ?? activeNav" :selected-text="agentWorkspace.context.value?.selected_text ?? ''" :connected="Boolean(agentWorkspace.binding.value)" :runtime-available="Boolean(runtimeStatus?.configured && projectSnapshot)" :running="agentBusy || runtimeRunning" :reviewing="agentBusy" :show-context="settings.device.agent.showContext" :messages="runtimeMessages.filter(message => message.role !== 'tool').map(message => ({ id: message.message_id, role: message.role, content: message.content }))" :activity="agentActivity" :proposals="agentProposals" :error="agentActionError ?? agentWorkspace.error.value" @settings="openAgentSettings" @send="sendAgentMessage" @cancel="cancelAgentRun" @clear-selection="agentWorkspace.clearSelectionContext()" @approve="reviewAgentProposal($event, true)" @reject="reviewAgentProposal($event, false)" /></template>
-          <template #annotations><AnnotationPanel v-model:active-filter="annotationFilter" :scope-key="agentProjectKey" :annotations="annotations" :selected-id="selectedAnnotationId" :readonly="!projectSnapshot || activeNav === 'history'" @select="selectedAnnotationId = $event" @open-link="openAnnotationLink" @create="createAnnotation" @edit="editAnnotation" @delete="deleteAnnotation" @resolve="resolveAnnotation" @close="closeAnnotationPanel" /></template>
+        <div class="annotation-resize-handle" role="separator" tabindex="0" :aria-label="t('shellResizeGlobalPanel')" aria-orientation="vertical" :aria-valuemin="annotationMinimumWidth" :aria-valuemax="annotationMaximumWidth()" :aria-valuenow="Math.round(annotationWidth)" :title="t('shellResizeGlobalPanelHint')" @pointerdown="startAnnotationResize" @dblclick="resetAnnotationWidth" @keydown="resizeAnnotationWithKeyboard"></div>
+        <GlobalSidePanel v-model:active-tab="rightPanelTab" :project-label="tutorialActive ? t('shellTutorialProject') : projectSnapshot ? projectSummary.name : t('projectNone')" :annotation-count="annotations.length" :pending-count="agentProposals.length" @close="closeAnnotationPanel">
+          <template #agent><AgentPanel v-model:draft="agentDraft" :tab-label="visibleNavItems.find(item => item.id === activeNav)?.label ?? activeNav" :selected-text="agentWorkspace.context.value?.selected_text ?? ''" :connected="Boolean(agentWorkspace.binding.value)" :runtime-available="Boolean(runtimeStatus?.configured && projectSnapshot)" :running="agentBusy || runtimeRunning" :reviewing="agentBusy" :show-context="settings.device.agent.showContext" :messages="runtimeMessages.filter(message => message.role !== 'tool').map(message => ({ id: message.message_id, role: message.role, content: message.content }))" :activity="agentActivity" :proposals="agentProposals" :error="displayedAgentActionError" @settings="openAgentSettings" @send="sendAgentMessage" @cancel="cancelAgentRun" @clear-selection="agentWorkspace.clearSelectionContext()" @approve="reviewAgentProposal($event, true)" @reject="reviewAgentProposal($event, false)" /></template>
+          <template #annotations><AnnotationPanel :command-scope="commandScope()" v-model:active-filter="annotationFilter" :scope-key="tutorialActive ? 'tutorial' : agentProjectKey" :annotations="annotations" :selected-id="selectedAnnotationId" :readonly="(!projectSnapshot && !tutorialActive) || activeNav === 'history'" @select="selectedAnnotationId = $event" @open-link="openAnnotationLink" @create="createAnnotation" @edit="editAnnotation" @delete="deleteAnnotation" @resolve="resolveAnnotation" @close="closeAnnotationPanel" /></template>
         </GlobalSidePanel>
       </aside>
+      <CompanionGarden v-model:strolling="gardenStrolling" v-if="gardenVisible && !tutorialActive" :settings="settings.device.pet" :activity="companionActivity" :dirty-editor="dirty" :motion="effectiveMotionMode" :proposal="agentProposals[0] ?? null" :busy="agentBusy" :guidance="guidance?.label ?? ''" @approve="reviewAgentProposal($event, true)" @reject="reviewAgentProposal($event, false)" @open-agent="assistantOpen = true; rightPanelTab = 'agent'" />
     </div>
-    <CompanionGarden v-model:strolling="gardenStrolling" v-if="gardenVisible" :settings="settings.device.pet" :activity="companionActivity" :dirty-editor="dirty" :motion="effectiveMotionMode" :proposal="agentProposals[0] ?? null" :busy="agentBusy" :guidance="guidance?.label ?? ''" @approve="reviewAgentProposal($event, true)" @reject="reviewAgentProposal($event, false)" @open-agent="assistantOpen = true; rightPanelTab = 'agent'" />
-    <GuidanceOverlay :target="guidance" :animated="effectiveMotionMode === 'standard' && settings.device.pet.presentation === 'animated'" :visible="settings.device.pet.butterflyMotion && settings.device.pet.presentation !== 'hidden'" />
+    <GuidanceOverlay :target="guidance" :animated="effectiveMotionMode === 'standard' && settings.device.pet.presentation === 'animated'" :visible="!tutorialActive && settings.device.pet.butterflyMotion && settings.device.pet.presentation !== 'hidden'" />
+    <ParallelTutorial :open="tutorialActive && tutorialGuideOpen" :step="tutorialStep" :steps="parallelTutorialSteps" @update:step="prepareTutorialStep" @reset="resetTutorial" @dismiss="dismissTutorialGuide" @close="closeTutorial" />
     <footer class="bottom-status">
       <div class="footer-context">
+        <button v-if="gardenVisible && !tutorialActive" class="garden-status-button" type="button" :class="{ 'garden-status-button--open': gardenOpen }" :aria-label="gardenOpen ? t('shellGardenClose') : t('shellGardenOpen')" :title="gardenOpen ? t('shellGardenClose') : t('shellGardenOpen')" :aria-pressed="gardenOpen" @click="gardenStrolling = !gardenStrolling">
+          <img :src="gardenPawIcon" alt="" aria-hidden="true" />
+        </button>
         <div class="footer-context-item footer-context-item--project">
-          <strong class="footer-context-label">项目</strong>
+          <strong class="footer-context-label">{{ t('shellFooterProject') }}</strong>
           <span class="footer-ellipsis" :title="projectSummary.name">{{ projectSummary.name }}</span>
         </div>
         <div class="footer-context-separator" aria-hidden="true"></div>
         <div class="footer-context-item footer-context-item--files">
-          <strong class="footer-context-label">文件</strong>
+          <strong class="footer-context-label">{{ t('shellFooterFiles') }}</strong>
           <span class="footer-file-name footer-file-name--source" :title="projectSummary.source_label">{{ projectSummary.source_label }}</span>
           <Link2 :size="13" aria-hidden="true" />
           <span class="footer-file-name footer-file-name--target" :title="projectSummary.target_label">{{ projectSummary.target_label }}</span>
         </div>
         <div class="footer-context-separator" aria-hidden="true"></div>
         <div class="footer-context-item footer-context-item--alignment">
-          <span class="footer-context-label">对齐</span>
+          <span class="footer-context-label">{{ t('shellFooterAlignment') }}</span>
           <span class="footer-status-pill">{{ alignmentStatus }}</span>
         </div>
       </div>
@@ -1002,19 +1555,19 @@ onBeforeUnmount(() => { agentWorkspace.dispose(); unlistenRuntime?.(); unlistenR
         </span>
       </div>
       <div class="footer-progress">
-        <span class="footer-processed"><span class="footer-processed-label">已处理</span><strong>{{ projectSummary.alignment_count }} / {{ processedTotal }}</strong></span>
-        <span class="footer-progress-label">进度</span>
-        <div class="progress-track" role="progressbar" aria-label="工程处理进度" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="progressPercentage"><span :style="{ width: `${progressPercentage}%` }"></span></div>
+        <span class="footer-processed"><span class="footer-processed-label">{{ t('shellFooterProcessed') }}</span><strong>{{ projectSummary.alignment_count }} / {{ processedTotal }}</strong></span>
+        <span class="footer-progress-label">{{ t('shellFooterProgress') }}</span>
+        <div class="progress-track" role="progressbar" :aria-label="t('shellFooterProgressAria')" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="progressPercentage"><span :style="{ width: `${progressPercentage}%` }"></span></div>
         <strong class="footer-progress-percent">{{ progressPercentage }}%</strong>
       </div>
     </footer>
-    <div v-if="pendingTransition" class="modal-backdrop mode-guard-backdrop"><section class="mode-guard" role="dialog" aria-modal="true" aria-labelledby="mode-guard-title"><span class="eyebrow">UNSAVED EDIT</span><h2 id="mode-guard-title">当前句段还有未保存编辑</h2><p>保存会创建一个完整 Revision；放弃只撤销最近一次自动保存之后的草稿。</p><div><button class="secondary-button" type="button" @click="stayInEdit">继续编辑</button><button class="secondary-button danger-button" type="button" @click="discardPendingTransition">放弃草稿</button><button class="primary-button" type="button" @click="savePendingTransition"><Check :size="15" />保存并切换</button></div></section></div>
-    <NewProjectDialog ref="newProjectDialogRef" v-model:busy="busy" :kernel-client="kernelClient" @created="handleProjectCreated" @status="notify" />
+    <div v-if="pendingTransition" class="modal-backdrop mode-guard-backdrop"><section class="mode-guard" role="dialog" aria-modal="true" aria-labelledby="mode-guard-title"><span class="eyebrow">{{ t('unsavedEyebrow') }}</span><h2 id="mode-guard-title">{{ t('unsavedTitle') }}</h2><p>{{ t('unsavedDescription') }}</p><div><button class="secondary-button" type="button" @click="stayInEdit">{{ t('keepEditing') }}</button><button class="secondary-button danger-button" type="button" @click="discardPendingTransition">{{ t('discardDraft') }}</button><button class="primary-button" type="button" @click="savePendingTransition"><Check :size="15" />{{ t('saveAndSwitch') }}</button></div></section></div>
+    <div v-if="workspaceLeave" class="modal-backdrop mode-guard-backdrop"><section class="mode-guard" role="dialog" aria-modal="true" aria-labelledby="workspace-guard-title"><h2 id="workspace-guard-title">{{ t('shellWorkspaceDraftTitle', { p0: workspaceLeave.label() }) }}</h2><p>{{ t('shellWorkspaceDraftDescription') }}</p><div><button class="secondary-button" type="button" :disabled="workspaceLeaveBusy" @click="resolveWorkspaceLeave('stay')">{{ t('keepEditing') }}</button><button class="secondary-button danger-button" type="button" :disabled="workspaceLeaveBusy" @click="resolveWorkspaceLeave('discard')">{{ t('discardDraft') }}</button><button class="primary-button" type="button" :disabled="workspaceLeaveBusy" @click="resolveWorkspaceLeave('save')">{{ workspaceLeaveBusy ? t('shellSaving') : t('shellSaveAndContinue') }}</button></div></section></div>
+    <NewProjectDialog ref="newProjectDialogRef" v-model:busy="busy" :kernel-client="kernelClient" :before-create="guardProjectChange" @created="handleProjectCreated" @status="notify" />
   </div>
 </template>
 
 <style scoped>
-.toolbar-button--export-wrap { position: relative; }.export-menu { position: absolute; z-index: 8; top: 41px; left: 0; width: 142px; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: #fff; box-shadow: 0 10px 25px rgb(35 55 38 / 14%); }.export-menu button { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; }.export-menu button:hover { color: var(--green-900); background: var(--green-050); }.mode-control small { margin-left: 2px; color: var(--green-700); font-size: var(--jm-font-size-callout); font-weight: var(--jm-font-weight-regular); line-height: var(--jm-line-height-callout); }.mode-control--edit { border-color: #e6d19d; color: #916714; background: #fffaf0; }.mode-control--edit small { color: #af8321; }.mode-control--history { border-color: #c7d4df; color: #536b7a; background: #f8fbfd; }
 .annotation-drawer { position: relative; z-index: 6; width: var(--annotation-width); height: 100%; min-width: 0; opacity: 0; visibility: hidden; transform: translateX(100%); transition: opacity 180ms ease, transform 240ms cubic-bezier(.2, .8, .2, 1), visibility 0s linear 240ms; }
 .annotation-drawer--open { opacity: 1; visibility: visible; transform: translateX(0); transition-delay: 0s; }
 .content-grid--resizing .annotation-drawer { transition: none; }
@@ -1027,4 +1580,11 @@ onBeforeUnmount(() => { agentWorkspace.dispose(); unlistenRuntime?.(); unlistenR
 .modal-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; background: rgb(31 42 34 / 22%); }.eyebrow { color: var(--green-700); font-size: var(--jm-font-size-subheadline); font-weight: var(--jm-font-weight-semibold); letter-spacing: .1em; line-height: var(--jm-line-height-subheadline); }
 .annotation-panel { position: fixed; z-index: 10; top: 116px; right: 0; bottom: 58px; display: flex; flex-direction: column; width: 355px; overflow: auto; border-left: 1px solid #ccd9cd; background: #fbfdfb; box-shadow: -12px 0 30px rgb(32 51 35 / 10%); }.annotation-panel header { display: flex; align-items: flex-start; justify-content: space-between; padding: 19px 18px 12px; }.annotation-panel header button { padding: 5px; border: 0; background: transparent; color: var(--ink-500); cursor: pointer; }.annotation-panel h2 { margin: 4px 0 0; color: var(--ink-900); font-size: var(--jm-font-size-title-3); line-height: var(--jm-line-height-title-3); font-weight: var(--jm-font-weight-semibold); }.annotation-panel h2 small { display: inline-block; margin-left: 3px; padding: 2px 6px; border-radius: 10px; color: var(--green-900); background: var(--green-100); font-size: var(--jm-font-size-subheadline); line-height: var(--jm-line-height-subheadline); }.annotation-filter { display: flex; gap: 4px; padding: 0 13px 13px; border-bottom: 1px solid var(--line); }.annotation-filter button { padding: 7px 8px; border: 1px solid transparent; border-radius: 5px; color: var(--ink-500); background: transparent; font-size: var(--jm-font-size-callout); cursor: pointer; line-height: var(--jm-line-height-callout); }.annotation-filter button.active { border-color: #b3d5b7; color: var(--green-900); background: #f3faf1; }.annotation-card { display: grid; grid-template-columns: 25px 1fr; gap: 7px; margin: 13px 13px 0; padding: 13px 11px; border: 1px solid #d3dde5; border-radius: 8px; background: #fff; }.annotation-card--draft { border-color: #d3c4ec; }.annotation-number { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: #fff; background: #9864d5; font-size: var(--jm-font-size-callout); line-height: var(--jm-line-height-callout); }.annotation-number--green { background: #3c9a5a; }.annotation-state { display: flex; align-items: center; gap: 7px; color: var(--ink-900); font-size: var(--jm-font-size-callout); font-weight: var(--jm-font-weight-semibold); line-height: var(--jm-line-height-callout); }.annotation-state span { color: var(--ink-500); font-weight: var(--jm-font-weight-medium); }.annotation-state time { margin-left: auto; color: var(--ink-500); font-size: var(--jm-font-size-subheadline); font-weight: var(--jm-font-weight-regular); line-height: var(--jm-line-height-subheadline); }.annotation-card h3 { margin: 12px 0 7px; color: var(--ink-900); font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); font-weight: var(--jm-font-weight-semibold); }.annotation-card p { margin: 0; color: var(--ink-700); font-size: var(--jm-font-size-body); line-height: 1.55; }.annotation-links { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; padding: 8px; border-radius: 5px; background: #f8faf8; color: var(--ink-700); font-size: var(--jm-font-size-subheadline); line-height: var(--jm-line-height-subheadline); }.annotation-links b { float: right; color: var(--ink-500); font-weight: var(--jm-font-weight-medium); }.annotation-card footer { display: flex; gap: 15px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }.annotation-card footer button, .resolve-button, .new-annotation { display: inline-flex; align-items: center; gap: 5px; border: 0; color: var(--ink-700); background: transparent; font-size: var(--jm-font-size-callout); cursor: pointer; line-height: var(--jm-line-height-callout); }.resolve-button { margin-top: 11px; padding: 6px 9px; border: 1px solid #b5dab9; border-radius: 5px; color: var(--green-900); background: #f2faf1; }.new-annotation { justify-content: center; margin: 13px; padding: 10px; border: 1px solid #abd1af; border-radius: 6px; color: var(--green-900); background: #f4fbf2; }
 .mode-guard-backdrop { z-index: 30; }.mode-guard { width: min(460px, calc(100vw - 60px)); padding: 24px; border: 1px solid #d6c58f; border-radius: 10px; background: #fff; box-shadow: 0 22px 70px rgb(29 48 32 / 23%); }.mode-guard h2 { margin: 5px 0 9px; color: var(--ink-900); font-size: var(--jm-font-size-title-2); line-height: var(--jm-line-height-title-2); font-weight: var(--jm-font-weight-regular); }.mode-guard p { margin: 0; color: var(--ink-700); font-size: var(--jm-font-size-body); line-height: 1.6; }.mode-guard > div { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }.mode-guard .primary-button { height: 38px; border-radius: 6px; }.danger-button { border-color: #dab7b7; color: #9b4e4e; }
+</style>
+
+<style scoped>
+.parallel-stage > .workspace { flex: 1; height: auto; }
+.parallel-stage { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.comparison-return { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
+.comparison-return span { color: var(--text-muted); font-size: 12px; }
 </style>

@@ -4,12 +4,12 @@ import { ref } from "vue";
 import { useAgentWorkspace } from "../../apps/desktop/src/composables/useAgentWorkspace";
 import type { AgentClient } from "../../apps/desktop/src/domain/agent-client";
 import type { AgentClientUpdate, AgentProjection, AgentReply } from "../../apps/desktop/src/domain/agent-types";
-import type { ProjectSnapshot } from "../../apps/desktop/src/domain/kernel-client";
+import type { ProjectIdentity } from "../../apps/desktop/src/domain/kernel-client";
 
 setActivePinia(createPinia());
 const snapshot = ref({
   project: { project_id: "project-wire", current_revision_id: "9007199254740993" },
-} as ProjectSnapshot);
+} as ProjectIdentity);
 const calls: Array<{ method: string; params: Record<string, unknown>; bindingId?: string | null }> = [];
 const projection: AgentReply<AgentProjection> = {
   request_id: "projection-1",
@@ -129,7 +129,7 @@ const appOnlyClient: AgentClient = {
 const appOnly = useAgentWorkspace({
   tab: "settings",
   mode: null,
-  projectSnapshot: ref<ProjectSnapshot | null>(null),
+  projectSnapshot: ref<ProjectIdentity | null>(null),
   selection: { segmentIds: ["fixture-segment-must-not-leak"], alignmentIds: ["fixture-alignment-must-not-leak"] },
   searchState: { query: "", regex: false, caseSensitive: false, languageId: null },
   selectionSharingEnabled: true,
@@ -158,7 +158,7 @@ const revisionBeforeProjection = "revision-before-projection";
 const revisionFromProjection = "revision-from-projection";
 const revisionSnapshot = ref({
   project: { project_id: "project-search-order", current_revision_id: revisionBeforeProjection },
-} as ProjectSnapshot);
+} as ProjectIdentity);
 let revisionListener: ((update: AgentClientUpdate) => void) | null = null;
 const acceptedSearchRevisions: string[] = [];
 const revisionProjection: AgentReply<AgentProjection> = {
@@ -219,7 +219,7 @@ revisionListener?.({
     sequence: "2",
     data: {
       binding_id: "native-search-binding",
-      project: { project: { project_id: "project-search-order", current_revision_id: revisionFromProjection } } as ProjectSnapshot,
+      project: { project: { project_id: "project-search-order", current_revision_id: revisionFromProjection } } as ProjectIdentity,
       context: null,
       search_spec: { query: "needle", regex: false, case_sensitive: false, language_id: null },
       search_results: { revision_id: revisionFromProjection, hits: [] },

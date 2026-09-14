@@ -15,9 +15,11 @@ fn request(
 ) -> CreateProjectRequest {
     let profile = ImportProfile::new(Encoding::Utf8, SegmentationMode::NonEmptyLine);
     CreateProjectRequest {
+        additional_targets: Vec::new(),
         project_path: path.to_string_lossy().into_owned(),
         name: name.into(),
         source: ImportSideRequest {
+            expected_sha256: None,
             language_id: "zh-CN".into(),
             title: "source".into(),
             input: TextInput::Paste {
@@ -27,6 +29,7 @@ fn request(
             profile: profile.clone(),
         },
         target: ImportSideRequest {
+            expected_sha256: None,
             language_id: "en".into(),
             title: "target".into(),
             input: TextInput::Paste {
@@ -501,4 +504,226 @@ fn execute_search_accepts_atomic_spec_and_expected_revision() {
     let result = host.dispatch(call("atomic-search", "search.execute", json!({"spec":{"query":"甲", "regex":false, "case_sensitive":true, "language_id":null}, "expected_revision_id":revision, "page_size":1}), Some(binding.clone()))).unwrap();
     assert_eq!(result.data["hits"].as_array().unwrap().len(), 1);
     assert_eq!(host.dispatch(call("stale-search", "search.execute", json!({"spec":{"query":"甲", "regex":false, "case_sensitive":true, "language_id":null}, "expected_revision_id":"999", "page_size":1}), Some(binding))).unwrap_err().code, "stale_revision");
+}
+
+#[test]
+fn writer_lock_rejects_second_host_and_is_released_on_project_switch_and_drop() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("exclusive.jm");
+    let host = LocalAppHost::new();
+    let initial = host
+        .create_project(&request(path.clone(), "exclusive", "甲", "a"))
+        .unwrap();
+    let second = LocalAppHost::new();
+    assert_eq!(
+        second.open_project(&path).unwrap_err().code,
+        "project_locked"
+    );
+    assert_eq!(host.open_project(&path).unwrap(), initial);
+    assert_eq!(
+        host.create_project(&request(path.clone(), "overwrite", "乙", "b"))
+            .unwrap_err()
+            .code,
+        "project_exists"
+    );
+    assert_eq!(host.current_snapshot().unwrap(), initial);
+    host.create_project(&request(temp.path().join("other.jm"), "other", "乙", "b"))
+        .unwrap();
+    assert_eq!(second.open_project(&path).unwrap(), initial);
+    drop(second);
+    assert_eq!(LocalAppHost::new().open_project(&path).unwrap(), initial);
+}
+
+#[test]
+fn native_commands_validate_scope_and_replay_after_restart_and_restore() {
+    use jueming_protocol::{CommandEnvelope, CommandId, CommandKind, ProjectId, RevisionId};
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("commands.jm");
+    let host = LocalAppHost::new();
+    let initial = host
+        .create_project(&request(path.clone(), "commands", "甲", "a"))
+        .unwrap();
+    let id = initial.segments[0].segment_id;
+    let command = CommandEnvelope::new(
+        CommandId::new(),
+        initial.project.project_id,
+        RevisionId::new(1),
+        CommandKind::UpdateSegment,
+        json!({"segment_id": id, "content": "changed"}),
+    );
+    let result = host.execute_native_command(command.clone()).unwrap();
+    assert_eq!(result.committed_revision_id, RevisionId::new(2));
+    assert_eq!(
+        host.execute_native_command(command.clone()).unwrap().status,
+        "duplicate"
+    );
+    let mut conflicting = command.clone();
+    conflicting.payload["content"] = json!("different");
+    assert_eq!(
+        host.execute_native_command(conflicting).unwrap_err().code,
+        "command_id_conflict"
+    );
+    let mut stale = command.clone();
+    stale.command_id = CommandId::new();
+    assert_eq!(
+        host.execute_native_command(stale.clone()).unwrap_err().code,
+        "stale_revision"
+    );
+    stale.project_id = ProjectId::new();
+    assert_eq!(
+        host.execute_native_command(stale).unwrap_err().code,
+        "project_mismatch"
+    );
+    let revision_bytes = std::fs::read(path.join("revisions/2.json")).unwrap();
+    let restore = CommandEnvelope::new(
+        CommandId::new(),
+        initial.project.project_id,
+        RevisionId::new(2),
+        CommandKind::RestoreRevision,
+        json!({"target_revision_id": "1"}),
+    );
+    host.execute_native_command(restore.clone()).unwrap();
+    assert_eq!(
+        host.current_snapshot()
+            .unwrap()
+            .revisions
+            .last()
+            .unwrap()
+            .parent_revision_id,
+        Some(RevisionId::new(2))
+    );
+    drop(host);
+    let restarted = LocalAppHost::new();
+    restarted.open_project(&path).unwrap();
+    assert_eq!(
+        restarted
+            .execute_native_command(command)
+            .unwrap()
+            .committed_revision_id,
+        RevisionId::new(2)
+    );
+    assert_eq!(
+        restarted.execute_native_command(restore).unwrap().status,
+        "duplicate"
+    );
+    assert_eq!(
+        restarted
+            .current_snapshot()
+            .unwrap()
+            .project
+            .current_revision_id,
+        RevisionId::new(3)
+    );
+    assert_eq!(
+        std::fs::read(path.join("revisions/2.json")).unwrap(),
+        revision_bytes
+    );
+}
+
+#[test]
+fn stale_kernel_snapshot_cannot_overwrite_committed_revision() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("stale-kernel.jm");
+    let kernel = jueming_kernel::KernelService;
+    let initial = kernel
+        .create_project(&request(path.clone(), "stale", "甲", "a"))
+        .unwrap();
+    let first = kernel
+        .update_segment(
+            &path,
+            &initial,
+            initial.segments[0].segment_id,
+            "first writer",
+        )
+        .unwrap();
+    let bytes = std::fs::read(path.join("revisions/2.json")).unwrap();
+    assert!(
+        kernel
+            .update_segment(
+                &path,
+                &initial,
+                initial.segments[1].segment_id,
+                "stale writer"
+            )
+            .is_err()
+    );
+    assert!(kernel.save_project(&path, &initial).is_err());
+    assert_eq!(kernel.open_project(&path).unwrap(), first);
+    assert_eq!(std::fs::read(path.join("revisions/2.json")).unwrap(), bytes);
+}
+
+#[test]
+fn workspace_projection_excludes_bodies_and_slices_validate_revision_and_bounds() {
+    use jueming_protocol::{ParallelSliceRequest, RevisionId};
+    let temp = tempfile::tempdir().unwrap();
+    let host = LocalAppHost::new();
+    let source = (0..600)
+        .map(|index| format!("body-{index}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let initial = host
+        .create_project(&request(
+            temp.path().join("slices.jm"),
+            "slices",
+            &source,
+            "target",
+        ))
+        .unwrap();
+    let view = host.read(|k, s, _| k.workspace_project(s)).unwrap();
+    let serialized = serde_json::to_string(&view).unwrap();
+    assert!(!serialized.contains("body-599"));
+    assert!(!serialized.contains("content_ref"));
+    assert!(
+        host.projection().unwrap().data["project"]
+            .get("segments")
+            .is_none()
+    );
+    let mut query = ParallelSliceRequest {
+        project_id: initial.project.project_id,
+        source_document_id: initial.documents[0].document_id,
+        target_document_id: initial.documents[1].document_id,
+        anchor_segment_id: None,
+        anchor_alignment_id: None,
+        halo: 0,
+        revision_id: RevisionId::new(1),
+        segment_ids: vec![initial.segments[599].segment_id],
+    };
+    let slice = host
+        .read(|k, s, _| k.load_parallel_slice(s, &query))
+        .unwrap();
+    assert_eq!(slice.segments.len(), 1);
+    assert_eq!(slice.segments[0].content, "body-599");
+    query.segment_ids.clear();
+    query.anchor_segment_id = Some(initial.segments[599].segment_id);
+    assert!(
+        !host
+            .read(|k, s, _| k.load_parallel_slice(s, &query))
+            .unwrap()
+            .segments
+            .is_empty()
+    );
+    query.anchor_segment_id = Some(jueming_protocol::SegmentId::new());
+    assert!(
+        host.read(|k, s, _| k.load_parallel_slice(s, &query))
+            .is_err()
+    );
+    query.anchor_segment_id = None;
+    query.segment_ids = initial
+        .segments
+        .iter()
+        .take(201)
+        .map(|s| s.segment_id)
+        .collect();
+    assert!(
+        host.read(|k, s, _| k.load_parallel_slice(s, &query))
+            .is_err()
+    );
+    query.segment_ids = vec![initial.segments[0].segment_id];
+    query.revision_id = RevisionId::new(0);
+    assert_eq!(
+        host.read(|k, s, _| k.load_parallel_slice(s, &query))
+            .unwrap_err()
+            .code,
+        "stale_revision"
+    );
 }

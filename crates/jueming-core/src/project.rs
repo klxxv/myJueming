@@ -11,6 +11,8 @@ pub type Timestamp = String;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Project {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comparison: Option<ComparisonSet>,
     pub project_id: ProjectId,
     pub name: String,
     pub source_language: LanguageId,
@@ -32,6 +34,7 @@ impl Project {
     ) -> Self {
         let now = now.into();
         Self {
+            comparison: None,
             project_id: ProjectId::new(),
             name: name.into(),
             source_language: source_language.into(),
@@ -43,6 +46,13 @@ impl Project {
             updated_at: now,
         }
     }
+}
+
+/// Canonical document roles; unrelated to the order or identity of UI panels.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ComparisonSet {
+    pub source_document_id: DocumentId,
+    pub target_document_ids: Vec<DocumentId>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

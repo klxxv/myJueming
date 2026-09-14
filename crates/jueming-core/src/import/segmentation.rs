@@ -1,34 +1,65 @@
 //! Deterministic sentence rules and legacy text cleanup.
 
-use crate::import::{ImportProfile, SegmentPreview, SegmentationMode, SegmentationPreview};
+use crate::import::{
+    ImportCleanup, ImportProfile, SegmentBoundary, SegmentPreview, SegmentationMode,
+    SegmentationPreview,
+};
 
 pub fn segment_text(text: &str, profile: &ImportProfile) -> SegmentationPreview {
     let candidates = match profile.segmentation_mode {
-        SegmentationMode::NonEmptyLine => text.lines().map(str::to_owned).collect(),
+        SegmentationMode::NonEmptyLine | SegmentationMode::LegacyTaggedLine => text
+            .lines()
+            .map(|line| (line, SegmentBoundary::NonEmptyLine, None))
+            .collect(),
         SegmentationMode::SentenceRules => split_sentences(text),
-        SegmentationMode::LegacyTaggedLine => extract_legacy_segments(text),
     };
     let mut warnings = Vec::new();
     let mut segments = Vec::new();
-    for raw in candidates {
+    for (raw, boundary, boundary_marker) in candidates {
         let mut content = raw.trim().to_owned();
+        let original_text = content.clone();
+        let mut cleanups = Vec::new();
         if profile.segmentation_mode == SegmentationMode::LegacyTaggedLine {
             if profile.strip_seg_wrappers {
-                content = strip_seg_wrappers(&content);
+                record_cleanup(
+                    &mut content,
+                    &mut cleanups,
+                    ImportCleanup::SegWrappers,
+                    strip_seg_wrappers,
+                );
             }
             if profile.strip_pos_suffixes {
-                content = strip_pos_suffixes(&content);
+                record_cleanup(
+                    &mut content,
+                    &mut cleanups,
+                    ImportCleanup::PosSuffixesAndWhitespace,
+                    strip_pos_suffixes,
+                );
             }
             if profile.compact_cjk_interchar_spaces {
-                content = compact_cjk_spaces(&content);
+                record_cleanup(
+                    &mut content,
+                    &mut cleanups,
+                    ImportCleanup::CjkSpaces,
+                    compact_cjk_spaces,
+                );
             }
-            content = compact_punctuation_spaces(&content);
+            record_cleanup(
+                &mut content,
+                &mut cleanups,
+                ImportCleanup::PunctuationSpaces,
+                compact_punctuation_spaces,
+            );
         }
         content = content.trim().to_owned();
         if !content.is_empty() {
             segments.push(SegmentPreview {
                 ordinal: segments.len(),
                 content,
+                original_text,
+                boundary,
+                boundary_marker,
+                cleanups,
             });
         }
     }
@@ -46,29 +77,39 @@ pub fn segment_text(text: &str, profile: &ImportProfile) -> SegmentationPreview 
         warnings,
     }
 }
-fn split_sentences(text: &str) -> Vec<String> {
+fn record_cleanup(
+    content: &mut String,
+    cleanups: &mut Vec<ImportCleanup>,
+    kind: ImportCleanup,
+    clean: fn(&str) -> String,
+) {
+    let cleaned = clean(content);
+    if cleaned != *content {
+        cleanups.push(kind);
+        *content = cleaned;
+    }
+}
+
+fn split_sentences(text: &str) -> Vec<(&str, SegmentBoundary, Option<char>)> {
     let mut result = Vec::new();
     let mut start = 0;
     for (index, character) in text.char_indices() {
         if matches!(character, '。' | '！' | '？' | '!' | '?' | '.') {
             let end = index + character.len_utf8();
             if !text[start..end].trim().is_empty() {
-                result.push(text[start..end].to_owned());
+                result.push((
+                    &text[start..end],
+                    SegmentBoundary::SentencePunctuation,
+                    Some(character),
+                ));
             }
             start = end;
         }
     }
     if !text[start..].trim().is_empty() {
-        result.push(text[start..].to_owned());
+        result.push((&text[start..], SegmentBoundary::TextEnd, None));
     }
     result
-}
-fn extract_legacy_segments(text: &str) -> Vec<String> {
-    // SISU-era corpora are line-aligned even when their XML-like wrappers are
-    // malformed or repeated. Physical non-empty lines therefore remain the
-    // stable import boundary; wrapper cleanup happens below and empty markers
-    // are filtered after normalization.
-    text.lines().map(str::to_owned).collect()
 }
 fn strip_seg_wrappers(value: &str) -> String {
     value.replace("<seg>", "").replace("</seg>", "")

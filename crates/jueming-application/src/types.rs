@@ -55,6 +55,8 @@ pub struct AppEvent {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SearchSpec {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document_ids: Option<Vec<jueming_protocol::DocumentId>>,
     #[serde(default)]
     pub query: String,
     #[serde(default)]

@@ -10,9 +10,13 @@ mod history;
 mod import;
 mod languages;
 mod project;
+mod research;
 mod search;
 mod sidecar;
 mod slice;
+mod workspace;
+
+pub use research::*;
 
 pub const CONTRACT_VERSION: &str = "1.0";
 
@@ -35,9 +39,9 @@ pub use jueming_core::{
 
 pub use command::{
     AlignmentGapEdge, AlignmentRefPayload, AlignmentSelectionPayload, ApplySegmentationPayload,
-    CommandEnvelope, CommandKind, GroupAlignmentPayload, LinkSegmentsPayload, MergeSegmentsPayload,
-    MoveSegmentPayload, SplitAlignmentPayload, SplitSegmentPayload, UngroupAlignmentPayload,
-    UpdateSegmentPayload,
+    CommandEnvelope, CommandKind, CommandResult, GroupAlignmentPayload, LinkSegmentsPayload,
+    MergeSegmentsPayload, MoveSegmentPayload, SplitAlignmentPayload, SplitSegmentPayload,
+    UngroupAlignmentPayload, UpdateSegmentPayload,
 };
 pub use event::KernelEvent;
 pub use export::{ExportFormat, ExportRequest};
@@ -50,7 +54,7 @@ pub use import::{
     SourceAssetRecord, TextInput,
 };
 pub use languages::{COMMON_LTR_LANGUAGES, SupportedLanguage, SupportedLanguageId};
-pub use project::{ProjectSnapshot, ProjectSummary};
+pub use project::{CommandReceipt, ProjectSnapshot, ProjectSummary};
 pub use search::{
     ReplaceApplyRequest, ReplacePreviewItem, ReplacePreviewRequest, ReplacePreviewResponse,
     SearchSegmentsRequest, SearchSegmentsResponse, SegmentSearchHit,
@@ -60,3 +64,4 @@ pub use sidecar::{
     BookmarkCreateRequest, BookmarkPreview, BookmarkUpdateRequest, HumanAnnotation,
 };
 pub use slice::ParallelSliceRequest;
+pub use workspace::{ParallelSlice, SegmentDescriptor, SegmentText, WorkspaceProject};

@@ -98,6 +98,10 @@ pub enum PipelineError {
 impl From<jueming_storage::StorageError> for PipelineError {
     fn from(value: jueming_storage::StorageError) -> Self {
         match value {
+            jueming_storage::StorageError::ProjectLocked(path) => Self::Io {
+                path,
+                source: std::io::Error::other("project is locked"),
+            },
             jueming_storage::StorageError::Io { path, source } => Self::Io { path, source },
             jueming_storage::StorageError::Json { path, source } => Self::Json { path, source },
             jueming_storage::StorageError::InvalidProjectRoot(path) => {

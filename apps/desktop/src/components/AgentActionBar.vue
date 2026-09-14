@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from "../i18n";
+
 export interface ReviewableProposal {
   id: string;
   title: string;
@@ -11,10 +13,10 @@ const emit = defineEmits<{ approve: [id: string]; reject: [id: string] }>();
 </script>
 
 <template>
-  <section class="agent-review" aria-label="审核助手修改" data-agent-context="exclude">
-    <div class="agent-review__heading"><strong>{{ proposal.title }}</strong><span>基于 R{{ proposal.revision }}</span></div>
+  <section class="agent-review" :aria-label="t('rwReviewAssistantChanges')" data-agent-context="exclude">
+    <div class="agent-review__heading"><strong>{{ proposal.title }}</strong><span>{{ t('rwBasedOnRevision', { revision: proposal.revision }) }}</span></div>
     <details open>
-      <summary>{{ proposal.changes.length }} 项修改 · 查看完整差异</summary>
+      <summary>{{ t('rwChangesDetail', { count: proposal.changes.length }) }}</summary>
       <div class="agent-review__changes">
         <article v-for="change in proposal.changes" :key="change.id">
           <small :title="change.id">{{ change.id.slice(0, 8) }}</small>
@@ -22,7 +24,7 @@ const emit = defineEmits<{ approve: [id: string]; reject: [id: string] }>();
         </article>
       </div>
     </details>
-    <div class="agent-review__actions"><button type="button" :disabled="busy" @click="emit('reject', proposal.id)">拒绝修改</button><button class="agent-review__approve" type="button" :disabled="busy" @click="emit('approve', proposal.id)">{{ busy ? '提交中…' : '批准并应用' }}</button></div>
+    <div class="agent-review__actions"><button type="button" :disabled="busy" @click="emit('reject', proposal.id)">{{ t('rwRejectChanges') }}</button><button class="agent-review__approve" type="button" :disabled="busy" @click="emit('approve', proposal.id)">{{ busy ? t('rwSubmitting') : t('rwApproveApply') }}</button></div>
   </section>
 </template>
 

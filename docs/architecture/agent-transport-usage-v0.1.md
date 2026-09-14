@@ -45,7 +45,7 @@ The endpoint surface is intentionally small:
 | `POST /v1/agent/call` | Authenticated typed `AgentCall` forwarded via `spawn_blocking` to `LocalAppHost::dispatch`. |
 | `GET /v1/ag-ui/events` | Authenticated SSE of application events only. |
 
-There is no HTTP endpoint for `app.get_projection`. Full `ProjectSnapshot` is a trusted native frontend resync payload and must not be exposed through MCP or AG-UI. The SSE adapter emits only AG-UI `CUSTOM` events: `jueming.app_event` wraps one `AppEvent`, and `jueming.resync_required` reports a broadcast gap. It never fabricates chat-token events. Consumers that receive a gap must use their native trusted projection path; external consumers bind again and issue targeted reads. Disabling revokes acceptance before graceful shutdown, actively closes SSE streams, waits at most two seconds for the server, then aborts it; concurrent enable/disable calls are serialized.
+There is no HTTP endpoint for `app.get_projection`. Native resync carries only `ProjectIdentity`; workspace structure and bounded text slices use separate Kernel queries. Canonical `ProjectSnapshot` remains inside Rust and is not exposed through native projections, MCP or AG-UI. The SSE adapter emits only AG-UI `CUSTOM` events: `jueming.app_event` wraps one `AppEvent`, and `jueming.resync_required` reports a broadcast gap. It never fabricates chat-token events. Consumers that receive a gap must use their native trusted projection path; external consumers bind again and issue targeted reads. Disabling revokes acceptance before graceful shutdown, actively closes SSE streams, waits at most two seconds for the server, then aborts it; concurrent enable/disable calls are serialized.
 
 ## MCP sidecar
 

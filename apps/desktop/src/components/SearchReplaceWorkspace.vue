@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
-import { Check, ChevronDown, Filter, Replace, Search, X } from "@lucide/vue";
+import { Check, Filter, Replace, Search, X } from "@lucide/vue";
+import { t } from "../i18n";
 
 defineOptions({ name: "SearchReplaceWorkspace" });
 
@@ -52,7 +53,7 @@ const props = withDefaults(
     previewError?: string | null;
   }>(),
   {
-    query: "", side: "both", regex: false, caseSensitive: false, replacement: "", projectLabel: "当前工程", loading: false,
+    query: "", side: "both", regex: false, caseSensitive: false, replacement: "", projectLabel: "", loading: false,
     authoritativeResults: false, nativePreview: null, previewLoading: false, previewError: null,
   },
 );
@@ -73,6 +74,7 @@ const emit = defineEmits<{
 }>();
 
 const replaceOpen = ref(false);
+const displayedProjectLabel = computed(() => props.projectLabel || t("rwCurrentProject"));
 
 const options = computed<SearchQueryOptions>(() => ({
   query: props.query.trim(),
@@ -157,8 +159,8 @@ const previewEntries = computed(() => {
   const preview = displayedPreview.value;
   if (!preview) return [];
   return [
-    ...preview.source.map(item => ({ side: "中文", item })),
-    ...preview.target.map(item => ({ side: "English", item })),
+    ...preview.source.map(item => ({ side: t("rwSource"), item })),
+    ...preview.target.map(item => ({ side: t("rwCurrentTranslation"), item })),
   ];
 });
 const previewReady = computed(() => Boolean(displayedPreview.value)
@@ -175,10 +177,6 @@ const selectResult = (event: MouseEvent, result: SearchResult) => {
     && (row.contains(selection.anchorNode) || row.contains(selection.focusNode))) return;
   emit("select-result", result);
 };
-const toggleSide = () => {
-  const next: SearchSide = props.side === "both" ? "source" : props.side === "source" ? "target" : "both";
-  emit("update:side", next);
-};
 const openReplacePreview = () => {
   replaceOpen.value = true;
   emit("replace-preview");
@@ -191,32 +189,32 @@ const applyDisplayedPreview = () => {
 </script>
 
 <template>
-  <section class="search-replace-workspace" aria-label="搜索与替换">
+  <section class="search-replace-workspace" :aria-label="t('rwSearchReplace')">
     <form class="sr-toolbar" @submit.prevent="runSearch">
-      <label class="sr-query-label" for="sr-query">查询</label>
+      <label class="sr-query-label" for="sr-query">{{ t('rwQuery') }}</label>
       <div class="sr-input-group">
         <Search :size="18" aria-hidden="true" />
-        <input id="sr-query" :value="query" type="search" placeholder="搜索当前工程" @input="emit('update:query', ($event.target as HTMLInputElement).value)" />
-        <button v-if="query" type="button" title="清除查询" @click="emit('update:query', '')"><X :size="15" /></button>
+        <input id="sr-query" :value="query" type="search" :placeholder="t('rwSearchCurrentProject')" @input="emit('update:query', ($event.target as HTMLInputElement).value)" />
+        <button v-if="query" type="button" :title="t('rwClearQuery')" @click="emit('update:query', '')"><X :size="15" /></button>
       </div>
-      <button class="sr-primary" type="submit" :disabled="loading"><Search :size="15" />搜索</button>
-      <button class="sr-side-button" type="button" :aria-label="`搜索范围：${side}`" @click="toggleSide"><ChevronDown :size="15" />{{ side === "both" ? "双语" : side === "source" ? "中文" : "English" }}</button>
-      <label class="sr-check"><input :checked="regex" type="checkbox" @change="emit('update:regex', ($event.target as HTMLInputElement).checked)" />正则</label>
-      <label class="sr-check"><input :checked="caseSensitive" type="checkbox" @change="emit('update:caseSensitive', ($event.target as HTMLInputElement).checked)" />区分大小写</label>
-      <span class="sr-project" :title="projectLabel"><Check :size="14" /><span>{{ projectLabel }}</span></span>
+      <button class="sr-primary" type="submit" :disabled="loading"><Search :size="15" />{{ t('rwSearch') }}</button>
+      <select :value="side" :aria-label="t('rwSearchScope')" @change="emit('update:side', ($event.target as HTMLSelectElement).value as SearchSide)"><option value="both">{{ t('rwAllDocuments') }}</option><option value="source">{{ t('rwSource') }}</option><option value="target">{{ t('rwCurrentTranslation') }}</option></select>
+      <label class="sr-check"><input :checked="regex" type="checkbox" @change="emit('update:regex', ($event.target as HTMLInputElement).checked)" />{{ t('rwRegex') }}</label>
+      <label class="sr-check"><input :checked="caseSensitive" type="checkbox" @change="emit('update:caseSensitive', ($event.target as HTMLInputElement).checked)" />{{ t('rwCaseSensitive') }}</label>
+      <span class="sr-project" :title="displayedProjectLabel"><Check :size="14" /><span>{{ displayedProjectLabel }}</span></span>
     </form>
 
     <div class="sr-replacebar">
-      <label for="sr-replacement">替换为</label>
-      <input id="sr-replacement" :value="replacement" placeholder="输入替换文本（支持正则捕获组）" @input="emit('update:replacement', ($event.target as HTMLInputElement).value)" />
-      <button class="sr-secondary" type="button" :disabled="!query || !matchingResults.length || previewLoading" @click="openReplacePreview"><Replace :size="15" />预览替换</button>
-      <button class="sr-secondary" type="button" :disabled="!canApply" @click="applyDisplayedPreview">应用替换</button>
-      <button class="sr-reset" type="button" @click="emit('reset')">重置</button>
+      <label for="sr-replacement">{{ t('rwReplaceWith') }}</label>
+      <input id="sr-replacement" :value="replacement" :placeholder="t('rwReplacementPlaceholder')" @input="emit('update:replacement', ($event.target as HTMLInputElement).value)" />
+      <button class="sr-secondary" type="button" :disabled="!query || !matchingResults.length || previewLoading" @click="openReplacePreview"><Replace :size="15" />{{ t('rwPreviewReplace') }}</button>
+      <button class="sr-secondary" type="button" :disabled="!canApply" @click="applyDisplayedPreview">{{ t('rwApplyReplace') }}</button>
+      <button class="sr-reset" type="button" @click="emit('reset')">{{ t('rwReset') }}</button>
     </div>
 
-    <div class="sr-summary">找到 <strong>{{ matchingResults.length }}</strong> 条结果</div>
+    <div class="sr-summary">{{ t('rwFoundResults', { count: matchingResults.length }) }}</div>
     <div ref="resultViewport" class="sr-table">
-      <div class="sr-table-head"><span>ID</span><span>中文（上下文）</span><span>匹配词</span><span>English（上下文）</span><span>对齐 ID</span></div>
+      <div class="sr-table-head"><span>ID</span><span>{{ t('rwSourceContext') }}</span><span>{{ t('rwMatch') }}</span><span>{{ t('rwTargetContext') }}</span><span>{{ t('rwAlignmentId') }}</span></div>
       <div v-if="matchingResults.length" class="sr-virtual-body" :style="{ height: `${resultVirtualizer.getTotalSize()}px` }">
         <button v-for="{ result, virtualRow } in virtualResults" :key="result.id" class="sr-row" type="button" :style="{ transform: `translateY(${virtualRow.start}px)` }" @click="selectResult($event, result)">
           <span class="sr-id" :title="result.id">{{ result.label ?? result.id }}</span>
@@ -226,19 +224,19 @@ const applyDisplayedPreview = () => {
           <span class="sr-alignment" :title="result.alignmentId ?? undefined">{{ result.alignmentLabel ?? result.alignmentId ?? "—" }}</span>
         </button>
       </div>
-      <div v-if="!matchingResults.length" class="sr-empty"><Filter :size="18" />输入查询条件后显示句段结果。</div>
+      <div v-if="!matchingResults.length" class="sr-empty"><Filter :size="18" />{{ t('rwSearchEmpty') }}</div>
     </div>
 
-    <div v-if="replaceOpen" class="sr-preview" role="dialog" aria-label="替换预览">
-      <header><div><span class="sr-eyebrow">REPLACE PREVIEW</span><h2>替换预览 <small>{{ displayedPreview?.resultIds.length ?? 0 }} 个句段</small></h2></div><button type="button" title="关闭预览" @click="replaceOpen = false"><X :size="17" /></button></header>
-      <p v-if="authoritativeResults" class="sr-preview-note">将应用本次预览中的修改。更改条件后请重新预览。</p>
-      <p v-if="previewLoading" class="sr-preview-status">正在生成替换预览…</p>
+    <div v-if="replaceOpen" class="sr-preview" role="dialog" :aria-label="t('rwReplacePreview')">
+      <header><div><span class="sr-eyebrow">{{ t('rwReplacePreviewEyebrow') }}</span><h2>{{ t('rwReplacePreview') }} <small>{{ t('rwSegmentCount', { count: displayedPreview?.resultIds.length ?? 0 }) }}</small></h2></div><button type="button" :title="t('rwClosePreview')" @click="replaceOpen = false"><X :size="17" /></button></header>
+      <p v-if="authoritativeResults" class="sr-preview-note">{{ t('rwPreviewNote') }}</p>
+      <p v-if="previewLoading" class="sr-preview-status">{{ t('rwGeneratingPreview') }}</p>
       <p v-else-if="previewError" class="sr-preview-status sr-preview-status--error" role="alert">{{ previewError }}</p>
-      <p v-else-if="authoritativeResults && !nativePreview" class="sr-preview-status">条件或工程版本已变化，请重新预览。<button class="sr-preview-retry" type="button" @click="openReplacePreview">重新预览</button></p>
+      <p v-else-if="authoritativeResults && !nativePreview" class="sr-preview-status">{{ t('rwPreviewStale') }}<button class="sr-preview-retry" type="button" @click="openReplacePreview">{{ t('rwPreviewAgain') }}</button></p>
       <div class="sr-preview-list">
         <article v-for="entry in previewEntries" :key="`preview-${entry.side}-${entry.item.resultId}`"><span>{{ entry.side }} · {{ entry.item.resultId }}</span><p><del>{{ entry.item.before }}</del><b>{{ entry.item.after }}</b></p></article>
       </div>
-      <footer><button class="sr-secondary" type="button" @click="replaceOpen = false">取消</button><button class="sr-primary sr-primary--compact" type="button" :disabled="!canApply" @click="applyDisplayedPreview(); replaceOpen = false">确认应用</button></footer>
+      <footer><button class="sr-secondary" type="button" @click="replaceOpen = false">{{ t('rwCancel') }}</button><button class="sr-primary sr-primary--compact" type="button" :disabled="!canApply" @click="applyDisplayedPreview(); replaceOpen = false">{{ t('rwConfirmApply') }}</button></footer>
     </div>
   </section>
 </template>
@@ -250,9 +248,10 @@ const applyDisplayedPreview = () => {
 .sr-input-group { display: flex; align-items: center; width: min(520px, 42vw); height: 42px; padding: 0 12px; border: 1px solid #c9d1ca; border-radius: 7px 0 0 7px; color: var(--ink-500); }
 .sr-input-group input, .sr-replacebar input { flex: 1; min-width: 0; border: 0; outline: none; color: var(--ink-900); background: transparent; }
 .sr-input-group input { padding: 0 9px; }.sr-input-group button { padding: 3px; border: 0; color: var(--ink-500); background: transparent; cursor: pointer; }
-.sr-primary, .sr-secondary, .sr-side-button, .sr-reset { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 14px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; white-space: nowrap; }
+.sr-toolbar select { min-height: 38px; }
+.sr-primary, .sr-secondary, .sr-reset { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 14px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; white-space: nowrap; }
 .sr-primary { height: 42px; margin-left: -10px; border-color: var(--green-900); border-radius: 0 6px 6px 0; color: #fff; background: var(--green-900); }.sr-primary:disabled { cursor: wait; }
-.sr-side-button { margin-left: -10px; border-radius: 0 7px 7px 0; color: var(--ink-700); }.sr-check { display: inline-flex; align-items: center; gap: 6px; margin-left: 14px; color: var(--ink-700); font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }.sr-project { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--green-900); font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }
+.sr-check { display: inline-flex; align-items: center; gap: 6px; margin-left: 14px; color: var(--ink-700); font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }.sr-project { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--green-900); font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }
 .sr-replacebar { margin-top: 13px; padding: 11px 0 13px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }.sr-replacebar input { height: 34px; padding: 0 10px; border: 1px solid #c9d1ca; border-radius: 5px; }.sr-replacebar > label { font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }.sr-reset { color: var(--ink-700); }.sr-secondary:hover:not(:disabled), .sr-reset:hover { border-color: #a5caa9; color: var(--green-900); }.sr-summary { padding: 15px 5px 12px; color: var(--ink-700); font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }.sr-summary strong { color: var(--green-900); }.sr-summary span { color: var(--ink-500); }
 .sr-table { min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 7px; }.sr-table-head, .sr-row { display: grid; grid-template-columns: 92px 1.2fr 100px 1.45fr 100px; align-items: center; gap: 14px; padding: 0 17px; }.sr-table-head { position: sticky; z-index: 1; top: 0; height: 43px; color: var(--ink-700); background: #f8faf8; font-size: var(--jm-font-size-callout); line-height: var(--jm-line-height-callout); }.sr-virtual-body { position: relative; min-width: 600px; }.sr-row { position: absolute; width: 100%; height: 57px; box-sizing: border-box; border: 0; border-top: 1px solid var(--line); color: var(--ink-900); background: #fff; font-size: var(--jm-font-size-body); text-align: left; cursor: pointer; line-height: var(--jm-line-height-body); }.sr-row:hover { background: var(--green-050); }.sr-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.sr-id, .sr-alignment { color: var(--ink-500); font-family: var(--jm-font-mono); font-size: var(--jm-font-size-callout); line-height: var(--jm-line-height-callout); }.sr-row mark, .sr-match { padding: 2px 5px; color: #72591b; background: #fff1c9; font-weight: var(--jm-font-weight-semibold); }.sr-context mark { padding: 1px 2px; }.sr-empty { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 180px; color: var(--ink-500); font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }
 .sr-preview { position: absolute; z-index: 2; top: 100px; right: 28px; left: 28px; overflow: hidden; border: 1px solid #cbd6cc; border-radius: 9px; background: #fff; box-shadow: 0 18px 48px rgb(29 48 32 / 18%); }.sr-preview header, .sr-preview footer { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--line); }.sr-preview header button { padding: 4px; border: 0; color: var(--ink-500); background: transparent; cursor: pointer; }.sr-preview h2 { margin: 3px 0 0; font-size: var(--jm-font-size-title-3); line-height: var(--jm-line-height-title-3); font-weight: var(--jm-font-weight-semibold); }.sr-preview h2 small { margin-left: 7px; color: var(--green-700); font-size: var(--jm-font-size-subheadline); font-weight: var(--jm-font-weight-medium); line-height: var(--jm-line-height-subheadline); }.sr-eyebrow { color: var(--green-700); font-size: var(--jm-font-size-subheadline); font-weight: var(--jm-font-weight-semibold); letter-spacing: .1em; line-height: var(--jm-line-height-subheadline); }.sr-preview-note, .sr-preview-status { margin: 0; padding: 10px 18px; color: var(--ink-700); background: var(--green-050); font-size: var(--jm-font-size-callout); line-height: var(--jm-line-height-callout); }.sr-preview-status--error { color: #a24c4c; background: #fde7e7; }.sr-preview-retry { margin-left: 8px; padding: 0; border: 0; color: var(--green-900); background: transparent; font: inherit; font-weight: var(--jm-font-weight-semibold); text-decoration: underline; cursor: pointer; }.sr-preview-list { max-height: 240px; overflow: auto; padding: 4px 18px; }.sr-preview-list article { display: grid; grid-template-columns: 85px 1fr; gap: 12px; padding: 9px 0; border-bottom: 1px solid #edf1ed; }.sr-preview-list article > span { color: var(--ink-500); font-family: var(--jm-font-mono); font-size: var(--jm-font-size-subheadline); line-height: var(--jm-line-height-subheadline); }.sr-preview-list p { display: grid; gap: 5px; margin: 0; font-size: var(--jm-font-size-callout); line-height: var(--jm-line-height-callout); }.sr-preview-list del { color: #a24c4c; background: #fde7e7; }.sr-preview-list b { color: #387946; background: #e6f5e2; font-weight: var(--jm-font-weight-medium); }.sr-preview footer { justify-content: flex-end; gap: 8px; border-top: 1px solid var(--line); border-bottom: 0; }.sr-primary--compact { height: 36px; border-radius: 6px; }

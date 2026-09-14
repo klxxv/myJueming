@@ -1,0 +1,519 @@
+{
+  "version": 1,
+  "frameCount": 16,
+  "frameSize": 384,
+  "baseline": 352,
+  "columns": 4,
+  "blendMs": 45,
+  "actions": {
+    "stand": {
+      "label": "坐着",
+      "description": "参考图坐姿 · 默认静止",
+      "durationMs": 1000,
+      "frames": [
+        {
+          "frame": 0,
+          "durationMs": 1000
+        }
+      ],
+      "route": [
+        {
+          "at": 0,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 1,
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "scene": "floor"
+    },
+    "rise": {
+      "label": "起身",
+      "description": "坐姿 → 前倾 → 抬起后腿 → 站稳",
+      "durationMs": 1100,
+      "frames": [
+        {
+          "frame": 0,
+          "durationMs": 150
+        },
+        {
+          "frame": 1,
+          "durationMs": 250
+        },
+        {
+          "frame": 2,
+          "durationMs": 250
+        },
+        {
+          "frame": 3,
+          "durationMs": 450
+        }
+      ],
+      "route": [
+        {
+          "at": 0,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 1,
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "scene": "floor"
+    },
+    "walk": {
+      "label": "走路",
+      "description": "先起身，再迈步前进，最后站稳",
+      "durationMs": 4000,
+      "frames": [
+        {
+          "frame": 0,
+          "durationMs": 160
+        },
+        {
+          "frame": 1,
+          "durationMs": 180
+        },
+        {
+          "frame": 2,
+          "durationMs": 180
+        },
+        {
+          "frame": 3,
+          "durationMs": 180
+        },
+        {
+          "frame": 4,
+          "durationMs": 140
+        },
+        {
+          "frame": 5,
+          "durationMs": 140
+        },
+        {
+          "frame": 6,
+          "durationMs": 140
+        },
+        {
+          "frame": 7,
+          "durationMs": 140
+        },
+        {
+          "frame": 4,
+          "durationMs": 140
+        },
+        {
+          "frame": 5,
+          "durationMs": 140
+        },
+        {
+          "frame": 6,
+          "durationMs": 140
+        },
+        {
+          "frame": 7,
+          "durationMs": 140
+        },
+        {
+          "frame": 4,
+          "durationMs": 140
+        },
+        {
+          "frame": 5,
+          "durationMs": 140
+        },
+        {
+          "frame": 6,
+          "durationMs": 140
+        },
+        {
+          "frame": 7,
+          "durationMs": 140
+        },
+        {
+          "frame": 4,
+          "durationMs": 140
+        },
+        {
+          "frame": 5,
+          "durationMs": 140
+        },
+        {
+          "frame": 6,
+          "durationMs": 140
+        },
+        {
+          "frame": 7,
+          "durationMs": 140
+        },
+        {
+          "frame": 4,
+          "durationMs": 140
+        },
+        {
+          "frame": 5,
+          "durationMs": 140
+        },
+        {
+          "frame": 6,
+          "durationMs": 140
+        },
+        {
+          "frame": 7,
+          "durationMs": 140
+        },
+        {
+          "frame": 3,
+          "durationMs": 500
+        }
+      ],
+      "route": [
+        {
+          "at": 0,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 0.175,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 0.875,
+          "x": 235,
+          "y": 0
+        },
+        {
+          "at": 1,
+          "x": 235,
+          "y": 0
+        }
+      ],
+      "scene": "floor"
+    },
+    "jump-to-bed": {
+      "label": "跳上猫窝",
+      "description": "蹲下蓄力、伸展腾空、收腿、落地",
+      "durationMs": 2200,
+      "frames": [
+        {
+          "frame": 3,
+          "durationMs": 200
+        },
+        {
+          "frame": 8,
+          "durationMs": 350
+        },
+        {
+          "frame": 9,
+          "durationMs": 350
+        },
+        {
+          "frame": 10,
+          "durationMs": 450
+        },
+        {
+          "frame": 11,
+          "durationMs": 300
+        },
+        {
+          "frame": 3,
+          "durationMs": 550
+        }
+      ],
+      "route": [
+        {
+          "at": 0,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 0.25,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 0.4,
+          "x": 60,
+          "y": -90
+        },
+        {
+          "at": 0.52,
+          "x": 124,
+          "y": -130
+        },
+        {
+          "at": 0.64,
+          "x": 183,
+          "y": -109
+        },
+        {
+          "at": 0.75,
+          "x": 220,
+          "y": -80
+        },
+        {
+          "at": 1,
+          "x": 220,
+          "y": -80
+        }
+      ],
+      "scene": "bed"
+    },
+    "sleep": {
+      "label": "睡觉",
+      "description": "坐着 → 趴下 → 蜷睡 · 一次呼吸后停下",
+      "durationMs": 2600,
+      "frames": [
+        {
+          "frame": 0,
+          "durationMs": 300
+        },
+        {
+          "frame": 13,
+          "durationMs": 450
+        },
+        {
+          "frame": 14,
+          "durationMs": 550
+        },
+        {
+          "frame": 15,
+          "durationMs": 500
+        },
+        {
+          "frame": 14,
+          "durationMs": 800
+        }
+      ],
+      "route": [
+        {
+          "at": 0,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 1,
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "scene": "floor"
+    },
+    "sit-down": {
+      "label": "坐下",
+      "description": "站立 → 收后腿 → 坐稳",
+      "durationMs": 1100,
+      "frames": [
+        {
+          "frame": 3,
+          "durationMs": 200
+        },
+        {
+          "frame": 2,
+          "durationMs": 250
+        },
+        {
+          "frame": 1,
+          "durationMs": 250
+        },
+        {
+          "frame": 0,
+          "durationMs": 400
+        }
+      ],
+      "route": [
+        {
+          "at": 0,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 1,
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "scene": "floor"
+    },
+    "wake-up": {
+      "label": "醒来",
+      "description": "蜷睡 → 抬头 → 坐起",
+      "durationMs": 1300,
+      "frames": [
+        {
+          "frame": 14,
+          "durationMs": 300
+        },
+        {
+          "frame": 13,
+          "durationMs": 400
+        },
+        {
+          "frame": 0,
+          "durationMs": 600
+        }
+      ],
+      "route": [
+        {
+          "at": 0,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 1,
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "scene": "floor"
+    },
+    "go-to-garden": {
+      "label": "去花园",
+      "description": "起身走向花圃，收腿坐下",
+      "durationMs": 5400,
+      "frames": [
+        {
+          "frame": 0,
+          "durationMs": 160
+        },
+        {
+          "frame": 1,
+          "durationMs": 180
+        },
+        {
+          "frame": 2,
+          "durationMs": 180
+        },
+        {
+          "frame": 3,
+          "durationMs": 180
+        },
+        {
+          "frame": 4,
+          "durationMs": 140
+        },
+        {
+          "frame": 5,
+          "durationMs": 140
+        },
+        {
+          "frame": 6,
+          "durationMs": 140
+        },
+        {
+          "frame": 7,
+          "durationMs": 140
+        },
+        {
+          "frame": 4,
+          "durationMs": 140
+        },
+        {
+          "frame": 5,
+          "durationMs": 140
+        },
+        {
+          "frame": 6,
+          "durationMs": 140
+        },
+        {
+          "frame": 7,
+          "durationMs": 140
+        },
+        {
+          "frame": 4,
+          "durationMs": 140
+        },
+        {
+          "frame": 5,
+          "durationMs": 140
+        },
+        {
+          "frame": 6,
+          "durationMs": 140
+        },
+        {
+          "frame": 7,
+          "durationMs": 140
+        },
+        {
+          "frame": 4,
+          "durationMs": 140
+        },
+        {
+          "frame": 5,
+          "durationMs": 140
+        },
+        {
+          "frame": 6,
+          "durationMs": 140
+        },
+        {
+          "frame": 7,
+          "durationMs": 140
+        },
+        {
+          "frame": 4,
+          "durationMs": 140
+        },
+        {
+          "frame": 5,
+          "durationMs": 140
+        },
+        {
+          "frame": 6,
+          "durationMs": 140
+        },
+        {
+          "frame": 7,
+          "durationMs": 140
+        },
+        {
+          "frame": 3,
+          "durationMs": 200
+        },
+        {
+          "frame": 2,
+          "durationMs": 220
+        },
+        {
+          "frame": 1,
+          "durationMs": 220
+        },
+        {
+          "frame": 0,
+          "durationMs": 1260
+        }
+      ],
+      "route": [
+        {
+          "at": 0,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 0.12962962962962962,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "at": 0.6481481481481481,
+          "x": 340,
+          "y": 0
+        },
+        {
+          "at": 1,
+          "x": 340,
+          "y": 0
+        }
+      ],
+      "scene": "garden"
+    }
+  }
+}

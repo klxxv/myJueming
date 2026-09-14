@@ -1,27 +1,37 @@
 //! Project IPC adapters backed by the authoritative LocalAppHost.
 
 use crate::state::AppKernelState;
-use jueming_protocol::{CreateProjectRequest, ProjectSnapshot, ProjectSummary};
+use jueming_protocol::{CreateProjectRequest, ProjectSummary, WorkspaceProject};
 use tauri::State;
 
 #[tauri::command]
 pub(crate) fn create_project(
     request: CreateProjectRequest,
     state: State<'_, AppKernelState>,
-) -> Result<ProjectSnapshot, String> {
+) -> Result<WorkspaceProject, String> {
     state
         .host
         .create_project(&request)
+        .and_then(|snapshot| {
+            jueming_kernel::KernelService
+                .workspace_project(&snapshot)
+                .map_err(|e| jueming_application::AppError::new("invalid_project", e.to_string()))
+        })
         .map_err(|error| error.to_string())
 }
 #[tauri::command]
 pub(crate) fn open_project(
     project_path: String,
     state: State<'_, AppKernelState>,
-) -> Result<ProjectSnapshot, String> {
+) -> Result<WorkspaceProject, String> {
     state
         .host
         .open_project(project_path)
+        .and_then(|snapshot| {
+            jueming_kernel::KernelService
+                .workspace_project(&snapshot)
+                .map_err(|e| jueming_application::AppError::new("invalid_project", e.to_string()))
+        })
         .map_err(|error| error.to_string())
 }
 #[tauri::command]
@@ -36,10 +46,10 @@ pub(crate) fn get_project_summary(
 #[tauri::command]
 pub(crate) fn get_current_project(
     state: State<'_, AppKernelState>,
-) -> Result<ProjectSnapshot, String> {
+) -> Result<WorkspaceProject, String> {
     state
         .host
-        .current_snapshot()
+        .read(|k, s, _| k.workspace_project(s))
         .map_err(|error| error.to_string())
 }
 #[tauri::command]

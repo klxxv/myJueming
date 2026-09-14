@@ -122,3 +122,33 @@ fn bookmark_preview_serializes_as_a_flat_read_model() {
     assert_eq!(value["segment_content"], "当前正文");
     assert_eq!(value["language_id"], "zh");
 }
+
+#[test]
+fn automatic_detection_is_a_preview_option_not_a_stored_encoding() {
+    let old_request = serde_json::json!({
+        "input": {"kind":"paste", "label":"text", "text":"中文"},
+        "profile": ImportProfile::new(Encoding::Utf8, SegmentationMode::NonEmptyLine)
+    });
+    let request: jueming_protocol::PreviewImportRequest =
+        serde_json::from_value(old_request.clone()).unwrap();
+    assert!(!request.auto_detect_encoding);
+    let mut automatic = old_request;
+    automatic["auto_detect_encoding"] = true.into();
+    let request: jueming_protocol::PreviewImportRequest =
+        serde_json::from_value(automatic).unwrap();
+    assert!(request.auto_detect_encoding);
+    assert!(serde_json::from_str::<Encoding>("\"auto\"").is_err());
+    for (value, expected) in [
+        ("utf8", Encoding::Utf8),
+        ("utf8-bom", Encoding::Utf8Bom),
+        ("gb18030", Encoding::Gb18030),
+        ("utf-16le", Encoding::Utf16Le),
+        ("shift-jis", Encoding::ShiftJis),
+    ] {
+        assert_eq!(serde_json::to_value(expected).unwrap(), value);
+        assert_eq!(
+            serde_json::from_value::<Encoding>(value.into()).unwrap(),
+            expected
+        );
+    }
+}

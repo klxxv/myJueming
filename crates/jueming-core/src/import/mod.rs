@@ -3,17 +3,22 @@
 use serde::{Deserialize, Serialize};
 
 mod decode;
+mod encoding;
 mod segmentation;
 
-pub use decode::decode_bytes;
+pub use decode::{decode_bytes, detect_encoding};
+pub use encoding::Encoding;
 pub use segmentation::segment_text;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Encoding {
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EncodingDetection {
+    #[default]
+    Manual,
+    Bom,
     Utf8,
-    Utf8Bom,
-    Gb18030,
+    Statistical,
+    UnicodeText,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -52,6 +57,25 @@ pub struct DecodedText {
 pub struct SegmentPreview {
     pub ordinal: usize,
     pub content: String,
+    pub original_text: String,
+    pub boundary: SegmentBoundary,
+    pub boundary_marker: Option<char>,
+    pub cleanups: Vec<ImportCleanup>,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SegmentBoundary {
+    NonEmptyLine,
+    SentencePunctuation,
+    TextEnd,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImportCleanup {
+    SegWrappers,
+    PosSuffixesAndWhitespace,
+    CjkSpaces,
+    PunctuationSpaces,
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SegmentationPreview {

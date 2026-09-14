@@ -14,7 +14,8 @@
     "build:desktop:windows": "pnpm --filter @jueming/desktop tauri build --bundles nsis,msi",
     "build:desktop:macos": "pnpm --filter @jueming/desktop tauri build --target universal-apple-darwin --bundles app,dmg",
     "typecheck": "pnpm --filter @jueming/desktop typecheck",
-    "test:agent-ui": "node scripts/verify-agent-ui.mjs"
+    "test:agent-ui": "node scripts/verify-agent-ui.mjs",
+    "test:i18n": "node tests/i18n/vue-source-audit.mjs && node tests/i18n/run-contracts.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2"

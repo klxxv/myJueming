@@ -12,9 +12,11 @@ import AlignmentRelationRail from "./AlignmentRelationRail.vue";
 import AlignmentSideBlock from "./AlignmentSideBlock.vue";
 import OrderDropZone from "./OrderDropZone.vue";
 import { useAlignedBlockLayout } from "./useAlignedBlockLayout";
+import { t } from "../../i18n";
 
 const props = withDefaults(defineProps<{
   rows: AlignmentBlockView[];
+  revisionKey?: string;
   mode: WorkspaceMode;
   writable: boolean;
   smoothNavigation?: boolean;
@@ -64,6 +66,7 @@ const emit = defineEmits<{
   cancelEdit: [];
   escapeEdit: [];
   scrollbarWidth: [width: number];
+  visibleSegments: [ids: string[]];
 }>();
 
 const viewportRef = ref<HTMLElement | null>(null);
@@ -77,6 +80,8 @@ const { positions, totalHeight, visiblePositions, reportHeight, resetMeasurement
   scrollTop,
   viewportHeight,
 });
+
+watch([() => props.revisionKey, () => visiblePositions.value.flatMap(position => [...position.block.sourceSegments, ...position.block.targetSegments].map(segment => segment.id)).join(",")], ([, ids]) => emit("visibleSegments", ids ? ids.split(",") : []), { immediate: true });
 
 interface OrderDropZoneView {
   key: string;
@@ -252,11 +257,11 @@ defineExpose({ focusAlignment, focusSegment, focusSegments, focusViewport, measu
     ref="viewportRef"
     class="aligned-workspace-viewport"
     tabindex="-1"
-    aria-label="双语 Alignment 计算对齐工作区"
+    :aria-label="t('puiViewportAria')"
     @scroll.passive="handleScroll"
   >
     <div class="aligned-workspace-canvas" :style="{ height: `${totalHeight}px` }">
-      <section class="aligned-workspace-column aligned-workspace-column--source" aria-label="中文 Segment 列">
+      <section class="aligned-workspace-column aligned-workspace-column--source" :aria-label="t('puiSourceColumnAria')">
         <OrderDropZone
           v-for="zone in sourceDropZones"
           :key="zone.key"
@@ -305,7 +310,7 @@ defineExpose({ focusAlignment, focusSegment, focusSegments, focusViewport, measu
         />
       </section>
 
-      <section class="aligned-workspace-relations" aria-label="Alignment 关系轨">
+      <section class="aligned-workspace-relations" :aria-label="t('puiRelationRailAria')" data-tutorial="relation-rail">
         <AlignmentRelationRail
           v-for="position in visiblePositions"
           :key="`relation-${position.block.alignmentId}`"
@@ -321,7 +326,7 @@ defineExpose({ focusAlignment, focusSegment, focusSegments, focusViewport, measu
         />
       </section>
 
-      <section class="aligned-workspace-column aligned-workspace-column--target" aria-label="英文 Segment 列">
+      <section class="aligned-workspace-column aligned-workspace-column--target" :aria-label="t('puiTargetColumnAria')">
         <OrderDropZone
           v-for="zone in targetDropZones"
           :key="zone.key"

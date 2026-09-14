@@ -1,0 +1,10 @@
+{
+  "protocol_version": 1,
+  "package_id": "fuzzy-matching",
+  "release": "1.0.0",
+  "entrypoint": "worker.py",
+  "runtime": "python-3.12",
+  "operators": ["fuzzy.edit_distance", "fuzzy.char_ngram"],
+  "slots": {"fuzzy.edit_distance":"text.similarity", "fuzzy.char_ngram":"text.similarity"},
+  "permissions": {"canonical_write": false, "network": false}
+}

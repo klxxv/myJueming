@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SearchSegmentsRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document_ids: Option<Vec<jueming_core::DocumentId>>,
     pub project_id: ProjectId,
     pub query: String,
     pub regex: bool,
@@ -31,6 +33,8 @@ pub struct SearchSegmentsResponse {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ReplacePreviewRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document_ids: Option<Vec<jueming_core::DocumentId>>,
     pub project_id: ProjectId,
     pub query: String,
     pub replacement: String,

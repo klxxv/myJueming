@@ -8,19 +8,90 @@ use jueming_protocol::{CONTRACT_VERSION, ProjectSnapshot, SupportedLanguageId};
 use std::collections::{HashMap, HashSet};
 
 pub fn validate_snapshot(snapshot: &ProjectSnapshot) -> Result<(), KernelError> {
-    if snapshot.contract_version != CONTRACT_VERSION || snapshot.documents.len() != 2 {
+    if ![CONTRACT_VERSION, "1.1", "2.0"].contains(&snapshot.contract_version.as_str())
+        || snapshot.documents.len() < 2
+        || (snapshot.contract_version != "2.0" && snapshot.documents.len() != 2)
+    {
         return Err(KernelError::InvalidSnapshot(
             "contract version or bilingual documents are invalid".into(),
         ));
     }
+    if !snapshot.research_records.is_empty()
+        && !matches!(snapshot.contract_version.as_str(), "1.1" | "2.0")
+    {
+        return Err(KernelError::InvalidSnapshot(
+            "research sidecar requires project contract 1.1".into(),
+        ));
+    }
     validate_project(&snapshot.project, &snapshot.documents, &snapshot.revisions)?;
+    let mut research_ids = HashSet::new();
+    let mut research_occurrences = HashSet::new();
+    for record in &snapshot.research_records {
+        if record.record_id.is_empty()
+            || record.run_id.is_empty()
+            || record.occurrence_id.is_empty()
+            || !research_ids.insert(&record.record_id)
+            || !research_occurrences.insert((&record.run_id, &record.occurrence_id))
+            || record.source_ranges.is_empty()
+            || record.input_revision_id.value() > snapshot.project.current_revision_id.value()
+            || record.judgement.group_name.len() > 512
+            || record.judgement.strategy.len() > 512
+            || (record.judgement.kind == jueming_protocol::JudgementKind::Omission
+                && !record.judgement.target_ranges.is_empty())
+            || (record.judgement.kind == jueming_protocol::JudgementKind::Translation
+                && record.judgement.target_ranges.is_empty())
+        {
+            return Err(KernelError::InvalidSnapshot(
+                "invalid research sidecar identity or judgement".into(),
+            ));
+        }
+        // Anchors may be stale after later edits. Their original evidence must remain readable.
+        for range in record
+            .source_ranges
+            .iter()
+            .chain(&record.judgement.target_ranges)
+        {
+            if range.start_utf8 >= range.end_utf8
+                || !record
+                    .content_hashes
+                    .get(&range.segment_id)
+                    .is_some_and(|hash| {
+                        hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit())
+                    })
+            {
+                return Err(KernelError::InvalidSnapshot(
+                    "invalid research evidence coordinates or digest".into(),
+                ));
+            }
+        }
+    }
     canonical_language(&snapshot.project.source_language)?;
     canonical_language(&snapshot.project.target_language)?;
     for document in &snapshot.documents {
         canonical_language(&document.language_id)?;
     }
     let source_document = &snapshot.documents[0];
-    let target_document = &snapshot.documents[1];
+    if snapshot.contract_version == "2.0" {
+        let comparison = snapshot.project.comparison.as_ref().ok_or_else(|| {
+            KernelError::InvalidSnapshot("missing comparison document roles".into())
+        })?;
+        if snapshot.project.format_version != "2.0"
+            || comparison.source_document_id != source_document.document_id
+            || comparison.target_document_ids
+                != snapshot.documents[1..]
+                    .iter()
+                    .map(|doc| doc.document_id)
+                    .collect::<Vec<_>>()
+        {
+            return Err(KernelError::InvalidSnapshot(
+                "comparison roles do not match document catalogue".into(),
+            ));
+        }
+    } else if snapshot.project.comparison.is_some() {
+        return Err(KernelError::InvalidSnapshot(
+            "comparison requires contract 2.0".into(),
+        ));
+    }
     let segment_map: HashMap<_, _> = snapshot
         .segments
         .iter()
@@ -44,8 +115,36 @@ pub fn validate_snapshot(snapshot: &ProjectSnapshot) -> Result<(), KernelError> 
             .ok_or_else(|| KernelError::InvalidSnapshot("missing segment order".into()))?;
         validate_segment_order(order, &segments)?;
     }
+    if snapshot.segments.iter().any(|segment| {
+        !snapshot
+            .documents
+            .iter()
+            .any(|doc| doc.document_id == segment.document_id)
+    }) {
+        return Err(KernelError::InvalidSnapshot(
+            "segment belongs to unknown document".into(),
+        ));
+    }
+    let mut alignment_ids = HashSet::new();
     let mut occupied = HashSet::new();
     for alignment in &snapshot.alignments {
+        if !alignment_ids.insert(alignment.alignment_id) {
+            return Err(KernelError::InvalidSnapshot(
+                "duplicate alignment IDs".into(),
+            ));
+        }
+        let target_id = alignment
+            .target_segment_ids
+            .first()
+            .and_then(|id| segment_map.get(id))
+            .ok_or(KernelError::InvalidAlignmentSelection)?
+            .document_id;
+        let target_document = snapshot
+            .documents
+            .iter()
+            .skip(1)
+            .find(|doc| doc.document_id == target_id)
+            .ok_or(KernelError::InvalidAlignmentSelection)?;
         validate_alignment(
             alignment,
             snapshot.project.project_id,
@@ -58,7 +157,7 @@ pub fn validate_snapshot(snapshot: &ProjectSnapshot) -> Result<(), KernelError> 
             .iter()
             .chain(alignment.target_segment_ids.iter())
         {
-            if !occupied.insert(*segment_id) {
+            if !occupied.insert((target_id, *segment_id)) {
                 return Err(KernelError::DuplicateActiveAlignment(*segment_id));
             }
         }
@@ -193,10 +292,13 @@ pub(crate) fn ensure_selection(
         .documents
         .first()
         .ok_or_else(|| KernelError::InvalidSnapshot("missing source document".into()))?;
+    let target_id = crate::projection::target_document_id(snapshot, target_ids)?;
     let target_document = snapshot
         .documents
-        .get(1)
-        .ok_or_else(|| KernelError::InvalidSnapshot("missing target document".into()))?;
+        .iter()
+        .skip(1)
+        .find(|doc| doc.document_id == target_id)
+        .ok_or(KernelError::InvalidAlignmentSelection)?;
     for id in source_ids {
         let segment = snapshot
             .segments

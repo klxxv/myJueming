@@ -10,7 +10,29 @@ pub(crate) fn persist_snapshot(
     layout: &ProjectLayout,
     snapshot: &ProjectSnapshot,
 ) -> Result<(), KernelError> {
+    let _commit_lock = layout.acquire_commit_lock()?;
     let revision_id = snapshot.project.current_revision_id;
+    if layout.snapshot_path().exists() {
+        let current = layout.read_snapshot::<ProjectSnapshot>()?;
+        if current == *snapshot {
+            return Ok(());
+        }
+        if current.project.project_id != snapshot.project.project_id {
+            return Err(KernelError::ProjectMismatch);
+        }
+        let parent = snapshot
+            .revisions
+            .last()
+            .and_then(|revision| revision.parent_revision_id);
+        if parent != Some(current.project.current_revision_id)
+            || revision_id.value() != current.project.current_revision_id.value() + 1
+        {
+            return Err(KernelError::StaleRevision {
+                expected: current.project.current_revision_id,
+                provided: parent.unwrap_or(revision_id),
+            });
+        }
+    }
     // Write the immutable revision first. If the main pointer write fails, a
     // harmless orphan remains; the previous project.json is still valid and no
     // history entry points at a partial file.

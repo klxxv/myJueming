@@ -350,6 +350,7 @@ impl ModelProvider for OpenAiCompatibleProvider {
 
 fn provider_tool_name(host_method: &str) -> Result<&'static str, RuntimeError> {
     match host_method {
+        "research.call" => Ok("jueming_research_call"),
         "project.get_summary" => Ok("jueming_project_get_summary"),
         "segment.get" => Ok("jueming_segment_get"),
         "alignment.get" => Ok("jueming_alignment_get"),
@@ -373,6 +374,7 @@ fn provider_tool_name(host_method: &str) -> Result<&'static str, RuntimeError> {
 
 fn host_tool_method(provider_name: &str) -> Result<&'static str, RuntimeError> {
     match provider_name {
+        "jueming_research_call" => Ok("research.call"),
         "jueming_project_get_summary" => Ok("project.get_summary"),
         "jueming_segment_get" => Ok("segment.get"),
         "jueming_alignment_get" => Ok("alignment.get"),
@@ -404,6 +406,11 @@ fn tools() -> Vec<ToolSchema> {
     let object =
         |properties| json!({"type":"object","properties":properties,"additionalProperties":false});
     vec![
+        ToolSchema {
+            name: "research.call",
+            description: "Discover live local slots and schemas, start asynchronous research and inspect results. Feature activation and human confirmation belong to the user. Call capabilities.get before selecting algorithms.",
+            parameters: json!({"type":"object","properties":{"method":{"type":"string","enum":jueming_application::RESEARCH_METHODS.iter().filter(|d|!d.native_only).map(|d|d.method).collect::<Vec<_>>()},"params":{"type":"object"}},"required":["method","params"],"additionalProperties":false}),
+        },
         ToolSchema {
             name: "project.get_summary",
             description: "Read the current local project summary.",
@@ -1705,9 +1712,11 @@ mod tests {
     fn test_project(path: std::path::PathBuf) -> CreateProjectRequest {
         let profile = ImportProfile::new(Encoding::Utf8, SegmentationMode::NonEmptyLine);
         CreateProjectRequest {
+            additional_targets: Vec::new(),
             project_path: path.to_string_lossy().into_owned(),
             name: "runtime".into(),
             source: ImportSideRequest {
+                expected_sha256: None,
                 language_id: "zh-CN".into(),
                 title: "source".into(),
                 input: TextInput::Paste {
@@ -1717,6 +1726,7 @@ mod tests {
                 profile: profile.clone(),
             },
             target: ImportSideRequest {
+                expected_sha256: None,
                 language_id: "en".into(),
                 title: "target".into(),
                 input: TextInput::Paste {

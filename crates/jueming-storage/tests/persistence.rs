@@ -109,3 +109,42 @@ fn cache_cleanup_never_touches_snapshot_or_revisions() {
     assert!(layout.snapshot_path().is_file());
     assert!(layout.revision_snapshot_path(2).is_file());
 }
+
+#[test]
+fn writer_lock_child_probe() {
+    let Ok(path) = std::env::var("JUEMING_TEST_WRITER_PATH") else {
+        return;
+    };
+    let layout = ProjectLayout::new(path).unwrap();
+    let locked = std::env::var("JUEMING_TEST_WRITER_EXPECT_LOCKED").unwrap() == "yes";
+    assert_eq!(layout.acquire_writer_lock().is_err(), locked);
+}
+
+#[test]
+fn writer_lock_is_exclusive_across_processes_and_released_by_os() {
+    let temporary = tempfile::tempdir().unwrap();
+    let path = temporary.path().join("cross-process.jm");
+    let layout = ProjectLayout::new(&path).unwrap();
+    let lock = layout.acquire_writer_lock().unwrap();
+    let probe = |expected| {
+        std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "writer_lock_child_probe"])
+            .env("JUEMING_TEST_WRITER_PATH", &path)
+            .env("JUEMING_TEST_WRITER_EXPECT_LOCKED", expected)
+            .output()
+            .unwrap()
+    };
+    let blocked = probe("yes");
+    assert!(
+        blocked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&blocked.stdout)
+    );
+    drop(lock);
+    let released = probe("no");
+    assert!(
+        released.status.success(),
+        "{}",
+        String::from_utf8_lossy(&released.stdout)
+    );
+}

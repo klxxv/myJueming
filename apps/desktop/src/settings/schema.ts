@@ -3,7 +3,7 @@ export const APP_SETTINGS_SCHEMA_VERSION = 2 as const;
 export type AppTheme = "light" | "eye";
 export type CacheCleanupPolicy = "startup" | "weekly" | "monthly" | "never";
 export type ShortcutProfile = "auto" | "macos" | "windows";
-export type InterfaceLanguage = "system" | "zh-CN" | "en";
+export type InterfaceLanguage = "system" | "zh-CN" | "en" | "ja" | "fr" | "de";
 export type StartupDestination = "welcome" | "last-project" | "project-picker";
 export type DefaultWorkspace = "review" | "edit" | "order";
 export type ReadingLineSpacing = "compact" | "standard" | "relaxed";
@@ -209,7 +209,7 @@ export function parseAppSettings(value: unknown, detectedMacOS: boolean): AppSet
     schemaVersion: APP_SETTINGS_SCHEMA_VERSION,
     device: {
       general: {
-        interfaceLanguage: enumValue(general.interfaceLanguage, ["system", "zh-CN", "en"], defaults.device.general.interfaceLanguage),
+        interfaceLanguage: enumValue(general.interfaceLanguage, ["system", "zh-CN", "en", "ja", "fr", "de"], defaults.device.general.interfaceLanguage),
         startupDestination: enumValue(general.startupDestination, ["welcome", "last-project", "project-picker"], defaults.device.general.startupDestination),
         defaultWorkspace: enumValue(general.defaultWorkspace, ["review", "edit", "order"], defaults.device.general.defaultWorkspace),
         rememberSettingsLocation: booleanValue(general.rememberSettingsLocation, defaults.device.general.rememberSettingsLocation),

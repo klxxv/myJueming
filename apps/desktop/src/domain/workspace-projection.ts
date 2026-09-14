@@ -15,10 +15,10 @@ export interface AlignmentBlockView {
   targetFragmented: boolean;
 }
 
-const sideIsFragmented = (segmentIds: string[], segments: SegmentDto[]) => {
-  const orderById = new Map(segments.map((segment) => [segment.id, segment.order]));
+const sideIsFragmented = (segmentIds: string[], segmentsById: ReadonlyMap<string, SegmentDto>) => {
+  if (segmentIds.length < 2) return false;
   const orders = segmentIds
-    .map((segmentId) => orderById.get(segmentId))
+    .map((segmentId) => segmentsById.get(segmentId)?.order)
     .filter((order): order is number => order !== undefined)
     .sort((a, b) => a - b);
   return orders.length > 1 && orders[orders.length - 1] - orders[0] + 1 !== orders.length;
@@ -128,8 +128,8 @@ export const buildAlignmentBlocks = (
       alignmentId: alignment.id,
       index: 0,
       linked: true,
-      sourceFragmented: sideIsFragmented(alignment.sourceIds, sourceSegments),
-      targetFragmented: sideIsFragmented(alignment.targetIds, targetSegments),
+      sourceFragmented: sideIsFragmented(alignment.sourceIds, sourceById),
+      targetFragmented: sideIsFragmented(alignment.targetIds, targetById),
     });
   }
 

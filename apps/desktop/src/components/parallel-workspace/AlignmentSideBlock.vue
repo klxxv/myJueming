@@ -5,6 +5,7 @@ import type { DropEdge, RegisterOrderSegment } from "../../composables/useOrderD
 import type { AlignmentGapEdge, LanguageSide, WorkspaceMode } from "../../domain/kernel-client";
 import type { AlignmentBlockView, OrderSelection } from "../../domain/workspace-projection";
 import SegmentCard from "./SegmentCard.vue";
+import { t } from "../../i18n";
 
 const props = withDefaults(defineProps<{
   block: AlignmentBlockView;
@@ -108,8 +109,8 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
       :editing="mode === 'edit' && editSession?.segmentId === segment.id"
       :edit-session="editSession"
       :show-gap-controls="isOrderSelected(segment.id)"
-      :can-insert-before="canInsertGap(side, segment.id, 'before')"
-      :can-insert-after="canInsertGap(side, segment.id, 'after')"
+      :can-insert-before="isOrderSelected(segment.id) && canInsertGap(side, segment.id, 'before')"
+      :can-insert-after="isOrderSelected(segment.id) && canInsertGap(side, segment.id, 'after')"
       :dragged="draggedId === segment.id"
       :drop-edge="dropTargetId === segment.id ? dropEdge : null"
       :register-order-segment="registerOrderSegment"
@@ -128,7 +129,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
       @cancel-edit="emit('cancelEdit')"
       @escape-edit="emit('escapeEdit')"
     />
-    <span v-if="!block.linked" class="alignment-side-block__pending">待匹配</span>
+    <span v-if="!block.linked" class="alignment-side-block__pending">{{ t("puiPendingMatch") }}</span>
   </article>
 </template>
 

@@ -15,6 +15,32 @@ impl KernelService {
         request: &ExportRequest,
     ) -> Result<Vec<u8>, KernelError> {
         validate_snapshot(snapshot)?;
+        if snapshot.documents.len() > 2 && request.format != ExportFormat::Json {
+            let mut sections = Vec::new();
+            for target in snapshot.documents.iter().skip(1) {
+                let mut pair = snapshot.clone();
+                pair.documents = vec![snapshot.documents[0].clone(), target.clone()];
+                let pair_ids =
+                    crate::projection::alignment_ids_for_document(snapshot, target.document_id);
+                pair.alignments
+                    .retain(|alignment| pair_ids.contains(&alignment.alignment_id));
+                pair.segments.retain(|segment| {
+                    segment.document_id == snapshot.documents[0].document_id
+                        || segment.document_id == target.document_id
+                });
+                sections.push(match request.format {
+                    ExportFormat::Txt => format!("# {} [{}]\n{}", target.title, target.document_id, export_txt(&pair, request)),
+                    ExportFormat::Xml => format!("<comparison source_document_id=\"{}\" target_document_id=\"{}\" title=\"{}\">{}</comparison>", snapshot.documents[0].document_id, target.document_id, xml_escape(&target.title), export_xml(&pair, request).trim_start_matches("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")),
+                    ExportFormat::Json => unreachable!(),
+                });
+            }
+            let body = sections.join("\n");
+            return Ok(if request.format == ExportFormat::Xml {
+                format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><jueming-comparisons>{body}</jueming-comparisons>").into_bytes()
+            } else {
+                body.into_bytes()
+            });
+        }
         match request.format {
             ExportFormat::Txt => Ok(export_txt(snapshot, request).into_bytes()),
             ExportFormat::Json => serde_json::to_vec_pretty(snapshot)

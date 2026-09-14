@@ -22,10 +22,11 @@ pub use ids::{
     RevisionId, SegmentId, SegmentOrderId,
 };
 pub use import::{
-    DecodedText, Encoding, ImportProfile, SegmentPreview, SegmentationMode, SegmentationPreview,
-    decode_bytes, segment_text,
+    DecodedText, Encoding, EncodingDetection, ImportCleanup, ImportProfile, SegmentBoundary,
+    SegmentPreview, SegmentationMode, SegmentationPreview, decode_bytes, detect_encoding,
+    segment_text,
 };
 pub use order::{OrderedSegmentRef, PositionKey, SegmentOrder, validate_segment_order};
-pub use project::{Document, LanguageId, Project, Timestamp, validate_project};
+pub use project::{ComparisonSet, Document, LanguageId, Project, Timestamp, validate_project};
 pub use revision::{ChangeSetSummary, Revision, RevisionState};
 pub use segment::{ContentRef, Segment, SegmentKind};

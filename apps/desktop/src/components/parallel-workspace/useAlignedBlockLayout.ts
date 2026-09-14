@@ -22,7 +22,7 @@ const estimateSegmentHeight = (segment: SegmentDto, side: LanguageSide, columnWi
   const contentWidth = Math.max(180, columnWidth - 142);
   const characterWidth = side === "source" ? 16 : 8.2;
   const charactersPerLine = Math.max(12, Math.floor(contentWidth / characterWidth));
-  const lines = Math.max(1, Math.ceil(segment.text.length / charactersPerLine));
+  const lines = Math.max(1, Math.ceil((segment.contentLength ?? segment.text.length) / charactersPerLine));
   return Math.max(MIN_ALIGNMENT_HEIGHT, 36 + lines * 26);
 };
 
@@ -39,6 +39,7 @@ export function useAlignedBlockLayout({
 }) {
   const measuredSourceHeights = shallowRef(new Map<string, number>());
   const measuredTargetHeights = shallowRef(new Map<string, number>());
+  const blocksById = computed(() => new Map(rows.value.map(block => [block.alignmentId, block])));
 
   const columnWidth = computed(() => Math.max(320, (viewportWidth.value - 176) / 2));
   const estimateSideHeight = (block: AlignmentBlockView, side: LanguageSide) => {
@@ -78,12 +79,22 @@ export function useAlignedBlockLayout({
   const visiblePositions = computed(() => {
     const start = Math.max(0, scrollTop.value - OVERSCAN_PX);
     const end = scrollTop.value + viewportHeight.value + OVERSCAN_PX;
-    return positions.value.filter((position) => (
-      position.bandTop + position.bandHeight >= start && position.bandTop <= end
-    ));
+    const all = positions.value;
+    let low = 0;
+    let high = all.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (all[middle].bandTop + all[middle].bandHeight < start) low = middle + 1;
+      else high = middle;
+    }
+    let last = low;
+    while (last < all.length && all[last].bandTop <= end) last++;
+    return all.slice(low, last);
   });
 
   const reportHeight = (alignmentId: string, side: LanguageSide, height: number) => {
+    const block = blocksById.value.get(alignmentId);
+    if (block && (side === "source" ? block.sourceSegments : block.targetSegments).some(segment => segment.loaded === false)) return;
     if (!Number.isFinite(height) || height <= 0) return;
     const target = side === "source" ? measuredSourceHeights : measuredTargetHeights;
     const previousHeight = target.value.get(alignmentId);
@@ -101,37 +112,39 @@ export function useAlignedBlockLayout({
   watch(
     () => rows.value.map((row) => [
       row.alignmentId,
-      ...row.sourceSegments.map((segment) => `${segment.id}:${segment.text}`),
-      ...row.targetSegments.map((segment) => `${segment.id}:${segment.text}`),
+      ...row.sourceSegments.map((segment) => `${segment.id}:${segment.contentHash ?? segment.text}`),
+      ...row.targetSegments.map((segment) => `${segment.id}:${segment.contentHash ?? segment.text}`),
     ].join("\u0000")).join("\u0001"),
     resetMeasurements,
   );
 
   let debugFrame: number | null = null;
-  watch(
-    [positions, visiblePositions],
-    () => {
-      if (!import.meta.env.DEV || debugFrame !== null) return;
-      debugFrame = requestAnimationFrame(() => {
-        debugFrame = null;
-        const largestGap = positions.value.reduce((largest, position) => Math.max(
-          largest,
-          Math.abs(position.sourceHeight - position.targetHeight),
-        ), 0);
-        console.debug("[jueming:alignment-layout]", {
-          blocks: positions.value.length,
-          visibleBlocks: visiblePositions.value.length,
-          measuredSource: measuredSourceHeights.value.size,
-          measuredTarget: measuredTargetHeights.value.size,
-          totalHeight: totalHeight.value,
-          alignmentGap: ALIGNMENT_GAP,
-          connectorY: FIRST_LINE_CONNECTOR_Y,
-          largestComputedGap: largestGap,
+  if (import.meta.env.DEV && import.meta.env.VITE_ALIGNMENT_LAYOUT_DEBUG === "true") {
+    watch(
+      [positions, visiblePositions],
+      () => {
+        if (debugFrame !== null) return;
+        debugFrame = requestAnimationFrame(() => {
+          debugFrame = null;
+          const largestGap = positions.value.reduce((largest, position) => Math.max(
+            largest,
+            Math.abs(position.sourceHeight - position.targetHeight),
+          ), 0);
+          console.debug("[jueming:alignment-layout]", {
+            blocks: positions.value.length,
+            visibleBlocks: visiblePositions.value.length,
+            measuredSource: measuredSourceHeights.value.size,
+            measuredTarget: measuredTargetHeights.value.size,
+            totalHeight: totalHeight.value,
+            alignmentGap: ALIGNMENT_GAP,
+            connectorY: FIRST_LINE_CONNECTOR_Y,
+            largestComputedGap: largestGap,
+          });
         });
-      });
-    },
-    { immediate: true },
-  );
+      },
+      { immediate: true },
+    );
+  }
 
   onBeforeUnmount(() => {
     if (debugFrame !== null) cancelAnimationFrame(debugFrame);

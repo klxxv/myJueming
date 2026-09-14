@@ -49,6 +49,9 @@ pub enum CommandKind {
     ApplySegmentation,
     UpdateSegment,
     MoveSegment,
+    ReorderSegments,
+    InsertAlignmentGap,
+    ApplyReplace,
     LinkSegments,
     UnlinkAlignment,
     /// Legacy wire name kept for reading old command logs. New commands use
@@ -69,11 +72,23 @@ pub enum CommandKind {
     UpdateAnnotation,
     DeleteAnnotation,
     CreateBookmark,
+    UpdateBookmark,
     DeleteBookmark,
+    ResolveAnnotation,
+    ConfirmResearch,
+    MergeResearchGroups,
     SaveRevision,
     Undo,
     Redo,
     RestoreRevision,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CommandResult {
+    pub command_id: CommandId,
+    pub project_id: ProjectId,
+    pub committed_revision_id: RevisionId,
+    pub status: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

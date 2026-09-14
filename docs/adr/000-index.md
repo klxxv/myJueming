@@ -24,6 +24,7 @@ _Phase 0 的 14 项架构决策索引；状态以本地单机 MVP 的合同冻�
 | [ADR-014](ADR-014-segment-structure-and-alignment-groups.md) | Segment 内容结构与 Alignment 分组解耦 | Accepted | Merge/Split 改内容；Group/Ungroup 改关系 |
 | [ADR-015](ADR-015-local-agent-application-host.md) | 全局应用宿主与 MCP / AG-UI 适配器 | Accepted | 单一工程写入者、版本绑定提案、可信原生批准、可卸载呈现层 |
 | [ADR-016](ADR-016-pipeline-method-artifacts.md) | Pipeline 方法与派生产物 | Accepted | 方法修订独立于 canonical Revision，分词不修改原文 |
+| [ADR-017](ADR-017-local-research-runtime.md) | 本地 Slot、数据流与研究插件 | Accepted | 固定快照、进程外算法、统一能力与结构化研究历史 |
 
 ### 决策依赖
 
@@ -60,3 +61,6 @@ flowchart LR
 ---
 
 _Last updated: 2026-08-29_
+
+- [ADR-018：多译本工程与自研窗格边界](ADR-018-multiple-translations-and-panel-boundary.md) — Accepted
+- [ADR-019：导入编码识别与确定性解码](ADR-019-import-encoding-detection.md) — Accepted
