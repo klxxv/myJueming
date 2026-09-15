@@ -119,6 +119,12 @@ const sectionGroups = computed(() => ([
   sections: visibleSections.value.filter((section) => section.group === group.id),
 })).filter((group) => group.sections.length)));
 
+const shortcutGroups = (shortcut: string) => shortcut.split(/\s+[／/·]\s+/).map((group) =>
+  group.split(/\+|(?<=[⌃⌥⇧⌘])|(?=[⌃⌥⇧⌘])/u).filter(Boolean));
+const shortcutKeyLabel = (key: string) => ({
+  "⌘": "Command", "⇧": "Shift", "⌥": "Option", "⌃": "Control", "↵": "Return", Esc: "Escape",
+}[key] ?? key);
+
 const activeSection = ref<SettingsSectionId>("appearance");
 const detail = ref<DetailId | null>(null);
 const searchQuery = ref("");
@@ -359,7 +365,19 @@ function adjustFontScale(direction: -1 | 1) {
             <label class="setting-row"><span><strong>{{ t('swTrackpadOptimized') }}</strong><small>{{ t('swTrackpadOptimizedHint') }}</small></span><input v-model="settings.device.input.trackpadOptimized" class="switch" type="checkbox" @change="emit('applyInteraction')" /></label>
           </div>
           <h3>{{ t('swCurrentShortcuts') }}</h3>
-          <div class="settings-group shortcut-grid" :aria-label="t('swCurrentShortcutsAria')"><template v-for="row in shortcutRows" :key="row[0]"><span>{{ row[0] }}</span><kbd>{{ row[1] }}</kbd></template></div>
+          <div class="settings-group shortcut-grid" :aria-label="t('swCurrentShortcutsAria')">
+            <div v-for="row in shortcutRows" :key="row[0]" class="shortcut-row">
+              <span class="shortcut-action">{{ row[0] }}</span>
+              <div class="shortcut-combinations">
+                <template v-for="(keys, groupIndex) in shortcutGroups(row[1])" :key="groupIndex">
+                  <span v-if="groupIndex" class="shortcut-separator" aria-hidden="true">/</span>
+                  <kbd class="shortcut-combination" :aria-label="keys.map(shortcutKeyLabel).join(' + ')" :title="keys.map(shortcutKeyLabel).join(' + ')">
+                    <span v-for="(key, keyIndex) in keys" :key="keyIndex" class="shortcut-key" :class="{ 'shortcut-key--symbol': /^[⌃⌥⇧⌘↵]$/u.test(key) }" aria-hidden="true">{{ key }}</span>
+                  </kbd>
+                </template>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section v-else-if="activeSection === 'pet'" class="settings-pane">
@@ -470,6 +488,15 @@ function adjustFontScale(direction: -1 | 1) {
 .setting-row, .cache-row, .reset-row { display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 24px; padding: 11px 15px; }.setting-row + .setting-row { border-top: 1px solid var(--line); }.setting-row > span, .cache-row > span, .reset-row > span, .scale-heading > span { min-width: 0; }.setting-row strong, .setting-row small, .cache-row strong, .cache-row small, .reset-row strong, .reset-row small, .scale-heading strong, .scale-heading small { display: block; }.setting-row strong, .cache-row strong, .reset-row strong, .scale-heading strong { font-size: var(--jm-font-size-body); }.setting-row small, .cache-row small, .reset-row small, .scale-heading small { margin-top: 4px; @apply text-ink-500; font-size: var(--jm-font-size-callout); line-height: 1.4; }.setting-row select { min-width: 190px; }.setting-row output { flex: none; @apply text-accent-strong; font-size: var(--jm-font-size-callout); }.setting-row--readonly { @apply bg-raised; }
 .switch { flex: none; width: 38px; height: 22px; accent-color: var(--green-700); }.scale-group { padding: 16px 18px 13px; }.scale-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }.scale-heading output { padding: 4px 8px; border-radius: 7px; @apply text-accent-strong bg-green-soft; font-size: var(--jm-font-size-callout); font-weight: var(--jm-font-weight-semibold); }.stepped-slider, .font-size-control { display: grid; grid-template-columns: 24px 1fr 24px; align-items: center; gap: 11px; margin-top: 16px; @apply text-ink-500; text-align: center; }.stepped-slider input, .font-size-control input { width: 100%; accent-color: var(--green-700); cursor: pointer; }.font-size-control { grid-template-columns: 36px minmax(0, 1fr) 36px; }.font-size-control button { display: grid; width: 36px; height: 36px; padding: 0; place-items: center; border: 1px solid var(--line); border-radius: 9px; @apply text-accent-strong bg-input; cursor: pointer; }.font-size-control button:hover:not(:disabled) { border-color: #9dbca1; @apply bg-hover; }.reading-preview { padding: 15px 18px 17px; }.reading-preview figcaption { margin-bottom: 10px; @apply text-ink-500; font-size: var(--jm-font-size-subheadline); font-weight: var(--jm-font-weight-semibold); letter-spacing: .06em; }.reading-preview blockquote { margin: 0; @apply text-ink-900; font-family: var(--jm-font-ui); font-size: calc(16px * var(--reading-font-scale)); line-height: var(--jm-reading-line-height); }.reading-preview cite { display: block; margin-top: 8px; @apply text-accent; font-family: var(--jm-font-ui); font-size: calc(13px * var(--reading-font-scale)); font-style: normal; line-height: var(--jm-reading-line-height); text-align: right; }
 .settings-link-row { display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 20px; padding: 11px 15px; @apply text-ink-900; text-align: left; cursor: pointer; }.settings-link-row:hover { border-color: #b8ccb9; @apply bg-hover; }.settings-link-row > span { display: flex; align-items: center; gap: 10px; }.settings-link-row > span:last-child { flex: none; @apply text-ink-500; font-size: var(--jm-font-size-callout); }.settings-link-row strong, .settings-link-row small { display: block; }.settings-link-row small { margin-top: 4px; @apply text-ink-500; }
-.shortcut-grid { display: grid; grid-template-columns: 1fr auto; }.shortcut-grid > span, .shortcut-grid kbd { padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: var(--jm-font-size-callout); }.shortcut-grid > :nth-last-child(-n + 2) { border-bottom: 0; }.shortcut-grid kbd { min-width: 180px; border-left: 1px solid var(--line); @apply text-accent-strong bg-subtle; font-family: var(--jm-font-mono); text-align: center; }.cache-row > div { display: grid; justify-items: end; gap: 6px; }.cache-row > div small { @apply text-ink-500; font-size: var(--jm-font-size-subheadline); }.secondary-button { display: inline-flex; height: 34px; align-items: center; gap: 6px; padding: 0 13px; border: 1px solid #bdcabf; border-radius: 7px; @apply text-accent-strong bg-raised; cursor: pointer; }.secondary-button:disabled { opacity: .5; cursor: not-allowed; }.settings-note { margin: -2px 4px 18px; @apply text-ink-500; font-size: var(--jm-font-size-callout); line-height: 1.55; }
+.shortcut-grid { display: flex; flex-direction: column; }
+.shortcut-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 24px; min-height: 50px; padding: 10px 16px; box-sizing: border-box; }
+.shortcut-row + .shortcut-row { border-top: 1px solid var(--line); }
+.shortcut-action { @apply text-ink-900; font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }
+.shortcut-combinations { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; margin-left: auto; }
+.shortcut-combination { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.shortcut-key { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 28px; padding: 0 6px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 6px; @apply text-ink-900 bg-subtle; font-size: 13px; font-weight: 500; line-height: 1; white-space: nowrap; }
+.shortcut-key--symbol { font-size: 18px; font-weight: 400; }
+.shortcut-separator { @apply text-ink-500; font-size: 12px; }
+.cache-row > div { display: grid; justify-items: end; gap: 6px; }.cache-row > div small { @apply text-ink-500; font-size: var(--jm-font-size-subheadline); }.secondary-button { display: inline-flex; height: 34px; align-items: center; gap: 6px; padding: 0 13px; border: 1px solid #bdcabf; border-radius: 7px; @apply text-accent-strong bg-raised; cursor: pointer; }.secondary-button:disabled { opacity: .5; cursor: not-allowed; }.settings-note { margin: -2px 4px 18px; @apply text-ink-500; font-size: var(--jm-font-size-callout); line-height: 1.55; }
 @media (max-width: 1080px) { .settings-split { grid-template-columns: 210px minmax(0, 1fr); }.settings-pane { width: calc(100% - 36px); }.setting-row { gap: 12px; }.setting-row select { min-width: 158px; } }
 </style>
