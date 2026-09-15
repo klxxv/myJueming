@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Search, X } from '@lucide/vue';
 import { useTransientSegmentJump } from '../composables/useTransientSegmentJump';
 import type { SegmentText, WorkspaceProject } from '../domain/kernel-client';
 import { buildComparisonBands, comparisonDocuments, layoutComparisonBand } from '../domain/comparison-projection';
+import WorkspaceScrollbar from './parallel-workspace/WorkspaceScrollbar.vue';
 import WorkspacePanelStrip from './workspace-panels/WorkspacePanelStrip.vue';
 import AlignedDocumentList, { type ComparisonPosition } from './parallel-workspace/AlignedDocumentList.vue';
 import { t } from '../i18n';
@@ -15,6 +16,7 @@ const viewport = ref<HTMLElement | null>(null);
 const top = ref(0);
 const height = ref(600);
 const selected = ref('');
+const scrollbarDragging = ref(false);
 const widths = shallowRef<Record<string, number>>({});
 const measured = shallowRef(new Map<string, number>());
 const documents = computed(() => comparisonDocuments(props.project, props.texts));
@@ -62,7 +64,7 @@ watch(widths, (next, previous) => {
   measured.value = new Map([...measured.value].filter(([key]) => !changed.some(id => key.startsWith(`${id}:`))));
 });
 watch(positions, (next, previous) => {
-  const element = viewport.value; if (!element || element.scrollTop <= 0) return;
+  const element = viewport.value; if (scrollbarDragging.value || !element || element.scrollTop <= 0) return;
   const band = previous.find(position => position.top + position.height >= element.scrollTop);
   if (!band) return;
   let anchor: { id: string; top: number } | undefined;
@@ -124,6 +126,16 @@ const scrollToProgress = (ratio: number) => {
   element.scrollTo({ top: Math.max(0, Math.min(1, ratio)) * Math.max(0, totalHeight.value - element.clientHeight), behavior: 'instant' });
   top.value = element.scrollTop;
 };
+const unlinkedMarkers = computed(() => {
+  const linked = new Set(props.project.alignments.flatMap(relation => [...relation.source_segment_ids, ...relation.target_segment_ids]));
+  return positions.value.flatMap(position => [...position.layout.segments].filter(([id]) => !linked.has(id)).map(([id, segment]) => ({ id, top: position.top + segment.top, height: segment.height }))).sort((a, b) => a.top - b.top);
+});
+const jumpUnlinked = (id: string) => {
+  const position = positions.value.find(item => item.layout.segments.has(id));
+  if (!position || !viewport.value) return;
+  viewport.value.scrollTo({ top: position.top + position.layout.segments.get(id)!.top, behavior: 'instant' });
+  top.value = viewport.value.scrollTop;
+};
 defineExpose({ openFind, navigateFind, scrollToProgress });
 const openRelation = (id: string) => {
   const relation = props.project.alignments.find(item => item.alignment_id === id);
@@ -136,14 +148,19 @@ const openRelation = (id: string) => {
     <header class="comparison-toolbar"><strong>{{ project.project.name }}</strong><span>{{ t('puiComparisonCount', { p0: documents.length - 1 }) }}</span><span class="comparison-toolbar__hint">{{ t('puiComparisonLayoutHint') }}</span><button type="button" :aria-label="t('puiFindComparisonAria')" @click="openFind"><Search :size="15" /></button><button v-if="selected" type="button" @click="openRelation(selected)">{{ t('puiEditSelectedBinding') }}</button></header>
     <div class="comparison-pairs"><span>{{ t('puiAlignmentEditing') }}</span><button v-for="document in documents.slice(1)" :key="document.document.document_id" type="button" @click="emit('editPair', document.document.document_id)">{{ document.document.title }}</button></div>
     <div v-if="findOpen" class="comparison-find" role="search" :aria-label="t('puiComparisonFindAria')"><Search :size="16" /><input ref="findInput" v-model="findQuery" :aria-label="t('puiFindAllTranslationsAria')" :placeholder="t('puiFindAllPlaceholder')" @keydown.enter.prevent="navigateFind($event.shiftKey ? -1 : 1)" @keydown.esc.prevent="findOpen = false" /><span>{{ findError ? t('puiFindFailed', { p0: formatError(findError) }) : findPending ? t('puiFinding') : t('puiFindPosition', { p0: findMatches.length ? findCursor + 1 : 0, p1: findMatches.length }) }}</span><button type="button" :aria-label="t('puiPreviousResult')" :disabled="findPending || !findMatches.length" @click="navigateFind(-1)"><ArrowUp :size="16" /></button><button type="button" :aria-label="t('puiNextResult')" :disabled="findPending || !findMatches.length" @click="navigateFind(1)"><ArrowDown :size="16" /></button><button type="button" :aria-label="t('puiCloseComparisonFind')" @click="findOpen = false"><X :size="16" /></button></div>
+    <div class="comparison-scroll-host">
     <div ref="viewport" class="comparison-viewport" @scroll.passive="top = viewport?.scrollTop ?? 0">
       <WorkspacePanelStrip :panels="panels" :storage-key="`jueming-comparison-panels:${project.project.project_id}`" @layout="widths = $event">
         <template #default="{ panel }"><AlignedDocumentList :key="`${panel.id}:${project.project.current_revision_id}`" :document-id="panel.id" :source="panel.id === project.documents[0].document_id" :jump-highlight-segment-id="highlightedSegmentId" :window-start="top - 720" :window-end="top + height + 720" :positions="visible" :total-height="totalHeight" :selected="selected" :labels="labels" :writable="writable" @resize="(key, value) => report(panel.id, key, value)" @select="selected = $event" @edit-pair="openRelation" @unlink="emit('unlink', $event)" /></template>
       </WorkspacePanelStrip>
     </div>
+    <WorkspaceScrollbar :scroll-top="top" :viewport-height="height" :total-height="totalHeight" :markers="unlinkedMarkers" @scroll="scrollToProgress" @jump="jumpUnlinked" @dragging="scrollbarDragging = $event" />
+    </div>
   </section>
 </template>
 <style scoped>
+.comparison-scroll-host { display: flex; flex: 1; min-height: 0; min-width: 0; }
+.comparison-viewport::-webkit-scrollbar { width: 0; }
 .comparison-workspace { display: flex; flex-direction: column; min-height: 0; height: 100%; @apply bg-raised; }
 .comparison-toolbar, .comparison-pairs { display: flex; align-items: center; gap: 12px; padding: 10px 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
 .comparison-toolbar span, .comparison-pairs > span { color: var(--text-muted); font-size: 12px; }
@@ -153,5 +170,5 @@ const openRelation = (id: string) => {
 .comparison-find input { flex: 1; min-width: 100px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; @apply bg-raised; color: var(--text-main); }
 .comparison-find button { display: grid; place-items: center; border: 0; padding: 4px; color: var(--text-main); background: transparent; cursor: pointer; }
 .comparison-find span { font-size: 12px; color: var(--text-muted); }
-.comparison-viewport { flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.comparison-viewport { flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; overscroll-behavior: contain; scrollbar-width: none; }
 </style>

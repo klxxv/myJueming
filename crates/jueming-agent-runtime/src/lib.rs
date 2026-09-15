@@ -543,6 +543,60 @@ pub struct AgentRuntime {
     pending: Mutex<HashMap<String, PendingRun>>,
     recovered_interrupted_runs: u64,
 }
+
+impl AgentRuntime {
+    /// Probe unsaved settings without creating a conversation or persisting secrets.
+    pub async fn test_connection(&self, input: RuntimeConfigurationInput) -> Result<(), String> {
+        validate_configuration(&input).map_err(|error| error.to_string())?;
+        let configuration = RuntimeConfiguration {
+            configured: true,
+            provider_kind: input.provider_kind,
+            endpoint: input.endpoint.trim_end_matches('/').to_owned() + "/",
+            model: input.model,
+            secret_storage: SecretStorage::None,
+            api_key_configured: false,
+        };
+        let key = input.api_key.filter(|key| !key.trim().is_empty())
+            .or_else(|| self.vault.get(&secret_scope(&configuration)));
+        if configuration.provider_kind == ProviderKind::Https && key.is_none() {
+            return Err("API Token is required for remote services".into());
+        }
+        let url = Url::parse(&configuration.endpoint)
+            .and_then(|endpoint| endpoint.join("chat/completions"))
+            .map_err(|_| "Invalid API endpoint".to_owned())?;
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(30))
+            .build().map_err(|_| "Could not initialize connection test".to_owned())?;
+        let mut call = client.post(url).json(&json!({
+            "model": configuration.model,
+            "messages": [{"role": "user", "content": "Reply OK."}],
+            "max_tokens": 8,
+            "stream": false
+        }));
+        if let Some(key) = key { call = call.bearer_auth(key); }
+        let mut response = call.send().await.map_err(|error| {
+            if error.is_timeout() { "Connection test timed out (30s)".to_owned() }
+            else { "Could not connect to API; check the endpoint and network".to_owned() }
+        })?;
+        if !response.status().is_success() {
+            return Err(format!("API returned HTTP {}{}", response.status().as_u16(),
+                if matches!(response.status().as_u16(), 401 | 403) { ": check API Token and permissions" } else { ": check endpoint, model and service availability" }));
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|_| "Could not read API response".to_owned())? {
+            if bytes.len().saturating_add(chunk.len()) > MAX_PROVIDER_RESPONSE_BYTES {
+                return Err("API response exceeded byte limit".into());
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        let body: Value = serde_json::from_slice(&bytes).map_err(|_| "API returned invalid JSON".to_owned())?;
+        if !body.pointer("/choices/0/message").is_some_and(Value::is_object) {
+            return Err("API returned an invalid chat completion".into());
+        }
+        Ok(())
+    }
+}
 struct ActiveRun {
     project_id: String,
     session_id: String,

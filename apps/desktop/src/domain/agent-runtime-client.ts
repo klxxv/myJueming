@@ -109,6 +109,7 @@ const tauriBridge: AgentRuntimeBridge = {
 export interface AgentRuntimeClient {
   status(): Promise<AgentRuntimeStatus>;
   configure(config: AgentRuntimeConfigurationInput): Promise<AgentRuntimeConfiguration>;
+  testConnection(config: AgentRuntimeConfigurationInput): Promise<void>;
   start(request: AgentRuntimeRunRequest): Promise<AgentRuntimeRunHandle>;
   cancel(runId: string): Promise<void>;
   history(request: AgentRuntimeHistoryRequest): Promise<AgentRuntimeHistory>;
@@ -129,6 +130,10 @@ export const createAgentRuntimeClient = (bridge: AgentRuntimeBridge = tauriBridg
   async start(request) {
     if (!bridge.available()) throw unavailable();
     return bridge.invoke<AgentRuntimeRunHandle>("agent_runtime_start", { request });
+  },
+  async testConnection(config) {
+    if (!bridge.available()) throw unavailable();
+    return bridge.invoke<void>("agent_runtime_test_connection", { config });
   },
   async cancel(runId) {
     if (!bridge.available()) throw unavailable();

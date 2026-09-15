@@ -8,6 +8,7 @@ import type {
 } from "../../composables/useOrderDragAndDrop";
 import type { AlignmentGapEdge, LanguageSide, WorkspaceMode } from "../../domain/kernel-client";
 import type { AlignmentBlockView, OrderSelection } from "../../domain/workspace-projection";
+import WorkspaceScrollbar from "./WorkspaceScrollbar.vue";
 import AlignmentRelationRail from "./AlignmentRelationRail.vue";
 import AlignmentSideBlock from "./AlignmentSideBlock.vue";
 import OrderDropZone from "./OrderDropZone.vue";
@@ -74,6 +75,7 @@ const viewportRef = ref<HTMLElement | null>(null);
 const viewportWidth = ref(0);
 const viewportHeight = ref(0);
 const scrollTop = ref(0);
+const scrollbarDragging = ref(false);
 const rowList = computed(() => props.rows);
 const { positions, totalHeight, visiblePositions, reportHeight, resetMeasurements } = useAlignedBlockLayout({
   rows: rowList,
@@ -153,7 +155,7 @@ const measureViewport = () => {
   if (!viewport) return;
   viewportWidth.value = viewport.clientWidth;
   viewportHeight.value = viewport.clientHeight;
-  emit("scrollbarWidth", Math.max(0, viewport.offsetWidth - viewport.clientWidth));
+  emit("scrollbarWidth", 28);
 };
 const handleScroll = () => {
   scrollTop.value = viewportRef.value?.scrollTop ?? 0;
@@ -166,7 +168,7 @@ watch([scrollTop, totalHeight, viewportHeight], () => {
 watch(positions, (currentPositions, previousPositions) => {
   const viewport = viewportRef.value;
   const currentScrollTop = scrollTop.value;
-  if (!viewport || currentScrollTop <= 0 || !previousPositions.length || !currentPositions.length) return;
+  if (scrollbarDragging.value || !viewport || currentScrollTop <= 0 || !previousPositions.length || !currentPositions.length) return;
   let previousAnchor = previousPositions[0];
   for (const position of previousPositions) {
     if (position.bandTop > currentScrollTop) break;
@@ -260,10 +262,22 @@ const measure = async () => {
   await nextTick();
   measureViewport();
 };
+const unlinkedMarkers = computed(() => positions.value.filter(position => !position.block.linked).map(position => ({
+  id: (position.block.sourceSegments[0] ?? position.block.targetSegments[0]).id,
+  top: position.bandTop, height: position.bandHeight,
+})));
+const jumpUnlinked = (segmentId: string) => {
+  const position = positions.value.find(item => [...item.block.sourceSegments, ...item.block.targetSegments].some(segment => segment.id === segmentId));
+  const viewport = viewportRef.value;
+  if (!position || !viewport) return;
+  viewport.scrollTo({ top: position.bandTop, behavior: "instant" });
+  handleScroll();
+};
 defineExpose({ scrollToProgress, focusAlignment, focusSegment, focusSegments, focusViewport, measure });
 </script>
 
 <template>
+  <div class="aligned-workspace-scroll-host">
   <div
     ref="viewportRef"
     class="aligned-workspace-viewport"
@@ -387,10 +401,14 @@ defineExpose({ scrollToProgress, focusAlignment, focusSegment, focusSegments, fo
       </section>
     </div>
   </div>
+  <WorkspaceScrollbar :scroll-top="scrollTop" :viewport-height="viewportHeight" :total-height="totalHeight" :markers="unlinkedMarkers" @scroll="scrollToProgress" @jump="jumpUnlinked" @dragging="scrollbarDragging = $event" />
+  </div>
 </template>
 
 <style scoped>
-.aligned-workspace-viewport { --alignment-gutter: 176px; min-height: 0; flex: 1 1 auto; overflow: auto; overflow-anchor: none; overscroll-behavior: contain; scrollbar-gutter: stable; @apply bg-raised; }
+.aligned-workspace-scroll-host { display: flex; flex: 1; min-height: 0; min-width: 0; }
+.aligned-workspace-viewport::-webkit-scrollbar { display: none; }
+.aligned-workspace-viewport { --alignment-gutter: 176px; min-height: 0; flex: 1 1 auto; overflow: auto; overflow-anchor: none; overscroll-behavior: contain; scrollbar-width: none; @apply bg-raised; }
 .aligned-workspace-canvas { position: relative; display: grid; grid-template-columns: minmax(0, var(--source-column-fr)) var(--alignment-gutter) minmax(0, var(--target-column-fr)); width: 100%; min-height: 100%; }
 .aligned-workspace-column, .aligned-workspace-relations { position: relative; min-width: 0; height: 100%; }
 .aligned-workspace-relations { border-right: 1px solid var(--line); border-left: 1px solid var(--line); @apply bg-subtle; }

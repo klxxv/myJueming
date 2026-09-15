@@ -120,6 +120,7 @@ pub fn run() {
             connection::agent_connection_config,
             agent_runtime::agent_runtime_status,
             agent_runtime::agent_runtime_configure,
+            agent_runtime::agent_runtime_test_connection,
             agent_runtime::agent_runtime_start,
             agent_runtime::agent_runtime_cancel,
             agent_runtime::agent_runtime_history,

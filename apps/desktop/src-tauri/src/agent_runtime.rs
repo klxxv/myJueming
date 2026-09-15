@@ -59,6 +59,14 @@ pub(crate) async fn agent_runtime_configure(
 }
 
 #[tauri::command]
+pub(crate) async fn agent_runtime_test_connection(
+    config: RuntimeConfigurationInput,
+    runtime: State<'_, AgentRuntimeState>,
+) -> Result<(), String> {
+    runtime.runtime()?.test_connection(config).await
+}
+
+#[tauri::command]
 pub(crate) async fn agent_runtime_start(
     request: RunRequest,
     runtime: State<'_, AgentRuntimeState>,
