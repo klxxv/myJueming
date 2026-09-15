@@ -41,3 +41,9 @@ gh workflow run package-desktop.yml --ref <branch>
 已有失败运行重跑会使用原提交；要验证修复，应先将修复提交到远端，再查看新运行。
 
 官方参数参考：[GitHub 手动运行工作流](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)、[Tauri CLI](https://v2.tauri.app/reference/cli/)。
+
+## Rust 缓存回收测试的进程隔离
+
+运行 `35007120708` 的前端检查与 macOS Universal 验证已通过，Windows 随后在 `dataflow_v2` 的缓存回收断言失败。`GC_GATE` 是进程级锁，同一测试二进制里的其他图执行可能仍持有读锁；独立临时工程目录不会隔离这把锁。
+
+缓存复用测试保留在 `dataflow_v2.rs`；回收验证放到独立集成测试二进制 `data_pool_gc.rs`，按顺序验证执行 pin 拒绝回收、view pin 保留输出及依赖、释放后删除产物并将实际缓存命中转为 miss。保留生产 `try_write` 行为，不通过串行化整个测试套件或忽略错误掩盖争用。

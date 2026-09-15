@@ -324,9 +324,8 @@ fn identical_runs_reuse_computation_but_keep_distinct_run_provenance() {
     assert_ne!(first[0].handle, second[0].handle);
     assert_eq!(second[0].run_id, "second");
     assert_eq!(first[0].sha256, second[0].sha256);
-    pool.collect(&Default::default()).unwrap();
-    // GC clears rebuildable outputs; references become cache misses, never false hits.
-    assert!(pool.cached_outputs(&"0".repeat(64), "1").is_none());
+    // Cache collection has a process-wide gate and is tested in data_pool_gc.rs,
+    // separately from the graph executions running in parallel in this binary.
 }
 
 #[test]
