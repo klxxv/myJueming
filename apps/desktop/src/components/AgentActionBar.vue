@@ -29,17 +29,17 @@ const emit = defineEmits<{ approve: [id: string]; reject: [id: string] }>();
 </template>
 
 <style scoped>
-.agent-review { padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-raised); color: var(--ink-900); }
+.agent-review { padding: 13px; border: 1px solid var(--line); border-radius: 10px; @apply bg-raised text-ink-900; }
 .agent-review__heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
-.agent-review__heading span, summary, small { color: var(--ink-500); font-size: 11px; }
+.agent-review__heading span, summary, small { @apply text-ink-500; font-size: 11px; }
 details { margin-top: 10px; } summary { cursor: pointer; }
 .agent-review__changes { max-height: 210px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 article { display: grid; gap: 6px; padding-top: 10px; }
 del, ins { display: block; padding: 7px; border-radius: 4px; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 12px; line-height: 1.6; }
-del { background: var(--surface-muted); text-decoration-color: var(--ink-500); }
-ins { background: var(--surface-green-soft); text-decoration: none; color: var(--green-900); }
+del { @apply bg-muted; text-decoration-color: var(--ink-500); }
+ins { @apply bg-green-soft; text-decoration: none; @apply text-accent-strong; }
 .agent-review__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-button { min-height: 34px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-700); background: var(--surface-raised); cursor: pointer; }
-.agent-review__approve { background: var(--green-700); border-color: var(--green-700); color: var(--paper); }
+button { min-height: 34px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; @apply text-ink-700 bg-raised; cursor: pointer; }
+.agent-review__approve { @apply bg-accent-solid border-accent text-white; }
 button:disabled { opacity: .55; cursor: wait; }
 </style>

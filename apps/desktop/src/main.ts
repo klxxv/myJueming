@@ -9,3 +9,5 @@ initializeLocale();
 app.use(i18n);
 app.use(createPinia());
 app.mount("#app");
+
+// temporary theme probe reload

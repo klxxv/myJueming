@@ -1,3 +1,5 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { observeNativeTheme, type SystemTheme } from "./system-theme";
 import { invoke } from "@tauri-apps/api/core";
 import { fallbackLanguages } from "./languages";
 import type { Encoding } from "./import-encoding";
@@ -330,6 +332,7 @@ export interface KernelClient {
   deleteAnnotation(annotationId: string): Promise<WorkspaceProject>;
   resolveAnnotation(annotationId: string): Promise<WorkspaceProject>;
   exportProject(format: ExportFormat, outputPath: string): Promise<void>;
+  observeSystemTheme(notify: (theme: SystemTheme) => void): Promise<() => void>;
   loadAppSettings(): Promise<unknown | null>;
   saveAppSettings(settings: AppSettingsEnvelope): Promise<void>;
   resetAppSettings(): Promise<void>;
@@ -482,6 +485,10 @@ export const createKernelClient = (scope: () => CommandScope | null = () => null
   async deleteAnnotation(annotationId) { return mutate("delete_annotation", { annotation_id: annotationId }); },
   async resolveAnnotation(annotationId) { return mutate("resolve_annotation", { annotation_id: annotationId }); },
   async exportProject(format, outputPath) { await invoke("export_project", { request: { format, output_path: outputPath, include_unlinked: true, side_separator: " " } }); },
+  async observeSystemTheme(notify) {
+    if (!inTauri()) return () => undefined;
+    return observeNativeTheme(getCurrentWindow(), notify);
+  },
   async loadAppSettings() {
     if (inTauri()) return invoke<unknown | null>("load_app_settings");
     const raw = localStorage.getItem(browserSettingsKey);

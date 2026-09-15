@@ -1,6 +1,6 @@
 export const APP_SETTINGS_SCHEMA_VERSION = 2 as const;
 
-export type AppTheme = "light" | "eye";
+export type AppTheme = "light" | "eye" | "dark" | "system";
 export type CacheCleanupPolicy = "startup" | "weekly" | "monthly" | "never";
 export type ShortcutProfile = "auto" | "macos" | "windows";
 export type InterfaceLanguage = "system" | "zh-CN" | "en" | "ja" | "fr" | "de";
@@ -30,6 +30,7 @@ export interface AppSettingsEnvelope {
     };
     appearance: {
       theme: AppTheme;
+      systemLightTheme: "light" | "eye";
       fontScale: number;
       uiScale: number;
       lineSpacing: ReadingLineSpacing;
@@ -110,6 +111,7 @@ export const createDefaultAppSettings = (detectedMacOS: boolean): AppSettingsEnv
     },
     appearance: {
       theme: "light",
+      systemLightTheme: "light",
       fontScale: 100,
       uiScale: 100,
       lineSpacing: "standard",
@@ -216,7 +218,8 @@ export function parseAppSettings(value: unknown, detectedMacOS: boolean): AppSet
         restoreWindowBounds: booleanValue(general.restoreWindowBounds, defaults.device.general.restoreWindowBounds),
       },
       appearance: {
-        theme: enumValue(appearance.theme, ["light", "eye"], defaults.device.appearance.theme),
+        theme: enumValue(appearance.theme, ["light", "eye", "dark", "system"], defaults.device.appearance.theme),
+        systemLightTheme: enumValue(appearance.systemLightTheme, ["light", "eye"], defaults.device.appearance.systemLightTheme),
         fontScale: numberValue(appearance.fontScale, defaults.device.appearance.fontScale, 90, 130),
         uiScale: numberValue(appearance.uiScale, defaults.device.appearance.uiScale, 85, 115),
         lineSpacing: enumValue(appearance.lineSpacing, ["compact", "standard", "relaxed"], defaults.device.appearance.lineSpacing),
@@ -309,7 +312,7 @@ export function migrateLegacySettings(storage: Storage, detectedMacOS: boolean):
   const shortcutProfile = storage.getItem("jueming-shortcut-profile");
   const trackpadOptimized = storage.getItem("jueming-trackpad-optimized");
 
-  if (theme === "light" || theme === "eye") migrated.device.appearance.theme = theme;
+  if (theme === "light" || theme === "eye" || theme === "dark" || theme === "system") migrated.device.appearance.theme = theme;
   if (Number.isFinite(fontScale) && fontScale >= 90 && fontScale <= 130) migrated.device.appearance.fontScale = fontScale;
   if (Number.isFinite(uiScale) && uiScale >= 85 && uiScale <= 115) migrated.device.appearance.uiScale = uiScale;
   if ([1000, 3000, 5000, 10000, 30000].includes(autoSaveDelayMs)) migrated.device.persistence.autoSaveDelayMs = autoSaveDelayMs;

@@ -31,7 +31,7 @@
 - 包管理：pnpm workspace，版本由根目录 `package.json` 和 `pnpm-lock.yaml` 锁定。
 - CI：`.github/workflows/package-desktop.yml`。
 
-项目没有引入 Tailwind。视觉主题通过 `apps/desktop/src/styles.css` 中的语义 CSS 变量和 Vue scoped CSS 实现；新增表面色时应复用主题变量，避免硬编码白色背景导致护眼模式失效。
+项目使用 Tailwind CSS 3.4（兼容现有 macOS WebView），通过 PostCSS 接入 Vite，禁用 Preflight 以保留原生控件与既有排版。`apps/desktop/tailwind.config.ts` 将语义颜色映射到 `apps/desktop/src/styles.css` 的主题变量，`data-theme` 是明亮、暗黑、护眼主题的唯一来源。通用样式使用 Tailwind utilities，既有 scoped 选择器可用 `@apply` 复用语义 utilities；动态对齐坐标和动画保留专用 CSS。新增表面色应复用 `bg-raised`、`text-ink-900`、`border-line` 等语义类，避免写死浅色或在每个组件重复暗色值。
 
 ## 不可破坏的领域不变量
 

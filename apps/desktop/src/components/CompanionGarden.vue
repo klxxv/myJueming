@@ -30,7 +30,7 @@ onBeforeUnmount(() => controller.dispose());
 </template>
 
 <style scoped>
-.companion-garden { position: relative; z-index: 5; display: flex; grid-column: 2; grid-row: 1; align-self: end; align-items: center; gap: 26px; width: 100%; min-width: 0; min-height: 154px; max-height: min(300px, calc(100% - 18px)); padding: 16px 26px 14px; overflow: auto; visibility: hidden; border-top: 1px solid var(--line); border-top-left-radius: 18px; color: var(--ink-900); background: var(--surface-subtle); box-shadow: 0 -14px 30px rgb(38 66 43 / 10%); opacity: 0; pointer-events: none; transform: translateY(calc(100% + 2px)); transition: transform 320ms cubic-bezier(.22, .86, .24, 1), opacity 180ms ease, visibility 0s linear 320ms; }
+.companion-garden { position: relative; z-index: 5; display: flex; grid-column: 2; grid-row: 1; align-self: end; align-items: center; gap: 26px; width: 100%; min-width: 0; min-height: 154px; max-height: min(300px, calc(100% - 18px)); padding: 16px 26px 14px; overflow: auto; visibility: hidden; border-top: 1px solid var(--line); border-top-left-radius: 18px; @apply text-ink-900 bg-subtle; box-shadow: 0 -14px 30px rgb(38 66 43 / 10%); opacity: 0; pointer-events: none; transform: translateY(calc(100% + 2px)); transition: transform 320ms cubic-bezier(.22, .86, .24, 1), opacity 180ms ease, visibility 0s linear 320ms; }
 .companion-garden--open { visibility: visible; opacity: 1; pointer-events: auto; transform: translateY(0); transition-delay: 0s; }
 .garden-meadow { position: relative; flex: 0 0 310px; height: 112px; }
 .garden-plant { position: absolute; bottom: -6px; left: 48px; width: 210px; height: 78px; transform-origin: bottom center; }
@@ -42,11 +42,11 @@ onBeforeUnmount(() => controller.dispose());
 .garden-rest, .garden-work { flex: 1; min-width: 0; }
 .garden-rest { display: flex; flex-direction: column; gap: 5px; }
 .garden-rest strong { font-size: var(--jm-font-size-body); line-height: var(--jm-line-height-body); }
-.garden-rest span, .garden-work p { color: var(--ink-500); font-size: var(--jm-font-size-callout); line-height: var(--jm-line-height-callout); }
+.garden-rest span, .garden-work p { @apply text-ink-500; font-size: var(--jm-font-size-callout); line-height: var(--jm-line-height-callout); }
 .garden-work__label { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 10px; }
 .garden-work__label strong { font-size: 12px; }
-.garden-work__label span { color: var(--ink-500); font-size: 11px; }
-.garden-work__label button { margin-left: auto; border: 0; color: var(--green-700); background: transparent; font-size: 11px; cursor: pointer; }
+.garden-work__label span { @apply text-ink-500; font-size: 11px; }
+.garden-work__label button { margin-left: auto; border: 0; @apply text-accent; background: transparent; font-size: 11px; cursor: pointer; }
 .garden-work :deep(.agent-review__changes) { max-height: 100px; }
 .garden-work :deep(.agent-review) { padding: 10px 13px; }
 @media (max-width: 900px) {

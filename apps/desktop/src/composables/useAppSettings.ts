@@ -12,7 +12,7 @@ export type {
 
 type UseAppSettingsOptions = {
   detectedMacOS: boolean;
-  kernelClient: Pick<KernelClient, "loadAppSettings" | "saveAppSettings" | "resetAppSettings" | "clearCache">;
+  kernelClient: Pick<KernelClient, "loadAppSettings" | "saveAppSettings" | "resetAppSettings" | "clearCache"> & Partial<Pick<KernelClient, "observeSystemTheme">>;
   onStatus: (message: LocalizedMessage) => void;
 };
 

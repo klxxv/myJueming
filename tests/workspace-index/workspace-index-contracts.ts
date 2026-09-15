@@ -120,6 +120,10 @@ const countedRows = buildAlignmentBlocks(countedSource, countedTarget, countedRe
 assert.equal(countedRows.length, 300);
 assert.ok(orderReads < 300 * 30, `1:1 projection must not scan every document for every relation: ${orderReads}`);
 
+const frames = new Map<number, FrameRequestCallback>();
+let frameId = 0;
+globalThis.requestAnimationFrame = callback => { frames.set(++frameId, callback); return frameId; };
+globalThis.cancelAnimationFrame = id => { frames.delete(id); };
 const renderer = createRenderer<object, object>({
   createElement: () => ({}), createText: () => ({}), createComment: () => ({}),
   insert() {}, remove() {}, setText() {}, setElementText() {}, patchProp() {}, parentNode: () => null, nextSibling: () => null,
@@ -132,6 +136,11 @@ const app = renderer.createApp({ setup() {
 } });
 app.mount({});
 for (let i = 0; i < 20; i++) layout.reportHeight(`relation-${i}`, "source", 76 + i * 17);
+assert.equal(frames.size, 1, "measurements share one animation frame");
+const pendingFrames = [...frames.values()];
+frames.clear();
+pendingFrames.forEach(callback => callback(0));
+assert.equal(layout.positions.value[19].sourceHeight, 76 + 19 * 17);
 for (const offset of [-100, 0, 76, 720, 1459, 2500, 26_000, 1_000_000]) {
   scrollTop.value = offset;
   const expected = layout.positions.value.filter(position => position.bandTop + position.bandHeight >= Math.max(0, offset - 720)

@@ -13,7 +13,7 @@ import { setUiLocale, t, formatNumber, type LocalizedMessage } from "../i18n";
 
 type AppSettingsStoreOptions = {
   detectedMacOS: boolean;
-  kernelClient: Pick<KernelClient, "loadAppSettings" | "saveAppSettings" | "resetAppSettings" | "clearCache">;
+  kernelClient: Pick<KernelClient, "loadAppSettings" | "saveAppSettings" | "resetAppSettings" | "clearCache"> & Partial<Pick<KernelClient, "observeSystemTheme">>;
   onStatus: (message: LocalizedMessage) => void;
 };
 
@@ -34,7 +34,11 @@ export const useAppSettingsStore = defineStore("app-settings", () => {
   let onStatus: AppSettingsStoreOptions["onStatus"] = () => undefined;
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let reducedMotionQuery: MediaQueryList | null = null;
+  let colorSchemeQuery: MediaQueryList | null = null;
   let listenersAttached = false;
+  let nativeTheme: "light" | "dark" | null = null;
+  let unlistenNativeTheme: (() => void) | null = null;
+  let themeListenerGeneration = 0;
 
   const usesMacShortcuts = computed(() => settings.value.device.input.shortcutProfile === "macos"
     || (settings.value.device.input.shortcutProfile === "auto" && detectedMacOS.value));
@@ -98,11 +102,25 @@ export const useAppSettingsStore = defineStore("app-settings", () => {
     if (!hydrated.value) settings.value = createDefaultAppSettings(options.detectedMacOS);
   }
 
+  function applyThemeToDocument() {
+    const preference = settings.value.device.appearance.theme;
+    const systemTheme = nativeTheme ?? ((colorSchemeQuery ?? window.matchMedia("(prefers-color-scheme: dark)")).matches ? "dark" : "light");
+    document.documentElement.dataset.theme = preference === "system"
+      ? (systemTheme === "dark" ? "dark" : settings.value.device.appearance.systemLightTheme)
+      : preference;
+  }
+
+  function handleSystemThemeChange(event?: MediaQueryListEvent) {
+    // A fresh media event must not be masked by a cached native snapshot.
+    if (event) nativeTheme = event.matches ? "dark" : "light";
+    if (settings.value.device.appearance.theme === "system") applyThemeToDocument();
+  }
+
   function applySettingsToDocument() {
     const root = document.documentElement;
     const device = settings.value.device;
     setUiLocale(device.general.interfaceLanguage);
-    root.dataset.theme = device.appearance.theme;
+    applyThemeToDocument();
     root.dataset.lineSpacing = device.appearance.lineSpacing;
     root.dataset.listDensity = device.appearance.listDensity;
     root.dataset.sidebarSize = device.appearance.sidebarSize;
@@ -155,16 +173,35 @@ export const useAppSettingsStore = defineStore("app-settings", () => {
 
   function attachRuntimeListeners() {
     if (listenersAttached) return;
+    colorSchemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    colorSchemeQuery.addEventListener("change", handleSystemThemeChange);
     reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     handleSystemMotionChange(reducedMotionQuery);
     reducedMotionQuery.addEventListener("change", handleSystemMotionChange);
     window.addEventListener("focus", handleFocus);
     window.addEventListener("blur", handleBlur);
     listenersAttached = true;
+    const generation = ++themeListenerGeneration;
+    void client?.observeSystemTheme?.((theme) => {
+      if (!listenersAttached || generation !== themeListenerGeneration) return;
+      nativeTheme = theme;
+      handleSystemThemeChange();
+    }).then((unlisten) => {
+      if (!listenersAttached || generation !== themeListenerGeneration) unlisten();
+      else unlistenNativeTheme = unlisten;
+    }).catch(() => {
+      // Native theme may be unavailable; retain the browser media-query fallback.
+    });
   }
 
   function disposeRuntimeListeners() {
     if (!listenersAttached) return;
+    themeListenerGeneration++;
+    unlistenNativeTheme?.();
+    unlistenNativeTheme = null;
+    nativeTheme = null;
+    colorSchemeQuery?.removeEventListener("change", handleSystemThemeChange);
+    colorSchemeQuery = null;
     reducedMotionQuery?.removeEventListener("change", handleSystemMotionChange);
     window.removeEventListener("focus", handleFocus);
     window.removeEventListener("blur", handleBlur);

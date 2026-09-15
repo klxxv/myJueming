@@ -221,44 +221,44 @@ function toggleAutomaticLocation(event: Event) {
 </template>
 
 <style scoped>
-.research-settings { color: var(--ink-900); }
-.research-card { overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised); }
+.research-settings { @apply text-ink-900; }
+.research-card { overflow: hidden; border: 1px solid var(--line); border-radius: 12px; @apply bg-raised; }
 .feature-toggle, .preference-row { display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: 24px; padding: 15px 17px; }
 .feature-toggle > span, .preference-row > span { min-width: 0; }
 .feature-toggle strong, .preference-row strong { display: block; font-size: var(--jm-font-size-body); }
-.feature-toggle small, .preference-row small { display: block; margin-top: 5px; color: var(--ink-500); font-size: var(--jm-font-size-callout); line-height: 1.5; }
+.feature-toggle small, .preference-row small { display: block; margin-top: 5px; @apply text-ink-500; font-size: var(--jm-font-size-callout); line-height: 1.5; }
 .research-switch { flex: none; width: 38px; height: 22px; accent-color: var(--green-700); }
-.feature-status { padding: 15px 17px; border-top: 1px solid var(--line); background: var(--surface-subtle); }
-.feature-status-heading { display: flex; align-items: center; gap: 8px; color: var(--ink-700); font-size: var(--jm-font-size-callout); }
-.feature-status--ready .feature-status-heading { color: var(--green-900); }
-.feature-status--error { border-inline-start: 3px solid var(--ink-700); background: var(--surface-danger-soft); }
-.feature-status > p { margin: 7px 0 0; color: var(--ink-500); font-size: var(--jm-font-size-callout); line-height: 1.5; overflow-wrap: anywhere; }
+.feature-status { padding: 15px 17px; border-top: 1px solid var(--line); @apply bg-subtle; }
+.feature-status-heading { display: flex; align-items: center; gap: 8px; @apply text-ink-700; font-size: var(--jm-font-size-callout); }
+.feature-status--ready .feature-status-heading { @apply text-accent-strong; }
+.feature-status--error { border-inline-start: 3px solid var(--ink-700); @apply bg-danger-soft; }
+.feature-status > p { margin: 7px 0 0; @apply text-ink-500; font-size: var(--jm-font-size-callout); line-height: 1.5; overflow-wrap: anywhere; }
 .feature-progress { display: grid; gap: 6px; margin-top: 14px; }
 .feature-progress progress { display: block; width: 100%; height: 10px; accent-color: var(--green-700); }
-.feature-progress > span { color: var(--ink-500); font-size: var(--jm-font-size-subheadline); font-variant-numeric: tabular-nums; }
+.feature-progress > span { @apply text-ink-500; font-size: var(--jm-font-size-subheadline); font-variant-numeric: tabular-nums; }
 .feature-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 14px; }
-.feature-actions button { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); color: var(--ink-700); cursor: pointer; }
-.feature-actions button:hover:enabled { background: var(--surface-hover); }
-.feature-actions .feature-open { border-color: var(--green-700); color: var(--green-900); background: var(--surface-green-soft); }
+.feature-actions button { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; @apply bg-raised text-ink-700; cursor: pointer; }
+.feature-actions button:hover:enabled { @apply bg-hover; }
+.feature-actions .feature-open { @apply border-accent text-accent-strong bg-green-soft; }
 .feature-actions button:disabled, .research-switch:disabled { opacity: .55; cursor: not-allowed; }
-.feature-note, .details-note { color: var(--ink-500); font-size: var(--jm-font-size-callout); line-height: 1.5; }
+.feature-note, .details-note { @apply text-ink-500; font-size: var(--jm-font-size-callout); line-height: 1.5; }
 .feature-note { margin: 10px 4px 20px; }
-.feature-details summary { display: flex; min-height: 54px; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 17px; color: var(--ink-700); cursor: pointer; font-size: var(--jm-font-size-body); font-weight: var(--jm-font-weight-semibold); list-style: none; }
+.feature-details summary { display: flex; min-height: 54px; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 17px; @apply text-ink-700; cursor: pointer; font-size: var(--jm-font-size-body); font-weight: var(--jm-font-weight-semibold); list-style: none; }
 .feature-details summary::-webkit-details-marker { display: none; }
-.feature-details summary:hover { background: var(--surface-hover); }
+.feature-details summary:hover { @apply bg-hover; }
 .feature-details summary:focus-visible { outline: 2px solid var(--green-700); outline-offset: -3px; }
 :global(html[data-enhanced-focus="on"]) .feature-details summary:focus-visible { outline-width: 3px; }
 :global(html[data-larger-targets="on"]) .feature-actions button { min-height: 42px; }
 .feature-details[open] summary { border-bottom: 1px solid var(--line); }
 .feature-details[open] summary svg { transform: rotate(180deg); }
-.feature-details-body h3 { margin: 18px 17px 3px; color: var(--ink-700); font-size: var(--jm-font-size-callout); }
+.feature-details-body h3 { margin: 18px 17px 3px; @apply text-ink-700; font-size: var(--jm-font-size-callout); }
 .preference-row { gap: 18px; }
 .preference-row + .preference-row { border-top: 1px solid var(--line); }
 .preference-row select { flex: none; }
 .details-note { margin: 2px 17px 17px; }
 .resource-summary { margin: 0 17px 14px; }
 .resource-summary > div { display: flex; justify-content: space-between; gap: 18px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: var(--jm-font-size-callout); }
-.resource-summary dt { color: var(--ink-500); }
-.resource-summary dd { margin: 0; color: var(--ink-700); text-align: right; }
+.resource-summary dt { @apply text-ink-500; }
+.resource-summary dd { margin: 0; @apply text-ink-700; text-align: right; }
 @media (max-width: 760px) { .preference-row { flex-wrap: wrap; gap: 12px; } .preference-row > span { flex: 1 1 180px; } }
 </style>

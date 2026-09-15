@@ -13,6 +13,7 @@ if (!esbuildPackage.startsWith(path.join(workspace, "node_modules"))) {
 }
 
 const productionContracts = [
+  "tests/alignment-layout/run-contracts.mjs",
   "tests/workspace-index/run-contracts.mjs",
   "tests/comparison/run-contracts.mjs",
   "tests/architecture/run-contracts.mjs",

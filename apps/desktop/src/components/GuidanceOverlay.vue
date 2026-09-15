@@ -36,5 +36,5 @@ onBeforeUnmount(dispose);
 <template><div v-if="position && visible" ref="icon" class="guidance" :style="{ left: `${position.x}px`, top: `${position.y}px` }" role="status"><img :src="butterfly" alt="" /><span>{{ target?.label }}</span></div></template>
 
 <style scoped>
-.guidance { position: fixed; z-index: 60; display: flex; gap: 6px; align-items: center; pointer-events: none; }.guidance img { width: 32px; height: 28px; }.guidance span { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-raised); color: var(--green-900); font-size: 11px; box-shadow: 0 3px 10px rgb(35 55 38 / 8%); }
+.guidance { position: fixed; z-index: 60; display: flex; gap: 6px; align-items: center; pointer-events: none; }.guidance img { width: 32px; height: 28px; }.guidance span { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; @apply bg-raised text-accent-strong; font-size: 11px; box-shadow: 0 3px 10px rgb(35 55 38 / 8%); }
 </style>

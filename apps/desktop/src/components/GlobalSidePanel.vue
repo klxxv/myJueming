@@ -33,15 +33,15 @@ async function navigateTabs(event: KeyboardEvent) {
 </template>
 
 <style scoped>
-.global-panel { height: 100%; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); color: var(--ink-900); background: var(--surface-raised); }
+.global-panel { height: 100%; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); @apply text-ink-900 bg-raised; }
 .global-panel__header { display: flex; align-items: center; justify-content: space-between; min-height: 53px; padding: 8px 12px; gap: 4px; border-bottom: 1px solid var(--line); }
 .global-panel__tabs { display: flex; gap: 4px; min-width: 0; }
-.global-panel button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border: 0; border-radius: 7px; padding: 6px 10px; color: var(--ink-700); background: transparent; cursor: pointer; }
-.global-panel button[aria-selected="true"] { color: var(--green-900); background: var(--surface-green-soft); font-weight: 600; }
-.global-panel button:hover { background: var(--surface-hover); }
-.count { font-size: 11px; color: var(--ink-500); }
-.global-panel__scope { margin: 0; padding: 9px 15px; border-bottom: 1px solid var(--line); color: var(--ink-500); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.global-panel__content { flex: 1; min-height: 0; overflow: hidden; background: var(--surface-subtle); }
+.global-panel button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border: 0; border-radius: 7px; padding: 6px 10px; @apply text-ink-700; background: transparent; cursor: pointer; }
+.global-panel button[aria-selected="true"] { @apply text-accent-strong bg-green-soft; font-weight: 600; }
+.global-panel button:hover { @apply bg-hover; }
+.count { font-size: 11px; @apply text-ink-500; }
+.global-panel__scope { margin: 0; padding: 9px 15px; border-bottom: 1px solid var(--line); @apply text-ink-500; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.global-panel__content { flex: 1; min-height: 0; overflow: hidden; @apply bg-subtle; }
 .global-panel__content :deep(.annotation-heading) { display: none; }
 .global-panel__content :deep(.annotation-workspace) { border: 0; box-shadow: none; }
 .global-panel__content :deep(.annotation-filter) { padding-top: 13px; }

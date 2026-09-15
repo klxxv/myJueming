@@ -37,8 +37,9 @@ export function useAlignedBlockLayout({
   scrollTop: Ref<number>;
   viewportHeight: Ref<number>;
 }) {
-  const measuredSourceHeights = shallowRef(new Map<string, number>());
-  const measuredTargetHeights = shallowRef(new Map<string, number>());
+  const measurements = shallowRef({ source: new Map<string, number>(), target: new Map<string, number>() });
+  let measurementFrame: number | null = null;
+  const pendingMeasurements = { source: new Map<string, number>(), target: new Map<string, number>() };
   const blocksById = computed(() => new Map(rows.value.map(block => [block.alignmentId, block])));
 
   const columnWidth = computed(() => Math.max(320, (viewportWidth.value - 176) / 2));
@@ -51,9 +52,9 @@ export function useAlignedBlockLayout({
   const positions = computed<AlignedBlockPosition[]>(() => {
     let bandTop = 0;
     return rows.value.map((block) => {
-      const sourceHeight = measuredSourceHeights.value.get(block.alignmentId)
+      const sourceHeight = measurements.value.source.get(block.alignmentId)
         ?? estimateSideHeight(block, "source");
-      const targetHeight = measuredTargetHeights.value.get(block.alignmentId)
+      const targetHeight = measurements.value.target.get(block.alignmentId)
         ?? estimateSideHeight(block, "target");
       const bandHeight = Math.max(MIN_ALIGNMENT_HEIGHT, sourceHeight, targetHeight);
       const position = {
@@ -96,17 +97,30 @@ export function useAlignedBlockLayout({
     const block = blocksById.value.get(alignmentId);
     if (block && (side === "source" ? block.sourceSegments : block.targetSegments).some(segment => segment.loaded === false)) return;
     if (!Number.isFinite(height) || height <= 0) return;
-    const target = side === "source" ? measuredSourceHeights : measuredTargetHeights;
-    const previousHeight = target.value.get(alignmentId);
-    if (previousHeight !== undefined && Math.abs(previousHeight - height) < 0.001) return;
-    const next = new Map(target.value);
-    next.set(alignmentId, height);
-    target.value = next;
+    const previousHeight = pendingMeasurements[side].get(alignmentId) ?? measurements.value[side].get(alignmentId);
+    if (previousHeight !== undefined && Math.abs(previousHeight - height) < 0.5) return;
+    pendingMeasurements[side].set(alignmentId, height);
+    if (measurementFrame !== null) return;
+    measurementFrame = requestAnimationFrame(() => {
+      measurementFrame = null;
+      // Publish both columns together so layout and anchor updates share one batch.
+      const next = { source: new Map(measurements.value.source), target: new Map(measurements.value.target) };
+      for (const column of ["source", "target"] as const) {
+        for (const [id, measuredHeight] of pendingMeasurements[column]) {
+          if (blocksById.value.has(id)) next[column].set(id, measuredHeight);
+        }
+        pendingMeasurements[column].clear();
+      }
+      measurements.value = next;
+    });
   };
 
   const resetMeasurements = () => {
-    measuredSourceHeights.value = new Map();
-    measuredTargetHeights.value = new Map();
+    if (measurementFrame !== null) cancelAnimationFrame(measurementFrame);
+    measurementFrame = null;
+    pendingMeasurements.source.clear();
+    pendingMeasurements.target.clear();
+    measurements.value = { source: new Map(), target: new Map() };
   };
 
   watch(
@@ -133,8 +147,8 @@ export function useAlignedBlockLayout({
           console.debug("[jueming:alignment-layout]", {
             blocks: positions.value.length,
             visibleBlocks: visiblePositions.value.length,
-            measuredSource: measuredSourceHeights.value.size,
-            measuredTarget: measuredTargetHeights.value.size,
+            measuredSource: measurements.value.source.size,
+            measuredTarget: measurements.value.target.size,
             totalHeight: totalHeight.value,
             alignmentGap: ALIGNMENT_GAP,
             connectorY: FIRST_LINE_CONNECTOR_Y,
@@ -148,6 +162,7 @@ export function useAlignedBlockLayout({
 
   onBeforeUnmount(() => {
     if (debugFrame !== null) cancelAnimationFrame(debugFrame);
+    if (measurementFrame !== null) cancelAnimationFrame(measurementFrame);
   });
 
   return {

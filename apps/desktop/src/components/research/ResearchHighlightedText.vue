@@ -21,5 +21,5 @@ const pieces = computed(() => {
 <template><span><template v-for="(piece, index) in pieces" :key="index"><mark v-if="piece.highlighted">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></span></template>
 
 <style scoped>
-mark { color: var(--green-900); background: var(--surface-green-soft); border-radius: 3px; padding-block: 1px; }
+mark { @apply text-accent-strong bg-green-soft; border-radius: 3px; padding-block: 1px; }
 </style>

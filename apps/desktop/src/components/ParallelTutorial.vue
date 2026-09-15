@@ -206,19 +206,19 @@ const go = (offset: number) => emit("update:step", Math.min(props.steps.length -
 .parallel-tutorial__butterfly { position: fixed; z-index: 3; top: 0; left: 0; width: 24px; height: 24px; pointer-events: none; transform-origin: 50% 50%; }
 .parallel-tutorial__butterfly img { display: block; width: 24px; height: 24px; object-fit: contain; }
 .parallel-tutorial__butterfly-image--resting { animation: parallel-tutorial-butterfly-settle 1.4s ease-in-out 2; }
-.parallel-tutorial__card { position: fixed; z-index: 4; overflow: hidden; border: 1px solid #b8ceb9; border-radius: 12px; color: var(--ink-900); background: var(--surface-raised); box-shadow: 0 18px 50px rgb(24 40 28 / 20%); pointer-events: auto; }
-.parallel-tutorial__card header { display: flex; height: 42px; align-items: center; justify-content: space-between; padding: 0 14px 0 17px; color: var(--green-900); background: var(--surface-green-soft); font-size: var(--jm-font-size-callout); font-weight: var(--jm-font-weight-semibold); }
+.parallel-tutorial__card { position: fixed; z-index: 4; overflow: hidden; border: 1px solid #b8ceb9; border-radius: 12px; @apply text-ink-900 bg-raised; box-shadow: 0 18px 50px rgb(24 40 28 / 20%); pointer-events: auto; }
+.parallel-tutorial__card header { display: flex; height: 42px; align-items: center; justify-content: space-between; padding: 0 14px 0 17px; @apply text-accent-strong bg-green-soft; font-size: var(--jm-font-size-callout); font-weight: var(--jm-font-weight-semibold); }
 .parallel-tutorial__card header button { display: grid; width: 28px; height: 28px; place-items: center; padding: 0; border: 0; border-radius: 6px; background: transparent; cursor: pointer; }
-.parallel-tutorial__card header button:hover { background: var(--surface-hover); }
-.parallel-tutorial__progress { height: 3px; background: var(--line); }
-.parallel-tutorial__progress i { display: block; height: 100%; background: var(--green-700); transition: width 180ms ease; }
-.parallel-tutorial__card h2 { margin: 18px 20px 8px; color: var(--ink-900); font-size: var(--jm-font-size-title-2); font-weight: var(--jm-font-weight-semibold); }
-.parallel-tutorial__card p { min-height: 68px; margin: 0 20px 13px; color: var(--ink-700); font-size: var(--jm-font-size-body); line-height: 1.65; }
-.parallel-tutorial__tip { margin: 0 20px 17px; padding: 9px 11px; border-left: 3px solid var(--green-700); border-radius: 0 6px 6px 0; color: var(--green-900); background: var(--surface-green-soft); font-size: var(--jm-font-size-callout); line-height: 1.5; }
-.parallel-tutorial__card footer { display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; padding: 12px 14px; border-top: 1px solid var(--line); background: var(--surface-subtle); }
-.parallel-tutorial__card footer button { display: inline-flex; height: 32px; align-items: center; justify-content: center; gap: 5px; padding: 0 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-raised); cursor: pointer; white-space: nowrap; }
-.parallel-tutorial__card footer .primary-button { border-color: var(--green-700); color: white; background: var(--green-700); }
-.parallel-tutorial__card footer .parallel-tutorial__reset { border-color: transparent; color: var(--ink-500); background: transparent; }
+.parallel-tutorial__card header button:hover { @apply bg-hover; }
+.parallel-tutorial__progress { height: 3px; @apply bg-line; }
+.parallel-tutorial__progress i { display: block; height: 100%; @apply bg-accent; transition: width 180ms ease; }
+.parallel-tutorial__card h2 { margin: 18px 20px 8px; @apply text-ink-900; font-size: var(--jm-font-size-title-2); font-weight: var(--jm-font-weight-semibold); }
+.parallel-tutorial__card p { min-height: 68px; margin: 0 20px 13px; @apply text-ink-700; font-size: var(--jm-font-size-body); line-height: 1.65; }
+.parallel-tutorial__tip { margin: 0 20px 17px; padding: 9px 11px; border-left: 3px solid var(--green-700); border-radius: 0 6px 6px 0; @apply text-accent-strong bg-green-soft; font-size: var(--jm-font-size-callout); line-height: 1.5; }
+.parallel-tutorial__card footer { display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; padding: 12px 14px; border-top: 1px solid var(--line); @apply bg-subtle; }
+.parallel-tutorial__card footer button { display: inline-flex; height: 32px; align-items: center; justify-content: center; gap: 5px; padding: 0 11px; border: 1px solid var(--line); border-radius: 6px; @apply bg-raised; cursor: pointer; white-space: nowrap; }
+.parallel-tutorial__card footer .primary-button { @apply border-accent; color: white; @apply bg-accent; }
+.parallel-tutorial__card footer .parallel-tutorial__reset { border-color: transparent; @apply text-ink-500; background: transparent; }
 @keyframes parallel-tutorial-butterfly-settle { 0%, 100% { transform: translateY(0) rotate(0); } 45% { transform: translateY(-2px) rotate(-3deg); } 70% { transform: translateY(1px) rotate(2deg); } }
 @media (max-width: 900px) { .parallel-tutorial__card { right: 16px !important; bottom: 72px; left: 16px !important; top: auto !important; width: auto !important; } }
 @media (prefers-reduced-motion: reduce) { .parallel-tutorial__spotlight, .parallel-tutorial__progress i, .parallel-tutorial__trail path { transition: none; } .parallel-tutorial__butterfly-image--resting { animation: none; } }

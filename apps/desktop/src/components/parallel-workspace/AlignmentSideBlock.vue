@@ -63,7 +63,10 @@ const isOrderSelected = (segmentId: string) => props.orderSelection?.side === pr
 let resizeObserver: ResizeObserver | null = null;
 
 const reportSize = () => {
-  const height = rootRef.value?.getBoundingClientRect().height ?? 0;
+  const element = rootRef.value;
+  const rect = element?.getBoundingClientRect();
+  const scale = element && rect && element.offsetWidth ? rect.width / element.offsetWidth : 1;
+  const height = rect ? rect.height / scale : 0;
   if (height > 0) emit("resize", height);
 };
 watch(rootRef, async (element) => {
@@ -72,7 +75,11 @@ watch(rootRef, async (element) => {
   if (!element) return;
   await nextTick();
   reportSize();
-  resizeObserver = new ResizeObserver(reportSize);
+  resizeObserver = new ResizeObserver(entries => {
+    const height = entries[0]?.borderBoxSize[0]?.blockSize;
+    if (height !== undefined && height > 0) emit("resize", height);
+    else reportSize();
+  });
   resizeObserver.observe(element);
 }, { immediate: true, flush: "post" });
 onBeforeUnmount(() => resizeObserver?.disconnect());
@@ -134,12 +141,12 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 </template>
 
 <style scoped>
-.alignment-side-block { position: relative; display: flex; min-width: 0; flex-direction: column; gap: 0; overflow: visible; background: var(--surface-green-soft); transition: background-color 160ms ease, box-shadow 160ms ease; }
-.alignment-side-block--active { background: var(--surface-green-selected); }
+.alignment-side-block { position: relative; display: flex; min-width: 0; flex-direction: column; gap: 0; overflow: visible; @apply bg-green-soft; transition: background-color 160ms ease, box-shadow 160ms ease; }
+.alignment-side-block--active { @apply bg-green-selected; }
 .alignment-side-block--operation-selected { box-shadow: inset 0 0 0 2px #80b686; }
-.alignment-side-block--unlinked { background: var(--surface-warm-soft); }
+.alignment-side-block--unlinked { @apply bg-warm-soft; }
 .alignment-side-block--highlighted { animation: alignment-side-highlight 820ms ease-out; }
-.alignment-side-block__bracket { position: absolute; z-index: 18; top: 11px; bottom: 11px; width: 10px; color: var(--green-700); pointer-events: none; }
+.alignment-side-block__bracket { position: absolute; z-index: 18; top: 11px; bottom: 11px; width: 10px; @apply text-accent; pointer-events: none; }
 .alignment-side-block--source .alignment-side-block__bracket { right: 14px; border-right: 2px solid currentColor; }
 .alignment-side-block--target .alignment-side-block__bracket { left: 14px; border-left: 2px solid currentColor; }
 .alignment-side-block__bracket::before, .alignment-side-block__bracket::after { position: absolute; width: 9px; height: 2px; background: currentColor; content: ""; }
@@ -147,8 +154,8 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 .alignment-side-block--target .alignment-side-block__bracket::before, .alignment-side-block--target .alignment-side-block__bracket::after { left: 0; }
 .alignment-side-block__bracket::before { top: 0; }
 .alignment-side-block__bracket::after { bottom: 0; }
-.alignment-side-block--unlinked .alignment-side-block__bracket { color: #e5a300; }
-.alignment-side-block__pending { position: absolute; z-index: 19; right: 30px; bottom: 3px; color: #d38e00; font-size: var(--jm-font-size-subheadline); font-weight: var(--jm-font-weight-semibold); pointer-events: none; line-height: var(--jm-line-height-subheadline); }
+.alignment-side-block--unlinked .alignment-side-block__bracket { color: var(--text-warning, #e5a300); }
+.alignment-side-block__pending { position: absolute; z-index: 19; right: 30px; bottom: 3px; color: var(--text-warning, #d38e00); font-size: var(--jm-font-size-subheadline); font-weight: var(--jm-font-weight-semibold); pointer-events: none; line-height: var(--jm-line-height-subheadline); }
 .alignment-side-block--target .alignment-side-block__pending { right: auto; left: 30px; }
 @keyframes alignment-side-highlight { 0% { box-shadow: inset 0 0 0 3px rgb(77 155 83 / 45%); } 100% { box-shadow: inset 0 0 0 0 rgb(77 155 83 / 0%); } }
 @media (prefers-reduced-motion: reduce) { .alignment-side-block { transition: none; } .alignment-side-block--highlighted { animation: none; } }

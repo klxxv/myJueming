@@ -41,6 +41,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   visibleSegments: [ids: string[]];
+  scrollProgress: [ratio: number];
   select: [alignmentId: string];
   requestEdit: [segmentId: string, alignmentId: string];
   editDraft: [draft: string];
@@ -84,6 +85,7 @@ const selectionContext = computed<OperationSelectionContext>(() => ({
 }));
 watch(selectionContext, (context) => emit("selection-context", context), { immediate: true });
 type AlignedWorkspaceExposed = {
+  scrollToProgress: (ratio: number) => void;
   focusAlignment: (alignmentId: string) => Promise<boolean>;
   focusSegment: (segmentId: string) => Promise<boolean>;
   focusSegments: (sourceIds: string[], targetIds: string[]) => Promise<boolean>;
@@ -269,7 +271,8 @@ const prepareTutorial = async (preset: TutorialPreset) => {
   if (preset === "find") await openFind();
   if (preset !== "find") await focusSegment(preset === "content" ? "tutorial-source-3" : preset === "unlinked" ? "tutorial-source-5" : "tutorial-source-1");
 };
-defineExpose({ openFind, closeFind, navigateFind, clearSelection, focusSegment, revealSegments, prepareTutorial });
+const scrollToProgress = (ratio: number) => alignedWorkspaceRef.value?.scrollToProgress(ratio);
+defineExpose({ scrollToProgress, openFind, closeFind, navigateFind, clearSelection, focusSegment, revealSegments, prepareTutorial });
 
 const requestEdit = (segmentId: string, alignmentId: string) => {
   const segment = [...props.sourceSegments, ...props.targetSegments].find((candidate) => candidate.id === segmentId);
@@ -577,7 +580,7 @@ onBeforeUnmount(() => {
       <button type="button" :title="t('puiPreviousMatch')" :disabled="!findMatches.length" @click="activateFindMatch(findCursor - 1)"><ArrowUp :size="15" /></button><button type="button" :title="t('puiNextMatch')" :disabled="!findMatches.length" @click="activateFindMatch(findCursor + 1)"><ArrowDown :size="15" /></button><button type="button" :title="t('puiCloseFind')" @click="closeFind"><X :size="16" /></button>
     </div>
     <div class="column-headings" data-tutorial="parallel-columns" :style="{ paddingRight: `${listScrollbarWidth}px` }"><h2>{{ sourceDisplayTitle }} <span>{{ t("puiSourceSuffix") }}</span></h2><div class="heading-divider" aria-hidden="true"></div><h2>{{ targetDisplayTitle }} <span>{{ t("puiTargetSuffix") }}</span></h2></div>
-    <AlignedWorkspaceViewport :revision-key="revisionKey" @visible-segments="emit('visibleSegments', $event)"
+    <AlignedWorkspaceViewport @scroll-progress="emit('scrollProgress', $event)" :revision-key="revisionKey" @visible-segments="emit('visibleSegments', $event)"
       ref="alignedWorkspaceRef"
       :rows="rows"
       :mode="mode"
@@ -624,24 +627,24 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .workspace { --alignment-gutter: 176px; }
-.unified-toolbar { display: flex; min-width: 0; min-height: 55px; align-items: center; gap: 0; overflow: hidden; padding: 0 28px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
+.unified-toolbar { display: flex; min-width: 0; min-height: 55px; align-items: center; gap: 0; overflow: hidden; padding: 0 28px; border-bottom: 1px solid var(--line); @apply bg-subtle; }
 .unified-toolbar__group { display: flex; flex: 0 0 auto; align-items: center; gap: 9px; padding-right: 16px; }
 .unified-toolbar__group + .unified-toolbar__group { padding-left: 16px; border-left: 1px solid var(--line); }
 .unified-toolbar .tool-button { min-width: 34px; height: 34px; justify-content: center; white-space: nowrap; transition: gap 180ms ease, padding 180ms ease; }
 .unified-toolbar .tool-button svg { flex: 0 0 auto; }
 .tool-button__label { display: inline-block; max-width: 9rem; overflow: hidden; opacity: 1; transform: translateX(0); transition: max-width 180ms ease, opacity 120ms ease, transform 180ms ease; }
-.tool-button--link:not(:disabled) { border-color: #a8d0ad; color: var(--green-900); background: var(--surface-green-soft); }
+.tool-button--link:not(:disabled) { border-color: #a8d0ad; @apply text-accent-strong bg-green-soft; }
 .unified-toolbar__group--unlinked-nav { gap: 5px; padding-right: 10px; }
 .unified-toolbar__group + .unified-toolbar__group--unlinked-nav { padding-left: 10px; }
 .unlinked-nav__label { margin-right: 2px; color: var(--ink-600); font-size: var(--jm-font-size-subheadline); white-space: nowrap; line-height: var(--jm-line-height-subheadline); }
 .unified-toolbar .tool-button--icon { width: 34px; padding-inline: 0; justify-content: center; }
-.unified-toolbar__warning { min-width: 0; flex: 0 1 230px; overflow: hidden; margin-left: 12px; color: #916714; font-size: var(--jm-font-size-body); line-height: 1.3; }
-.unified-toolbar__summary { min-width: 0; overflow: hidden; margin-left: auto; color: var(--ink-500); font-size: var(--jm-font-size-subheadline); text-overflow: ellipsis; white-space: nowrap; line-height: var(--jm-line-height-subheadline); }
+.unified-toolbar__warning { min-width: 0; flex: 0 1 230px; overflow: hidden; margin-left: 12px; color: var(--text-warning, #916714); font-size: var(--jm-font-size-body); line-height: 1.3; }
+.unified-toolbar__summary { min-width: 0; overflow: hidden; margin-left: auto; @apply text-ink-500; font-size: var(--jm-font-size-subheadline); text-overflow: ellipsis; white-space: nowrap; line-height: var(--jm-line-height-subheadline); }
 .unified-toolbar__summary--readonly { display: inline-flex; align-items: center; gap: 8px; overflow: visible; }
-.unified-toolbar__summary--readonly button { min-height: 28px; padding: 3px 9px; border: 1px solid var(--green-700); border-radius: 6px; color: var(--green-900); background: var(--surface-green-soft); cursor: pointer; font: inherit; }
-.unified-toolbar__summary--readonly button:hover { background: var(--surface-hover); }
-.selection-clear { margin-left: auto; padding: 5px 9px; border: 0; color: var(--ink-500); background: transparent; font-size: var(--jm-font-size-callout); white-space: nowrap; cursor: pointer; line-height: var(--jm-line-height-callout); }
-.view-find { display: flex; align-items: center; gap: 7px; min-height: 45px; padding: 0 18px; border-bottom: 1px solid #b8d5bb; color: var(--green-900); background: #f4faf2; }.view-find input { flex: 1; min-width: 140px; height: 31px; padding: 0 10px; border: 1px solid #b8cdb9; border-radius: 5px; outline: none; background: #fff; }.view-find input:focus { border-color: var(--green-700); box-shadow: 0 0 0 2px rgb(55 127 66 / 14%); }.view-find span { min-width: 70px; color: var(--ink-500); font-size: var(--jm-font-size-subheadline); text-align: right; line-height: var(--jm-line-height-subheadline); }.view-find button { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid transparent; border-radius: 5px; color: var(--ink-700); background: transparent; cursor: pointer; }.view-find button:hover:not(:disabled) { border-color: #bad2bd; background: #fff; }
+.unified-toolbar__summary--readonly button { min-height: 28px; padding: 3px 9px; border: 1px solid var(--green-700); border-radius: 6px; @apply text-accent-strong bg-green-soft; cursor: pointer; font: inherit; }
+.unified-toolbar__summary--readonly button:hover { @apply bg-hover; }
+.selection-clear { margin-left: auto; padding: 5px 9px; border: 0; @apply text-ink-500; background: transparent; font-size: var(--jm-font-size-callout); white-space: nowrap; cursor: pointer; line-height: var(--jm-line-height-callout); }
+.view-find { display: flex; align-items: center; gap: 7px; min-height: 45px; padding: 0 18px; border-bottom: 1px solid #b8d5bb; @apply text-accent-strong bg-green-soft; }.view-find input { flex: 1; min-width: 140px; height: 31px; padding: 0 10px; border: 1px solid #b8cdb9; border-radius: 5px; outline: none; @apply bg-raised; }.view-find input:focus { @apply border-accent; box-shadow: 0 0 0 2px rgb(55 127 66 / 14%); }.view-find span { min-width: 70px; @apply text-ink-500; font-size: var(--jm-font-size-subheadline); text-align: right; line-height: var(--jm-line-height-subheadline); }.view-find button { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid transparent; border-radius: 5px; @apply text-ink-700; background: transparent; cursor: pointer; }.view-find button:hover:not(:disabled) { border-color: #bad2bd; @apply bg-raised; }
 .column-headings { height: 44px; flex: 0 0 44px; grid-template-columns: minmax(0, var(--source-column-fr)) var(--alignment-gutter) minmax(0, var(--target-column-fr)); }
 @media (max-width: 1360px) {
   .workspace { --alignment-gutter: 138px; }

@@ -67,16 +67,16 @@ onBeforeUnmount(() => { stopResize?.(); bindings.forEach(binding => binding.clea
 
 <style scoped>
 .workspace-panel-strip { display: flex; min-width: 100%; width: max-content; align-items: stretch; }
-.workspace-panel { position: relative; flex: none; min-width: 0; border-right: 1px solid var(--line); background: var(--surface-raised); }
+.workspace-panel { position: relative; flex: none; min-width: 0; border-right: 1px solid var(--line); @apply bg-raised; }
 .workspace-panel--drop { box-shadow: inset 4px 0 var(--green-700); }
-.workspace-panel__header { position: sticky; top: 0; z-index: 25; display: flex; align-items: center; height: 58px; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
+.workspace-panel__header { position: sticky; top: 0; z-index: 25; display: flex; align-items: center; height: 58px; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); @apply bg-subtle; }
 .workspace-panel__title { min-width: 0; flex: 1; display: grid; gap: 4px; }
 .workspace-panel__title strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .workspace-panel__title small { color: var(--text-muted); font-size: 11px; }
 .workspace-panel__handle { display: flex; cursor: grab; padding: 6px 0; }
 .workspace-panel__header button { display: grid; place-items: center; padding: 5px; border: 0; border-radius: 4px; color: var(--text-muted); background: transparent; cursor: pointer; }
-.workspace-panel__header button:hover { background: var(--surface-green-soft); }
+.workspace-panel__header button:hover { @apply bg-green-soft; }
 .workspace-panel__header button:disabled { opacity: .3; }
 .workspace-panel__resize { position: absolute; z-index: 30; top: 0; right: -3px; width: 6px; height: 100%; cursor: col-resize; touch-action: none; }
-.workspace-panel__resize:hover, .workspace-panel__resize:focus-visible { background: var(--green-700); }
+.workspace-panel__resize:hover, .workspace-panel__resize:focus-visible { @apply bg-accent; }
 </style>

@@ -66,6 +66,7 @@ const emit = defineEmits<{
   cancelEdit: [];
   escapeEdit: [];
   scrollbarWidth: [width: number];
+  scrollProgress: [ratio: number];
   visibleSegments: [ids: string[]];
 }>();
 
@@ -158,9 +159,13 @@ const handleScroll = () => {
   scrollTop.value = viewportRef.value?.scrollTop ?? 0;
 };
 
+watch([scrollTop, totalHeight, viewportHeight], () => {
+  emit("scrollProgress", Math.min(1, Math.max(0, scrollTop.value / Math.max(1, totalHeight.value - viewportHeight.value))));
+}, { immediate: true, flush: "post" });
+
 watch(positions, (currentPositions, previousPositions) => {
   const viewport = viewportRef.value;
-  const currentScrollTop = viewport?.scrollTop ?? 0;
+  const currentScrollTop = scrollTop.value;
   if (!viewport || currentScrollTop <= 0 || !previousPositions.length || !currentPositions.length) return;
   let previousAnchor = previousPositions[0];
   for (const position of previousPositions) {
@@ -174,8 +179,8 @@ watch(positions, (currentPositions, previousPositions) => {
   const anchoredScrollTop = Math.max(0, currentAnchor.bandTop + currentScrollTop - previousAnchor.bandTop);
   if (Math.abs(anchoredScrollTop - currentScrollTop) < 0.5) return;
   viewport.scrollTop = anchoredScrollTop;
-  scrollTop.value = anchoredScrollTop;
-}, { flush: "sync" });
+  scrollTop.value = viewport.scrollTop;
+}, { flush: "post" });
 
 let resizeObserver: ResizeObserver | null = null;
 watch(viewportRef, async (viewport) => {
@@ -243,13 +248,19 @@ const focusSegments = async (sourceIds: string[], targetIds: string[]) => {
   });
   return true;
 };
-const focusViewport = () => viewportRef.value?.focus();
+const scrollToProgress = (ratio: number) => {
+  const viewport = viewportRef.value;
+  if (!viewport) return;
+  viewport.scrollTo({ top: Math.max(0, Math.min(1, ratio)) * Math.max(0, totalHeight.value - viewport.clientHeight), behavior: "instant" });
+  handleScroll();
+};
+const focusViewport = () => viewportRef.value?.focus({ preventScroll: true });
 const measure = async () => {
   resetMeasurements();
   await nextTick();
   measureViewport();
 };
-defineExpose({ focusAlignment, focusSegment, focusSegments, focusViewport, measure });
+defineExpose({ scrollToProgress, focusAlignment, focusSegment, focusSegments, focusViewport, measure });
 </script>
 
 <template>
@@ -379,10 +390,10 @@ defineExpose({ focusAlignment, focusSegment, focusSegments, focusViewport, measu
 </template>
 
 <style scoped>
-.aligned-workspace-viewport { --alignment-gutter: 176px; min-height: 0; flex: 1 1 auto; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; background: var(--surface-raised); }
+.aligned-workspace-viewport { --alignment-gutter: 176px; min-height: 0; flex: 1 1 auto; overflow: auto; overflow-anchor: none; overscroll-behavior: contain; scrollbar-gutter: stable; @apply bg-raised; }
 .aligned-workspace-canvas { position: relative; display: grid; grid-template-columns: minmax(0, var(--source-column-fr)) var(--alignment-gutter) minmax(0, var(--target-column-fr)); width: 100%; min-height: 100%; }
 .aligned-workspace-column, .aligned-workspace-relations { position: relative; min-width: 0; height: 100%; }
-.aligned-workspace-relations { border-right: 1px solid var(--line); border-left: 1px solid var(--line); background: var(--surface-subtle); }
+.aligned-workspace-relations { border-right: 1px solid var(--line); border-left: 1px solid var(--line); @apply bg-subtle; }
 .aligned-workspace-positioned-block, .aligned-workspace-positioned-relation { position: absolute; z-index: 3; top: 0; right: 0; left: 0; }
 .aligned-workspace-positioned-relation { z-index: 5; }
 @media (max-width: 1280px) { .aligned-workspace-viewport { --alignment-gutter: 138px; } }

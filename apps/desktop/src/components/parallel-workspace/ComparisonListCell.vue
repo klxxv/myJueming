@@ -56,11 +56,11 @@ onBeforeUnmount(() => { observer.disconnect(); if (frame !== undefined) cancelAn
 </template>
 <style scoped>
 .comparison-cell { position: relative; }
-.comparison-cell__segment { position: absolute; left: 0; right: 0; min-height: 76px; background: var(--surface-green-soft); }
-.comparison-cell__segment--unlinked { background: var(--surface-warm-soft); }
+.comparison-cell__segment { position: absolute; left: 0; right: 0; min-height: 76px; @apply bg-green-soft; }
+.comparison-cell__segment--unlinked { @apply bg-warm-soft; }
 .comparison-cell__relations { display: flex; flex-wrap: nowrap; overflow-x: auto; align-items: center; gap: 5px; padding: 7px 12px; height: 38px; border-bottom: 1px solid var(--line); }
-.comparison-binding { flex: none; display: inline-flex; max-width: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 99px; background: var(--surface-raised); color: var(--green-700); }
-.comparison-binding--active { background: var(--surface-green-selected); outline: 2px solid var(--green-700); }
+.comparison-binding { flex: none; display: inline-flex; max-width: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 99px; @apply bg-raised text-accent; }
+.comparison-binding--active { @apply bg-green-selected; outline: 2px solid var(--green-700); }
 .comparison-binding button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 4px 7px; border: 0; color: inherit; background: transparent; font-size: 11px; cursor: pointer; }
 .comparison-binding button:first-child { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .comparison-binding button + button { border-left: 1px solid var(--line); }

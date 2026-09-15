@@ -139,3 +139,25 @@ MVP 不实现 POS、Lemma、NER、自动语义对齐、OCR、云协作和外部�
 ### 2026-09-13 批注侧栏直角外观
 
 - 批注侧栏外框改为直角，取消左上、左下的 16px 圆角；下拉框外框与箭头底色恢复原有圆角。
+
+### 2026-09-15 · Tailwind 与三主题实施约定
+
+- 按当前用户要求接入 Tailwind CSS 3.4.19 + PostCSS；保留 macOS 11 的既有支持范围，不采用要求 Safari 16.4+ 的 Tailwind 4。禁用 Preflight，避免重置原生表单与阅读排版。
+- `apps/desktop/tailwind.config.ts` 将 `bg-raised`、`text-ink-900`、`border-line` 等 utilities 映射到现有语义变量。设置页面开始使用模板 utilities，其余组件通过 scoped `@apply` 迁移共享颜色；动态坐标、虚拟化布局、动画与领域状态选择器保留专用 CSS。
+- `data-theme="light|eye|dark"` 仍由设备设置驱动；Tailwind 的 `dark:` selector 复用该属性，不维护额外 `.dark` 状态。新增颜色优先接入语义调色板，三个主题不在组件中分别硬编码。
+- 暗色采用中性深灰基础面、较亮浮层与低饱和绿强调；文字强调色与实心按钮填充色分离，增强对比度有独立暗色值。保留品牌与宠物插画原色。
+- 参考 Apple HIG [Dark Mode](https://developer.apple.com/design/human-interface-guidelines/dark-mode)、[Color](https://developer.apple.com/design/human-interface-guidelines/color)，及 Tailwind [浏览器兼容性](https://tailwindcss.com/docs/compatibility)。这里是 WebView 的自有语义色实现，不是 AppKit 动态系统色 API。
+
+- 主题增加 `system` 偏好：持久化用户选择，根 `data-theme` 仅写解析后的 light/dark/eye。使用 `matchMedia` change 监听系统明暗并在销毁时移除；系统变化只更新外观，不覆盖持久化偏好。现有默认值及手动主题保持不变。
+
+### 2026-09-15 · 跟随系统主题修复
+
+- 原生主题缓存不能覆盖后续 `prefers-color-scheme` change 事件；两条通知路径都更新当前系统明暗，手动主题保持独立。移除临时 localhost 主题探针请求。
+- 设备外观设置增加 `systemLightTheme: light | eye`，仅在跟随系统时参与解析：系统深色使用 dark，系统浅色使用用户指定的 light/eye。旧设置缺省 light，保持原有行为；不修改工程格式。
+- 设置页提供“暗黑 ↔ 明亮”和“暗黑 ↔ 护眼”，切换立即生效并沿用现有设置持久化。
+
+### 2026-09-15 · 阅读进度与合并验证
+
+- 页脚按当前文档对的 Segment 显示原文／译文已对齐比例；导航游标表示滚动比例，拖动释放或键盘操作驱动共享视口。进度显示不写入 canonical 数据。
+- 两列高度测量在单个动画帧中批量发布，忽略小于 0.5px 的测量抖动；尺寸重置、组件卸载取消待处理测量。锚点在布局更新后校正，关闭浏览器原生滚动锚定以避免重复补偿。
+- 合并验证复用既有五语言 Kernel 文案表；内存渲染测试显式选择语言，跨层浏览器夹具跳过首次引导，避免系统语言及引导项目替换测试工程造成误判。

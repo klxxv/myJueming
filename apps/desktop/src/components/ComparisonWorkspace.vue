@@ -10,7 +10,7 @@ import { t } from '../i18n';
 import { formatError, rawErrorMessage } from '../i18n/kernel-messages';
 
 const props = defineProps<{ project: WorkspaceProject; texts: ReadonlyMap<string, SegmentText>; writable: boolean; findInView?: (query: string, cancelled: () => boolean) => Promise<string[]> }>();
-const emit = defineEmits<{ visibleSegments: [ids: string[]]; editPair: [documentId: string, alignmentId?: string]; unlink: [id: string] }>();
+const emit = defineEmits<{ scrollProgress: [ratio: number]; visibleSegments: [ids: string[]]; editPair: [documentId: string, alignmentId?: string]; unlink: [id: string] }>();
 const viewport = ref<HTMLElement | null>(null);
 const top = ref(0);
 const height = ref(600);
@@ -77,7 +77,7 @@ watch(positions, (next, previous) => {
     const difference = updatedBand.top + updatedSegment.top - anchor.top;
     if (Math.abs(difference) >= .5) { element.scrollTop += difference; top.value = element.scrollTop; }
   }
-}, { flush: 'sync' });
+}, { flush: 'post' });
 let observer: ResizeObserver | undefined;
 watch(viewport, element => { observer?.disconnect(); if (element) { const measure = () => { height.value = element.clientHeight; }; observer = new ResizeObserver(measure); observer.observe(element); measure(); } }, { flush: 'post' });
 onBeforeUnmount(() => observer?.disconnect());
@@ -117,7 +117,14 @@ watch([findQuery, () => props.project.project.current_revision_id], () => {
   }, 180);
 });
 onBeforeUnmount(() => { findGeneration++; clearTimeout(findTimer); });
-defineExpose({ openFind, navigateFind });
+watch([top, totalHeight, height], () => emit('scrollProgress', Math.min(1, Math.max(0, top.value / Math.max(1, totalHeight.value - height.value)))), { immediate: true, flush: 'post' });
+const scrollToProgress = (ratio: number) => {
+  const element = viewport.value;
+  if (!element) return;
+  element.scrollTo({ top: Math.max(0, Math.min(1, ratio)) * Math.max(0, totalHeight.value - element.clientHeight), behavior: 'instant' });
+  top.value = element.scrollTop;
+};
+defineExpose({ openFind, navigateFind, scrollToProgress });
 const openRelation = (id: string) => {
   const relation = props.project.alignments.find(item => item.alignment_id === id);
   const document = documents.value.find(doc => doc.segments.some(segment => segment.id === relation?.target_segment_ids[0]));
@@ -137,14 +144,14 @@ const openRelation = (id: string) => {
   </section>
 </template>
 <style scoped>
-.comparison-workspace { display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--surface-raised); }
+.comparison-workspace { display: flex; flex-direction: column; min-height: 0; height: 100%; @apply bg-raised; }
 .comparison-toolbar, .comparison-pairs { display: flex; align-items: center; gap: 12px; padding: 10px 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
 .comparison-toolbar span, .comparison-pairs > span { color: var(--text-muted); font-size: 12px; }
 .comparison-toolbar__hint { margin-left: auto; }
-.comparison-toolbar button, .comparison-pairs button { padding: 5px 10px; border: 1px solid var(--line); border-radius: 5px; color: var(--text-main); background: var(--surface-subtle); cursor: pointer; }
-.comparison-find { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
-.comparison-find input { flex: 1; min-width: 100px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-raised); color: var(--text-main); }
+.comparison-toolbar button, .comparison-pairs button { padding: 5px 10px; border: 1px solid var(--line); border-radius: 5px; color: var(--text-main); @apply bg-subtle; cursor: pointer; }
+.comparison-find { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--line); @apply bg-subtle; }
+.comparison-find input { flex: 1; min-width: 100px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; @apply bg-raised; color: var(--text-main); }
 .comparison-find button { display: grid; place-items: center; border: 0; padding: 4px; color: var(--text-main); background: transparent; cursor: pointer; }
 .comparison-find span { font-size: 12px; color: var(--text-muted); }
-.comparison-viewport { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.comparison-viewport { flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; overscroll-behavior: contain; scrollbar-gutter: stable; }
 </style>
