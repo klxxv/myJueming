@@ -46,6 +46,11 @@ function button(root, label) {
   return matched[0];
 }
 
+class MemoryButtonElement {}
+const originalButtonElement = Object.getOwnPropertyDescriptor(globalThis, "HTMLButtonElement");
+let measuredRows = 0;
+const mountedApps = [];
+
 function createMemoryRenderer(createRenderer) {
   const element = (type) => {
     const listeners = new Map();
@@ -53,13 +58,16 @@ function createMemoryRenderer(createRenderer) {
       setTimeout: globalThis.setTimeout.bind(globalThis),
       clearTimeout: globalThis.clearTimeout.bind(globalThis),
     };
-    return {
+    return Object.setPrototypeOf({
       type,
       props: {},
       // A viewport surface for the production TanStack virtualizer. These are
       // host layout capabilities, not a replacement range calculation.
       offsetWidth: 1024,
-      offsetHeight: 400,
+      get offsetHeight() {
+        if (type === "button") measuredRows += 1;
+        return type === "button" ? 96 : 400;
+      },
       scrollTop: 0,
       scrollLeft: 0,
       ownerDocument: { defaultView: view },
@@ -70,9 +78,12 @@ function createMemoryRenderer(createRenderer) {
       },
       children: [],
       parent: null,
+      get isConnected() { return this.parent !== null; },
+      getAttribute(name) { return this.props[name] == null ? null : String(this.props[name]); },
+      scrollTo() {},
       addEventListener(name, listener) { listeners.set(name, listener); },
       removeEventListener(name) { listeners.delete(name); },
-    };
+    }, type === "button" ? MemoryButtonElement.prototype : Object.prototype);
   };
   return createRenderer({
     createElement: element,
@@ -136,16 +147,19 @@ function stateFor(bundle, overrides = {}) {
 
 function mount(bundle, renderer, state, emitted) {
   const root = { type: "root", props: {}, children: [] };
-  renderer.createApp({
+  const app = renderer.createApp({
     render: () => bundle.h(bundle.SearchReplaceWorkspace, {
       ...state,
       onApplyReplace: (preview) => emitted.push(preview),
     }),
-  }).mount(root);
+  });
+  app.mount(root);
+  mountedApps.push(app);
   return root;
 }
 
 try {
+  Object.defineProperty(globalThis, "HTMLButtonElement", { configurable: true, value: MemoryButtonElement });
   await build({
     entryPoints: { search: entry },
     bundle: true,
@@ -175,6 +189,7 @@ try {
     await bundle.nextTick();
     assert.match(text(root), /找到 1 条结果/, "authoritative native results must remain visible when the browser cannot compile the supplied regex");
     assert.match(text(root), /Rust indexed source hit/, "the Rust search result is rendered instead of a JavaScript-filtered empty list");
+    assert.ok(measuredRows > 0, "production virtualizer must measure the rendered result button");
   }
 
   {
@@ -227,5 +242,8 @@ try {
 
   console.log("production SearchReplaceWorkspace authoritative native search and preview contract: passed");
 } finally {
+  for (const app of mountedApps) app.unmount();
+  if (originalButtonElement) Object.defineProperty(globalThis, "HTMLButtonElement", originalButtonElement);
+  else delete globalThis.HTMLButtonElement;
   await rm(outputDirectory, { recursive: true, force: true });
 }

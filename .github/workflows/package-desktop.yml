@@ -1,6 +1,7 @@
 name: Package desktop
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -49,9 +50,6 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify agent UI production contracts
-        run: node scripts/verify-agent-ui.mjs
-
       - name: Verify release tag matches application version
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
@@ -64,6 +62,9 @@ jobs:
 
       - name: Verify TypeScript types
         run: pnpm typecheck
+
+      - name: Verify agent UI production contracts
+        run: pnpm test:agent-ui
 
       - name: Verify frontend production build
         run: pnpm build

@@ -37,9 +37,11 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin
 pnpm build:desktop:macos
 ```
 
-`.github/workflows/package-desktop.yml` 在 `main` push 和 pull request 上执行 TypeScript 构建、Rust format、Clippy 与测试门禁；手动触发或推送 `v*` 标签时，门禁通过后再分别在 Windows 与 macOS runner 打包。Windows 产物为 x64 NSIS / MSI，macOS 产物为同时包含 Apple Silicon 与 Intel 的 Universal `.app` / `.dmg`，均保存为 workflow artifacts。当前 macOS 测试包使用 ad-hoc 签名，避免 Apple Silicon 将完全未签名的下载包直接判断为损坏；正式分发仍需配置 Developer ID Application 证书并完成 notarization。
+`.github/workflows/package-desktop.yml` 在 `main`、`codex/agent-mcp-pipeline` 的 push、面向 `main` 的 pull request 和 `v*` 标签上执行验证，也支持手动触发。普通分支运行 Windows 质量门禁和 macOS Universal 编译；只有 `v*` 标签在门禁通过后进入双平台打包与 GitHub Release 发布。
 
-Actions 依赖使用官方主版本对应的完整提交 SHA，降低可变标签带来的供应链风险。仓库默认只授予工作流 `contents: read`；构建产物通过 workflow artifact 上传，不创建 Release，也不要求额外写权限。重复的 pull request 构建会取消旧运行，标签与手动打包不会被自动取消。
+Windows 产物包含 x64 NSIS / MSI、便携程序与研究资源 ZIP；macOS 产物包含 Universal `.app` / `.dmg`，另提供双平台 MCP 服务端。打包任务先上传 workflow artifacts，再由独立 Release job 发布下载。默认权限为 `contents: read`，只有 Release job 使用 `contents: write`。重复 PR 构建会取消旧运行。操作步骤见 [CI 维护说明](../testing/ci-maintenance.md)。
+
+当前 macOS 测试包使用 ad-hoc 签名；正式分发的 Developer ID 签名和公证需要额外配置。Universal 打包参数参见 [Tauri CLI](https://v2.tauri.app/reference/cli/)。
 
 最低 macOS 版本为 11.0。Windows 安装包必须在 Windows runner 生成，macOS Universal 包必须在 macOS runner 生成。
 
@@ -57,6 +59,6 @@ pnpm --dir apps/desktop tauri icon ../../assets/brand/jueming-aligner-icon-maste
 
 ## Apple Silicon 性能检查结论
 
-前端长列表由 TanStack Virtual 只挂载可视行；拖拽注册随虚拟行挂载和卸载，不随滚动创建全量监听器。审阅内查找使用 120 ms 输入防抖和预归一化索引，避免每个按键对中英文全文重复做小写转换。跳转动画是有上限、可取消的短时 rAF，用户滚动会立即终止。缓存递归清理放入 Rust blocking worker，不占用 Tauri UI 线程。
+主平行视图由 `AlignedWorkspaceViewport` 与 `useAlignedBlockLayout` 裁剪可视区，搜索结果使用 TanStack Virtual；拖拽注册随虚拟行挂载和卸载，不随滚动创建全量监听器。审阅内查找使用 120 ms 输入防抖和预归一化索引，避免每个按键对中英文全文重复做小写转换。跳转动画是有上限、可取消的短时 rAF，用户滚动会立即终止。缓存递归清理放入 Rust blocking worker，不占用 Tauri UI 线程。
 
 这些路径不存在空闲轮询、无限动画、常驻 GPU 合成提示或无上限后台任务。仍需在真实 Apple Silicon 设备上用 Activity Monitor / Instruments 对 10 万句段压力工程执行 15 分钟滚动、连续查找、排序和缓存清理基线，才可形成硬件温升结论；CI 只能确认原生 ARM 构建与功能回归，不能替代温度传感器测试。

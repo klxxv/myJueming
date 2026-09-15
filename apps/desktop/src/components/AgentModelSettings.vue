@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
-import { LoaderCircle, PlugZap } from "lucide-vue-next";
+import { LoaderCircle, PlugZap } from "@lucide/vue";
 import { agentRuntimeClient, type AgentRuntimeProviderKind, type AgentRuntimeStatus } from "../domain/agent-runtime-client";
 import { t } from "../i18n";
 import type { EmbeddedSettingsMessageKey } from "../i18n/embedded-settings-messages";
