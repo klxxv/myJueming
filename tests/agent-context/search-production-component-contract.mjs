@@ -167,6 +167,7 @@ try {
   });
   await writeFile(path.join(outputDirectory, "package.json"), '{"type":"commonjs"}');
   const bundle = createRequire(import.meta.url)(path.join(outputDirectory, "search.js"));
+  bundle.setUiLocale("zh-CN");
   const renderer = createMemoryRenderer(bundle.createRenderer);
 
   {

@@ -2,9 +2,10 @@
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 import assert from 'node:assert/strict';
 const browser = await chromium.launch({headless:true});
-const page = await browser.newPage({viewport:{width:1440,height:1000}});
+const page = await browser.newPage({locale:'zh-CN',viewport:{width:1440,height:1000}});
 const errors=[]; page.on('pageerror', e=>errors.push(e.message));
 await page.addInitScript(() => {
+  localStorage.setItem('jueming-parallel-tutorial-launched-v2', '1');
   const calls = []; const texts = {}; const callbacks = new Map(); let callbackId=0;
   const projectId = crypto.randomUUID(), sourceDoc=crypto.randomUUID(), targetDoc=crypto.randomUUID();
   const view = {contract_version:'1.0', project:{project_id:projectId,name:'Slice browser verification',source_language:'zh',target_language:'en',document_ids:[sourceDoc,targetDoc],current_revision_id:'1',format_version:'1.0',created_at:'2026-09-13T00:00:00Z',updated_at:'2026-09-13T00:00:00Z'},documents:[{document_id:sourceDoc,project_id:projectId,title:'source'},{document_id:targetDoc,project_id:projectId,title:'target'}], segments:[],segment_orders:[{document_id:sourceDoc,entries:[]},{document_id:targetDoc,entries:[]}],alignments:[],revisions:[{revision_id:'1',project_id:projectId,created_at:'2026-09-13T00:00:00Z',change_set:{operation:'create_project',affected_count:1600},summary:'created',state:'complete'}], bookmarks:[],annotations:[],summary:{project_id:projectId,name:'Slice browser verification',source_label:'source.txt',target_label:'target.txt',source_count:800,target_count:800,alignment_count:800,source_unlinked_count:0,target_unlinked_count:0,revision_id:'1'}};

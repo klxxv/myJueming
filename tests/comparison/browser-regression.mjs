@@ -6,11 +6,12 @@ import { tmpdir } from 'node:os';
 const engines = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const engine = process.env.COMPARISON_BROWSER || 'chromium';
 const browser = await engines[engine].launch({ headless: true });
-const page = await browser.newPage({ viewport: { width: 1560, height: 1000 } });
+const page = await browser.newPage({ locale: 'zh-CN', viewport: { width: 1560, height: 1000 } });
 page.setDefaultTimeout(12000);
 const errors = []; page.on('pageerror', error => errors.push(error.message));
 const directory = process.env.COMPARISON_SCREENSHOT_DIR || join(tmpdir(), 'jueming-comparison'); await mkdir(directory, { recursive: true });
 await page.addInitScript(() => {
+  localStorage.setItem('jueming-parallel-tutorial-launched-v2', '1');
   const calls = [], callbacks = new Map(), texts = {}; let callbackId = 0;
   const projectId = crypto.randomUUID();
   const documents = ['原文', '译本一', '译本二', '译本三'].map((title, index) => ({ document_id: crypto.randomUUID(), project_id: projectId, language_id: index ? 'en' : 'zh', title, source_asset_id: crypto.randomUUID(), segment_order_id: crypto.randomUUID(), created_revision_id: '1' }));

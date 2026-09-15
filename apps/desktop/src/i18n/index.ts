@@ -17,13 +17,14 @@ import { companionMessages } from "./companion-messages";
 import { parallelUiMessages } from "./parallel-ui-messages";
 import { reviewMessages } from "./review-messages";
 import { workflowMessages } from "./workflow-messages";
+import { kernelUiMessages } from "./kernel-ui-messages";
 
 export const messages = {
-  zh: { ...zh, ...settingsRuntimeMessages.zh, ...settingsMessages.zh, ...panelMessages.zh, ...embeddedSettingsMessages.zh, ...parallelStatusMessages.zh, ...operationMessages.zh, ...newProjectMessages.zh, ...shellMessages.zh, ...companionMessages.zh, ...parallelUiMessages.zh, ...reviewMessages.zh, ...workflowMessages.zh },
-  en: { ...en, ...settingsRuntimeMessages.en, ...settingsMessages.en, ...panelMessages.en, ...embeddedSettingsMessages.en, ...parallelStatusMessages.en, ...operationMessages.en, ...newProjectMessages.en, ...shellMessages.en, ...companionMessages.en, ...parallelUiMessages.en, ...reviewMessages.en, ...workflowMessages.en },
-  ja: { ...ja, ...settingsRuntimeMessages.ja, ...settingsMessages.ja, ...panelMessages.ja, ...embeddedSettingsMessages.ja, ...parallelStatusMessages.ja, ...operationMessages.ja, ...newProjectMessages.ja, ...shellMessages.ja, ...companionMessages.ja, ...parallelUiMessages.ja, ...reviewMessages.ja, ...workflowMessages.ja },
-  fr: { ...fr, ...settingsRuntimeMessages.fr, ...settingsMessages.fr, ...panelMessages.fr, ...embeddedSettingsMessages.fr, ...parallelStatusMessages.fr, ...operationMessages.fr, ...newProjectMessages.fr, ...shellMessages.fr, ...companionMessages.fr, ...parallelUiMessages.fr, ...reviewMessages.fr, ...workflowMessages.fr },
-  de: { ...de, ...settingsRuntimeMessages.de, ...settingsMessages.de, ...panelMessages.de, ...embeddedSettingsMessages.de, ...parallelStatusMessages.de, ...operationMessages.de, ...newProjectMessages.de, ...shellMessages.de, ...companionMessages.de, ...parallelUiMessages.de, ...reviewMessages.de, ...workflowMessages.de },
+  zh: { ...zh, ...kernelUiMessages.zh, ...settingsRuntimeMessages.zh, ...settingsMessages.zh, ...panelMessages.zh, ...embeddedSettingsMessages.zh, ...parallelStatusMessages.zh, ...operationMessages.zh, ...newProjectMessages.zh, ...shellMessages.zh, ...companionMessages.zh, ...parallelUiMessages.zh, ...reviewMessages.zh, ...workflowMessages.zh },
+  en: { ...en, ...kernelUiMessages.en, ...settingsRuntimeMessages.en, ...settingsMessages.en, ...panelMessages.en, ...embeddedSettingsMessages.en, ...parallelStatusMessages.en, ...operationMessages.en, ...newProjectMessages.en, ...shellMessages.en, ...companionMessages.en, ...parallelUiMessages.en, ...reviewMessages.en, ...workflowMessages.en },
+  ja: { ...ja, ...kernelUiMessages.ja, ...settingsRuntimeMessages.ja, ...settingsMessages.ja, ...panelMessages.ja, ...embeddedSettingsMessages.ja, ...parallelStatusMessages.ja, ...operationMessages.ja, ...newProjectMessages.ja, ...shellMessages.ja, ...companionMessages.ja, ...parallelUiMessages.ja, ...reviewMessages.ja, ...workflowMessages.ja },
+  fr: { ...fr, ...kernelUiMessages.fr, ...settingsRuntimeMessages.fr, ...settingsMessages.fr, ...panelMessages.fr, ...embeddedSettingsMessages.fr, ...parallelStatusMessages.fr, ...operationMessages.fr, ...newProjectMessages.fr, ...shellMessages.fr, ...companionMessages.fr, ...parallelUiMessages.fr, ...reviewMessages.fr, ...workflowMessages.fr },
+  de: { ...de, ...kernelUiMessages.de, ...settingsRuntimeMessages.de, ...settingsMessages.de, ...panelMessages.de, ...embeddedSettingsMessages.de, ...parallelStatusMessages.de, ...operationMessages.de, ...newProjectMessages.de, ...shellMessages.de, ...companionMessages.de, ...parallelUiMessages.de, ...reviewMessages.de, ...workflowMessages.de },
 };
 
 export const UI_LOCALES = ["zh", "en", "ja", "fr", "de"] as const;

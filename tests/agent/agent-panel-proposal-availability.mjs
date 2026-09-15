@@ -139,6 +139,7 @@ try {
   assert.ok(Object.keys(result.metafile ?? {}).length >= 0);
   await writeFile(path.join(outputDirectory, "package.json"), '{"type":"commonjs"}');
   const bundle = createRequire(import.meta.url)(path.join(outputDirectory, "panel.js"));
+  bundle.setUiLocale("zh-CN");
   const renderer = createMemoryRenderer(bundle.createRenderer);
 
   const enabledRoot = { type: "root", props: {}, children: [] };
