@@ -2154,7 +2154,7 @@ dependencies = [
 
 [[package]]
 name = "jueming-agent-runtime"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "jueming-application",
@@ -2174,7 +2174,7 @@ dependencies = [
 
 [[package]]
 name = "jueming-agent-transport"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "axum",
  "futures-util",
@@ -2191,7 +2191,7 @@ dependencies = [
 
 [[package]]
 name = "jueming-application"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "jueming-kernel",
@@ -2211,7 +2211,7 @@ dependencies = [
 
 [[package]]
 name = "jueming-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chardetng",
  "encoding_rs",
@@ -2223,7 +2223,7 @@ dependencies = [
 
 [[package]]
 name = "jueming-desktop"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "jueming-agent-runtime",
  "jueming-agent-transport",
@@ -2243,7 +2243,7 @@ dependencies = [
 
 [[package]]
 name = "jueming-kernel"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "jueming-core",
@@ -2258,7 +2258,7 @@ dependencies = [
 
 [[package]]
 name = "jueming-mcp"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "axum",
  "futures-util",
@@ -2276,7 +2276,7 @@ dependencies = [
 
 [[package]]
 name = "jueming-pipeline"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "jieba-rs",
  "jsonschema",
@@ -2293,7 +2293,7 @@ dependencies = [
 
 [[package]]
 name = "jueming-protocol"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "jueming-core",
  "serde",
@@ -2302,7 +2302,7 @@ dependencies = [
 
 [[package]]
 name = "jueming-storage"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
