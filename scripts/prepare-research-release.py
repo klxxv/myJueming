@@ -43,7 +43,12 @@ for architecture in architectures:
         runtime=matches[0]
     packages=cache/("packages-"+architecture)
     triple=f"{architecture}-"+("pc-windows-msvc" if system=="windows" else "apple-darwin")
-    subprocess.run([args.uv,"pip","install","--python-version","3.12","--python-platform",triple,"--only-binary",":all:","--target",str(packages),"-r",str(root/"plugins/requirements-lock.txt")],env=env,check=True)
+    install=[args.uv,"pip","install","--python-version","3.12","--python-platform",triple,"--only-binary",":all:","--target",str(packages),"-r",str(root/"plugins/requirements-lock.txt")]
+    if system=="windows":
+        # The worker runs on CPU. CUDA libraries exceed NSIS's 2 GiB data limit.
+        # Pin the CPython 3.12 x64 CPU wheel and its official SHA-256.
+        install.append("torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.2.2%2Bcpu-cp312-cp312-win_amd64.whl#sha256=2b0cf041f878607a361116945f82ce2dba4b7a747151da7619a63cb5fccb72df")
+    subprocess.run(install,env=env,check=True)
     destination=args.output/architecture if args.universal else args.output
     subprocess.run([sys.executable,str(root/"scripts/build-research-bundle.py"),"--runtime",str(runtime),"--packages",str(packages),"--model",str(model),"--output",str(destination)],check=True)
 if args.universal:

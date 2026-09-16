@@ -167,3 +167,7 @@ MVP 不实现 POS、Lemma、NER、自动语义对齐、OCR、云协作和外部�
 
 - 数据池 `GC_GATE` 是进程级执行保护，独立临时目录不能隔离锁；回收测试单独放入 `data_pool_gc.rs` 集成测试进程，避免与 `dataflow_v2.rs` 的并行图执行争用。
 - 回归覆盖执行 pin 拒绝回收、view pin 保护输出与传递依赖、释放后产物清理和真实缓存命中失效。生产回收语义及全套测试的并行设置保持不变。
+
+### 2026-09-16 · Windows 离线发布体积
+
+- Windows 发布资源固定使用官方 PyTorch 2.2.2 CPU wheel（CPython 3.12 x64），在构建脚本中锁定 URL 和 SHA-256；研究 Worker 原本就在 CPU 执行。避免附带未使用的 CUDA 库，使完整离线资源可由 NSIS 打包；macOS 依赖保持原配置。
