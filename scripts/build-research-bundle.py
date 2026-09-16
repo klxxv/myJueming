@@ -23,6 +23,11 @@ destination=args.output.resolve()
 destination.mkdir(parents=True,exist_ok=True)
 for name,source in [("runtime",args.runtime),("packages",args.packages),("model",args.model)]:
     shutil.copytree(source,destination/name,dirs_exist_ok=True,ignore=shutil.ignore_patterns("__pycache__","*.pyc",".cache"))
+# PyTorch's Windows wheel includes large static/import libraries for compiling
+# C++ extensions. Our packaged worker only loads the DLLs and never compiles.
+if (args.runtime/"python.exe").is_file():
+    for library in (destination/"packages"/"torch"/"lib").glob("*.lib"):
+        library.unlink()
 for name in ("fuzzy-matching","xlmr-word-alignment"):
     shutil.copytree(root/"plugins"/name,destination/"plugins"/name,dirs_exist_ok=True,ignore=shutil.ignore_patterns("__pycache__","*.pyc"))
 for name in ("THIRD_PARTY.md", "requirements-lock.txt"):

@@ -170,4 +170,5 @@ MVP 不实现 POS、Lemma、NER、自动语义对齐、OCR、云协作和外部�
 
 ### 2026-09-16 · Windows 离线发布体积
 
-- Windows 发布资源固定使用官方 PyTorch 2.2.2 CPU wheel（CPython 3.12 x64），在构建脚本中锁定 URL 和 SHA-256；研究 Worker 原本就在 CPU 执行。避免附带未使用的 CUDA 库，使完整离线资源可由 NSIS 打包；macOS 依赖保持原配置。
+- Windows 发布资源固定使用官方 PyTorch 2.2.2 CPU wheel（CPython 3.12 x64），在构建脚本中锁定 URL 和 SHA-256；研究 Worker 原本就在 CPU 执行。明确锁定 CPU 分发来源；macOS 依赖保持原配置。
+- NSIS 实测仍受未压缩资源超过 2 GiB 限制；发布资源移除 Windows PyTorch 的 `torch/lib/*.lib` 编译链接库，保留全部 DLL、Python 包与模型。资源清单在裁剪后生成，真实离线 Worker 测试继续作为打包门槛。
