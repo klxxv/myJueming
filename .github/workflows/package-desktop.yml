@@ -184,22 +184,6 @@ jobs:
         shell: pwsh
         run: scripts/platform/build-mcp-windows.ps1
 
-      - name: Install pinned research resource builder
-        run: python -m pip install uv==0.8.22
-
-      - name: Prepare complete offline Windows research resources
-        if: runner.os == 'Windows'
-        run: python scripts/prepare-research-release.py
-
-      - name: Prepare both macOS research runtimes
-        if: runner.os == 'macOS'
-        run: python3 scripts/prepare-research-release.py --universal
-
-      - name: Verify real offline research on the native runner
-        env:
-          JUEMING_RESEARCH_BUNDLE: ${{ github.workspace }}/apps/desktop/src-tauri/resources/research
-        run: cargo test -p jueming-application --test research real_offline_workers -- --ignored --nocapture
-
       - name: Build Universal MCP server
         if: runner.os == 'macOS' && hashFiles('crates/jueming-mcp/Cargo.toml') != ''
         shell: bash
@@ -214,11 +198,11 @@ jobs:
           $assets = Join-Path $PWD "release-assets"
           New-Item -ItemType Directory -Path $assets -Force | Out-Null
           Copy-Item "target/release/jueming-desktop.exe" (Join-Path $assets "Jueming-Aligner_${{ github.ref_name }}_windows-x64-portable.exe")
-          $portable = Join-Path $PWD "target/research-portable"
+          $portable = Join-Path $PWD "target/desktop-portable"
           New-Item -ItemType Directory -Path (Join-Path $portable "resources") -Force | Out-Null
           Copy-Item "target/release/jueming-desktop.exe" (Join-Path $portable "Jueming-Aligner.exe")
           Copy-Item "apps/desktop/src-tauri/resources/research" (Join-Path $portable "resources/research") -Recurse -Force
-          Compress-Archive -Path (Join-Path $portable "*") -DestinationPath (Join-Path $assets "Jueming-Aligner_${{ github.ref_name }}_windows-x64-research-portable.zip") -Force
+          Compress-Archive -Path (Join-Path $portable "*") -DestinationPath (Join-Path $assets "Jueming-Aligner_${{ github.ref_name }}_windows-x64-portable.zip") -Force
 
       - name: Build platform packages
         id: tauri
@@ -326,7 +310,7 @@ jobs:
             "Jueming-Aligner_${GITHUB_REF_NAME}_windows-x64-setup.exe"
             "Jueming-Aligner_${GITHUB_REF_NAME}_windows-x64.msi"
             "Jueming-Aligner_${GITHUB_REF_NAME}_windows-x64-portable.exe"
-            "Jueming-Aligner_${GITHUB_REF_NAME}_windows-x64-research-portable.zip"
+            "Jueming-Aligner_${GITHUB_REF_NAME}_windows-x64-portable.zip"
             "Jueming-Aligner_${GITHUB_REF_NAME}_macos-universal.dmg"
             "Jueming-Aligner_${GITHUB_REF_NAME}_macos-universal-portable.zip"
           )
@@ -351,11 +335,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          notes=(--generate-notes)
+          if [[ -f "docs/releases/${GITHUB_REF_NAME}.md" ]]; then
+            notes=(--notes-file "docs/releases/${GITHUB_REF_NAME}.md")
+          fi
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
           else
             gh release create "$GITHUB_REF_NAME" release-assets/* \
               --verify-tag \
-              --generate-notes \
+              "${notes[@]}" \
               --title "Jueming Aligner $GITHUB_REF_NAME"
           fi

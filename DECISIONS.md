@@ -172,3 +172,9 @@ MVP 不实现 POS、Lemma、NER、自动语义对齐、OCR、云协作和外部�
 
 - Windows 发布资源固定使用官方 PyTorch 2.2.2 CPU wheel（CPython 3.12 x64），在构建脚本中锁定 URL 和 SHA-256；研究 Worker 原本就在 CPU 执行。明确锁定 CPU 分发来源；macOS 依赖保持原配置。
 - NSIS 实测仍受未压缩资源超过 2 GiB 限制；发布资源移除 Windows PyTorch 的 `torch/lib/*.lib` 编译链接库，保留全部 DLL、Python 包与模型。资源清单在裁剪后生成，真实离线 Worker 测试继续作为打包门槛。
+
+### 2026-09-16 · v0.1.2 暂不分发 Torch 研究资源
+
+- 按当前用户要求，正式打包暂时跳过 PyTorch/XLM-R 可选研究资源准备及依赖这些资源的真实模型验收；常规前端、Rust 全 workspace 与 MCP 检查继续执行。
+- 现有 FeatureManager 要求两种 fuzzy provider 和 XLM-R 一同就绪，因此本次不分发整组可选资源；缺少 manifest 时沿用明确的资源未包含提示，不注册可执行研究 provider。核心桌面与 MCP 正常打包。
+- Windows 便携 ZIP 改为 `windows-x64-portable.zip`，发布说明明确当前功能边界；源码中的完整研究构建脚本保留用于后续恢复。
